@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { TopBar } from '@/components/topbar/TopBar'
 import { WorkspaceNavBar } from '@/components/workspace/WorkspaceNavBar'
 import { TransportBar } from '@/components/shell/TransportBar'
@@ -7,6 +8,9 @@ import { NodeGraphPage } from '@/components/pages/NodeGraphPage'
 import { CameraPage } from '@/components/pages/CameraPage'
 import { DeliverPage } from '@/components/pages/DeliverPage'
 import { useUIStore } from '@/store/useUIStore'
+import { useAudioStore } from '@/store/useAudioStore'
+import { ShortcutManager } from '@/engine/shortcuts/ShortcutManager'
+import { MultiTrackRack } from '@/engine/audio/MultiTrackRack'
 
 function ActivePage() {
   const activePage = useUIStore((s) => s.activePage)
@@ -26,6 +30,29 @@ function ActivePage() {
 }
 
 export default function App() {
+  useEffect(() => {
+    const sm = ShortcutManager.getInstance()
+
+    const unsubPlay = sm.subscribe('play-pause', () => {
+      const rack = MultiTrackRack.getInstance()
+      const { isPlaying } = useAudioStore.getState()
+      if (isPlaying) {
+        rack.pause()
+      } else {
+        rack.play()
+      }
+    })
+
+    const unsubImm = sm.subscribe('toggle-immersive', () => {
+      useUIStore.getState().toggleImmersiveView()
+    })
+
+    return () => {
+      unsubPlay()
+      unsubImm()
+    }
+  }, [])
+
   return (
     <div
       id="app-shell"

@@ -1,5 +1,14 @@
 import { Play, Pause, Repeat, SkipBack } from 'lucide-react'
 import { useAudioStore } from '@/store/useAudioStore'
+import { MultiTrackRack } from '@/engine/audio/MultiTrackRack'
+
+/** Format seconds to MM:SS.ms timecode string */
+function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60)
+  const s = Math.floor(seconds % 60)
+  const ms = Math.floor((seconds % 1) * 100)
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(2, '0')}`
+}
 
 /** Persistent slim transport strip visible across all 5 workspace tabs.
  *  Per Design System v2 §1: always know where you are in the piece. */
@@ -7,15 +16,19 @@ export function TransportBar() {
   const isPlaying = useAudioStore((s) => s.isPlaying)
   const currentTime = useAudioStore((s) => s.currentTime)
   const loopEnabled = useAudioStore((s) => s.loopEnabled)
-  const setPlaying = useAudioStore((s) => s.setPlaying)
-  const setCurrentTime = useAudioStore((s) => s.setCurrentTime)
   const toggleLoop = useAudioStore((s) => s.toggleLoop)
 
-  const formatTime = (seconds: number): string => {
-    const m = Math.floor(seconds / 60)
-    const s = Math.floor(seconds % 60)
-    const ms = Math.floor((seconds % 1) * 100)
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(2, '0')}`
+  const handlePlayPause = () => {
+    const rack = MultiTrackRack.getInstance()
+    if (isPlaying) {
+      rack.pause()
+    } else {
+      rack.play()
+    }
+  }
+
+  const handleSkipBack = () => {
+    MultiTrackRack.getInstance().seek(0)
   }
 
   return (
@@ -26,7 +39,7 @@ export function TransportBar() {
       {/* Return to start */}
       <button
         id="btn-skip-back"
-        onClick={() => setCurrentTime(0)}
+        onClick={handleSkipBack}
         className="text-slate-500 hover:text-slate-200 transition-colors duration-150"
         title="Return to start"
       >
@@ -36,7 +49,7 @@ export function TransportBar() {
       {/* Play / Pause */}
       <button
         id="btn-play-pause"
-        onClick={() => setPlaying(!isPlaying)}
+        onClick={handlePlayPause}
         className="text-slate-300 hover:text-white transition-colors duration-150"
         title={`${isPlaying ? 'Pause' : 'Play'} (Hotkey: Space)`}
       >

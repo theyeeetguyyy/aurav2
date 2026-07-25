@@ -1,13 +1,13 @@
 import type { ID } from './audio'
 
 /** A State is a reusable visual configuration snapshot:
- *  shapes + deformers + modulation routing + camera position + post-processing.
+ *  sceneObjects + effects + modulation routing + camera position + post-processing.
  *  States live in a library and are *referenced* by timeline Strips. */
 export interface VisualState {
   id: ID
   name: string
-  /** IDs of shapes included in this state */
-  shapeIds: ID[]
+  /** IDs of SceneObjects (shapes, lights, particles, backgrounds) included in this state */
+  sceneObjectIds: ID[]
   /** Modulation connections active in this state */
   modulationConnectionIds: ID[]
   /** Camera position snapshot */

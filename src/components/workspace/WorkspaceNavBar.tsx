@@ -25,14 +25,12 @@ export function WorkspaceNavBar() {
             key={page}
             id={`tab-${page}`}
             onClick={() => setActivePage(page)}
-            className={`
-              flex items-center gap-1.5 px-3 py-1 rounded text-[11px] font-medium
-              transition-colors duration-150
-              ${isActive
+            className={[
+              'flex items-center gap-1.5 px-3 py-1 rounded text-[11px] font-medium transition-colors duration-150',
+              isActive
                 ? 'bg-aura-surface text-aura-accent'
-                : 'text-slate-500 hover:text-slate-300 hover:bg-aura-surface/50'
-              }
-            `}
+                : 'text-slate-500 hover:text-slate-300 hover:bg-aura-surface/50',
+            ].join(' ')}
             title={`${label} (Tab ${shortLabel})`}
           >
             <Icon className="w-3.5 h-3.5" />

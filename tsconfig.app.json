@@ -16,9 +16,7 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Path aliases — using ignoreDeprecations for baseUrl/paths until TS7 migration */
-    "ignoreDeprecations": "6.0",
-    "baseUrl": ".",
+    /* Path aliases */
     "paths": {
       "@/*": ["./src/*"]
     },

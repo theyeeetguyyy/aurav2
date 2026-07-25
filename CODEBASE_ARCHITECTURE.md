@@ -39,6 +39,8 @@
 | `src/index.css` | Design System v2 Tailwind `@theme` tokens, focus rings, scrollbar, `tabular-nums` | Imported by `main.tsx` |
 | `src/main.tsx` | ReactDOM root render | Mounts `App.tsx` |
 | `src/App.tsx` | Root shell layout (TopBar, ActivePage, TransportBar, NavBar, global hotkey subscriptions) | Imports all pages, shell components, stores |
+| `LEGO_BRICKS_REGISTRY.md` | Registry of Three.js native primitives, Shader Park SDF combinators (`smooth-min`), Eurorack CV Fields, and Recipes | Reference spec for Phase 3+ Brick operators & node graph |
+| `KALEIDOSYNC_ANALYSIS.md` | Deep dive on Kaleidosync codebase, live microphone input, GLSL compile error boundaries, and state tweening | Reference doc for live mic input & GLSL safety |
 
 ---
 
@@ -95,9 +97,12 @@
 
 | Component / Engine | File Path | Responsibilities & Behavior | Inter-File Connections |
 |---|---|---|---|
-| `MultiTrackRack` | `src/engine/audio/MultiTrackRack.ts` | Singleton Web Audio API engine: lazy AudioContext init, MP3/WAV/OGG decode, synchronized play/pause/seek, per-track GainNode for solo/mute/volume, loop region support, rAF clock sync | `useAudioStore`, `TransportBar`, `App.tsx`, `TrackRow` |
+| `MultiTrackRack` | `src/engine/audio/MultiTrackRack.ts` | Singleton Web Audio API engine: lazy AudioContext init, MP3/WAV/OGG decode, synchronized play/pause/seek, per-track GainNode for solo/mute/volume, loop region support, trim-aware playback, rAF clock sync. Exposes `trackNodes` getter for analysis tapping. | `useAudioStore`, `TransportBar`, `App.tsx`, `TrackRow`, `RealtimeAnalyser` |
+| `AudioDataBus` | `src/engine/audio/AudioDataBus.ts` | Zero-React-state `Float32Array` bus for per-frame audio metrics. 9 floats per track (RMS, spectralCentroid, 7 frequency bands). Never triggers React re-renders. | `RealtimeAnalyser` (writes), R3F `useFrame` / modulation matrix (reads) |
+| `RealtimeAnalyser` | `src/engine/audio/RealtimeAnalyser.ts` | Per-track Meyda-based analyser extracting RMS, spectral centroid, and 7-band energies at audio callback rate. Writes to `AudioDataBus`. | `MultiTrackRack`, `AudioDataBus`, `MediaStemsPage` (register), `TrackRow` (unregister) |
 | `WaveformCanvas` | `src/components/audio/WaveformCanvas.tsx` | Canvas-rendered peak waveform from AudioBuffer. Downsamples to pixel width, draws past/future color split + playhead line | `TrackRow.tsx` |
-| `TrackRow` | `src/components/audio/TrackRow.tsx` | Individual stem row: color indicator, name, Solo/Mute toggles, volume slider, waveform display, hover-delete button | `useAudioStore`, `WaveformCanvas`, `MultiTrackRack` |
+| `TrimHandles` | `src/components/audio/TrimHandles.tsx` | Draggable start/end trim handles overlay on waveform. Pointer-capture for smooth dragging, dimmed-out excluded regions, 50ms minimum region constraint. | `TrackRow.tsx`, `useAudioStore` |
+| `TrackRow` | `src/components/audio/TrackRow.tsx` | Individual stem row: color indicator, name, Solo/Mute toggles, volume slider, waveform + trim handles overlay, hover-delete button | `useAudioStore`, `WaveformCanvas`, `TrimHandles`, `MultiTrackRack`, `RealtimeAnalyser` |
 
 ---
 
@@ -132,6 +137,10 @@
 - [x] **Phase 1G**: Remappable Keyboard Shortcuts System & Settings Modal
 - [x] **Phase 2A**: Web Audio API Multi-Track Engine (MultiTrackRack singleton)
 - [x] **Phase 2B**: DAW Stem Track Rack UI (MediaStemsPage, WaveformCanvas, TrackRow, drag-drop import)
+- [x] **Phase 2C**: Solo/Mute with Visual Isolation Logic (applySoloMuteState, per-track GainNode ramps)
+- [x] **Phase 2D**: Track Trim Handles (TrimHandles.tsx, trim-aware playback in MultiTrackRack)
+- [x] **Phase 2E**: Meyda Real-Time Analysis (AudioDataBus.ts zero-React bus, RealtimeAnalyser.ts per-track Meyda)
+- [ ] **Phase 2F**: Pre-Analysis on Import (AnalysisWorker.ts, AnalysisCache.ts)
 - [ ] **Phase 3A**: Scene Object Layer Stack (Figma/Blender Outliner)
 - [ ] **Phase 3B**: Shape Factory & Shape Inspector
 

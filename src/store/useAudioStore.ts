@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Track, ID } from '@/types/audio'
+import type { Track, ID, TrimBounds } from '@/types/audio'
 
 interface AudioState {
   tracks: Track[]
@@ -21,6 +21,7 @@ interface AudioState {
   setVolume: (id: ID, volume: number) => void
   setPlaying: (playing: boolean) => void
   setCurrentTime: (time: number) => void
+  setTrimBounds: (id: ID, bounds: TrimBounds) => void
   toggleLoop: () => void
   setLoopRegion: (start: number, end: number) => void
 }
@@ -49,6 +50,10 @@ export const useAudioStore = create<AudioState>((set) => ({
     })),
   setPlaying: (playing) => set({ isPlaying: playing }),
   setCurrentTime: (time) => set({ currentTime: time }),
+  setTrimBounds: (id, bounds) =>
+    set((s) => ({
+      tracks: s.tracks.map((t) => (t.id === id ? { ...t, trimBounds: bounds } : t)),
+    })),
   toggleLoop: () => set((s) => ({ loopEnabled: !s.loopEnabled })),
   setLoopRegion: (start, end) => set({ loopStart: start, loopEnd: end }),
 }))

@@ -1,7 +1,9 @@
 import { Volume2, VolumeX, Headphones, Trash2 } from 'lucide-react'
 import { useAudioStore } from '@/store/useAudioStore'
 import { WaveformCanvas } from './WaveformCanvas'
+import { TrimHandles } from './TrimHandles'
 import { MultiTrackRack } from '@/engine/audio/MultiTrackRack'
+import { RealtimeAnalyser } from '@/engine/audio/RealtimeAnalyser'
 import type { Track } from '@/types/audio'
 
 interface TrackRowProps {
@@ -17,6 +19,7 @@ export function TrackRow({ track, progress }: TrackRowProps) {
   const toggleMute = useAudioStore((s) => s.toggleMute)
   const setVolume = useAudioStore((s) => s.setVolume)
   const removeTrack = useAudioStore((s) => s.removeTrack)
+  const setTrimBounds = useAudioStore((s) => s.setTrimBounds)
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const vol = parseFloat(e.target.value)
@@ -36,6 +39,7 @@ export function TrackRow({ track, progress }: TrackRowProps) {
   }
 
   const handleDelete = () => {
+    RealtimeAnalyser.unregister(track.id)
     MultiTrackRack.getInstance().unregisterTrack(track.id)
     removeTrack(track.id)
   }
@@ -93,15 +97,24 @@ export function TrackRow({ track, progress }: TrackRowProps) {
         title={`Volume: ${Math.round(track.volume * 100)}%`}
       />
 
-      {/* Waveform */}
-      <div className="flex-1 min-w-0">
+      {/* Waveform + Trim Handles */}
+      <div className="flex-1 min-w-0 relative">
         {track.buffer ? (
-          <WaveformCanvas
-            buffer={track.buffer}
-            color={track.color}
-            progress={progress}
-            height={32}
-          />
+          <>
+            <WaveformCanvas
+              buffer={track.buffer}
+              color={track.color}
+              progress={progress}
+              height={32}
+            />
+            <TrimHandles
+              duration={track.buffer.duration}
+              trimBounds={track.trimBounds}
+              onTrimChange={(bounds) => setTrimBounds(track.id, bounds)}
+              color={track.color}
+              height={32}
+            />
+          </>
         ) : (
           <div className="h-8 bg-aura-base rounded animate-pulse" />
         )}

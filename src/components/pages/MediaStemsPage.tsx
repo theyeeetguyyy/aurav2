@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import { Upload, Music } from 'lucide-react'
 import { useAudioStore } from '@/store/useAudioStore'
 import { MultiTrackRack } from '@/engine/audio/MultiTrackRack'
+import { RealtimeAnalyser } from '@/engine/audio/RealtimeAnalyser'
 import { TrackRow } from '@/components/audio/TrackRow'
 import { getNextStemColor, generateId } from '@/utils/stemColors'
 import type { Track } from '@/types/audio'
@@ -45,6 +46,7 @@ export function MediaStemsPage() {
         }
 
         rack.registerTrack(trackId, buffer)
+        RealtimeAnalyser.register(trackId)
         addTrack(track)
       } catch (err) {
         console.error(`Failed to decode ${file.name}:`, err)

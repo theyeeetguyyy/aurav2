@@ -21,8 +21,13 @@ export class MultiTrackRack {
   private static instance: MultiTrackRack
 
   private ctx: AudioContext | null = null
-  private trackNodes: Map<ID, TrackNode> = new Map()
+  private _trackNodes: Map<ID, TrackNode> = new Map()
   private masterGain: GainNode | null = null
+
+  /** Expose track nodes for analysis tapping (used by RealtimeAnalyser) */
+  public get trackNodes(): ReadonlyMap<ID, TrackNode> {
+    return this._trackNodes
+  }
 
   /** AudioContext.currentTime when playback last started */
   private playStartContextTime = 0
@@ -63,7 +68,7 @@ export class MultiTrackRack {
     const gainNode = ctx.createGain()
     gainNode.connect(this.masterGain!)
 
-    this.trackNodes.set(trackId, {
+    this._trackNodes.set(trackId, {
       sourceNode: null,
       gainNode,
       buffer,
@@ -72,12 +77,12 @@ export class MultiTrackRack {
 
   /** Remove a track and disconnect its audio nodes */
   public unregisterTrack(trackId: ID): void {
-    const node = this.trackNodes.get(trackId)
+    const node = this._trackNodes.get(trackId)
     if (node) {
       node.sourceNode?.stop()
       node.sourceNode?.disconnect()
       node.gainNode.disconnect()
-      this.trackNodes.delete(trackId)
+      this._trackNodes.delete(trackId)
     }
   }
 
@@ -98,11 +103,27 @@ export class MultiTrackRack {
     this.playStartOffset = offset
 
     // Create new source nodes for each track and start them at the offset
-    for (const [, node] of this.trackNodes.entries()) {
+    for (const [trackId, node] of this._trackNodes.entries()) {
+      // Look up the track's trim bounds from the store
+      const trackState = store.tracks.find((t) => t.id === trackId)
+      const trimStart = trackState?.trimBounds.start ?? 0
+      const trimEnd = trackState?.trimBounds.end ?? node.buffer.duration
+
+      // Skip tracks whose trim region is entirely before the playhead
+      if (offset >= trimEnd) {
+        node.sourceNode = null
+        continue
+      }
+
       const source = ctx.createBufferSource()
       source.buffer = node.buffer
+
+      // Clamp the playback offset to the trim region
+      const effectiveOffset = Math.max(offset, trimStart)
+      const remainingDuration = trimEnd - effectiveOffset
+
       source.connect(node.gainNode)
-      source.start(0, offset)
+      source.start(0, effectiveOffset, remainingDuration)
       node.sourceNode = source
 
       // Handle natural end of buffer
@@ -164,7 +185,7 @@ export class MultiTrackRack {
     const anySoloed = tracks.some((t) => t.solo)
 
     for (const track of tracks) {
-      const node = this.trackNodes.get(track.id)
+      const node = this._trackNodes.get(track.id)
       if (!node) continue
 
       let gain = track.volume
@@ -183,7 +204,7 @@ export class MultiTrackRack {
   /** Get the duration of the longest loaded track */
   public getMaxDuration(): number {
     let max = 0
-    for (const node of this.trackNodes.values()) {
+    for (const node of this._trackNodes.values()) {
       if (node.buffer.duration > max) {
         max = node.buffer.duration
       }
@@ -192,7 +213,7 @@ export class MultiTrackRack {
   }
 
   private stopAllSources(): void {
-    for (const node of this.trackNodes.values()) {
+    for (const node of this._trackNodes.values()) {
       if (node.sourceNode) {
         try {
           node.sourceNode.stop()
@@ -250,10 +271,10 @@ export class MultiTrackRack {
   public dispose(): void {
     this.stopAllSources()
     this.stopClockSync()
-    for (const node of this.trackNodes.values()) {
+    for (const node of this._trackNodes.values()) {
       node.gainNode.disconnect()
     }
-    this.trackNodes.clear()
+    this._trackNodes.clear()
     this.masterGain?.disconnect()
     this.ctx?.close()
     this.ctx = null

@@ -1,6 +1,7 @@
 import { Play, Pause, Repeat, SkipBack } from 'lucide-react'
 import { useAudioStore } from '@/store/useAudioStore'
 import { MultiTrackRack } from '@/engine/audio/MultiTrackRack'
+import { useTransportTime } from '@/hooks/useTransportTime'
 
 /** Format seconds to MM:SS.ms timecode string */
 function formatTime(seconds: number): string {
@@ -14,9 +15,10 @@ function formatTime(seconds: number): string {
  *  Per Design System v2 §1: always know where you are in the piece. */
 export function TransportBar() {
   const isPlaying = useAudioStore((s) => s.isPlaying)
-  const currentTime = useAudioStore((s) => s.currentTime)
   const loopEnabled = useAudioStore((s) => s.loopEnabled)
   const toggleLoop = useAudioStore((s) => s.toggleLoop)
+  // Display-rate only. The playhead itself lives in TransportClock (HC-1).
+  const currentTime = useTransportTime()
 
   const handlePlayPause = () => {
     const rack = MultiTrackRack.getInstance()

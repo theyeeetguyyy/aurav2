@@ -33,23 +33,25 @@ export default function App() {
   useEffect(() => {
     const sm = ShortcutManager.getInstance()
 
-    const unsubPlay = sm.subscribe('play-pause', () => {
-      const rack = MultiTrackRack.getInstance()
-      const { isPlaying } = useAudioStore.getState()
-      if (isPlaying) {
-        rack.pause()
-      } else {
-        rack.play()
-      }
-    })
-
-    const unsubImm = sm.subscribe('toggle-immersive', () => {
-      useUIStore.getState().toggleImmersiveView()
-    })
+    const unsubscribers = [
+      sm.subscribe('play-pause', () => {
+        const rack = MultiTrackRack.getInstance()
+        if (useAudioStore.getState().isPlaying) {
+          rack.pause()
+        } else {
+          rack.play()
+        }
+      }),
+      sm.subscribe('toggle-loop', () => {
+        useAudioStore.getState().toggleLoop()
+      }),
+      sm.subscribe('toggle-immersive', () => {
+        useUIStore.getState().toggleImmersiveView()
+      }),
+    ]
 
     return () => {
-      unsubPlay()
-      unsubImm()
+      for (const unsubscribe of unsubscribers) unsubscribe()
     }
   }, [])
 

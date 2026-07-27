@@ -25,6 +25,8 @@ interface UIState {
   rightPanelWidth: number
   /** Bottom panel height */
   bottomPanelHeight: number
+  /** Dock collapse state captured on entering immersive view, restored on exit. */
+  preImmersiveDocks: { left: boolean; right: boolean; bottom: boolean } | null
 
   // Actions
   setActivePage: (page: WorkspacePage) => void
@@ -46,15 +48,38 @@ export const useUIStore = create<UIState>((set) => ({
   leftPanelWidth: 260,
   rightPanelWidth: 320,
   bottomPanelHeight: 240,
+  preImmersiveDocks: null,
 
   setActivePage: (page) => set({ activePage: page }),
+
+  /** Immersive view hides all docks, then restores exactly what was open before.
+   *  Previously it force-expanded all three on exit, discarding any panel the user
+   *  had deliberately collapsed. */
   toggleImmersiveView: () =>
-    set((s) => ({
-      immersiveView: !s.immersiveView,
-      leftPanelCollapsed: !s.immersiveView ? true : false,
-      rightPanelCollapsed: !s.immersiveView ? true : false,
-      bottomPanelCollapsed: !s.immersiveView ? true : false,
-    })),
+    set((s) => {
+      if (!s.immersiveView) {
+        return {
+          immersiveView: true,
+          preImmersiveDocks: {
+            left: s.leftPanelCollapsed,
+            right: s.rightPanelCollapsed,
+            bottom: s.bottomPanelCollapsed,
+          },
+          leftPanelCollapsed: true,
+          rightPanelCollapsed: true,
+          bottomPanelCollapsed: true,
+        }
+      }
+
+      const previous = s.preImmersiveDocks
+      return {
+        immersiveView: false,
+        preImmersiveDocks: null,
+        leftPanelCollapsed: previous?.left ?? false,
+        rightPanelCollapsed: previous?.right ?? false,
+        bottomPanelCollapsed: previous?.bottom ?? false,
+      }
+    }),
   toggleLeftPanel: () => set((s) => ({ leftPanelCollapsed: !s.leftPanelCollapsed })),
   toggleRightPanel: () => set((s) => ({ rightPanelCollapsed: !s.rightPanelCollapsed })),
   toggleBottomPanel: () => set((s) => ({ bottomPanelCollapsed: !s.bottomPanelCollapsed })),

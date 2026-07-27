@@ -14,17 +14,31 @@
   --color-aura-hot: #f43f5e;
   --color-aura-state-solo: #eab308;
 
-  /* ─── Stem Identity ─── */
+  /* ─── Stem Identity (rotating assignment palette) ─── */
   --color-aura-stem-drums: #f97316;
   --color-aura-stem-bass: #f59e0b;
   --color-aura-stem-lead: #10b981;
   --color-aura-stem-atmo: #06b6d4;
+  --color-aura-stem-5: #8b5cf6;
+  --color-aura-stem-6: #ec4899;
+  --color-aura-stem-7: #14b8a6;
+  --color-aura-stem-8: #f43f5e;
 
   /* ─── Node Category ─── */
   --color-aura-node-signal: #f97316;
   --color-aura-node-processor: #22c55e;
   --color-aura-node-parameter: #3b82f6;
   --color-aura-node-event: #f43f5e;
+
+  /* ─── Viewport (read at runtime by Three.js / canvas via utils/tokens.ts) ─── */
+  --color-aura-viewport-bg: #09090b;
+  --color-aura-grid-cell: #3f3f46;
+  --color-aura-grid-section: #6366f1;
+  --color-aura-light-sky: #f8fafc;
+  --color-aura-light-ground: #1e1e26;
+  --color-aura-light-rim-cool: #06b6d4;
+  --color-aura-light-rim-accent: #6366f1;
+  --color-aura-playhead: #f1f5f9;
 
   /* ─── Fonts ─── */
   --font-sans: "Inter", -apple-system, "Segoe UI", sans-serif;

@@ -11,7 +11,6 @@ import type { Track } from '@/types/audio'
  *  Handles drag-and-drop audio file import, decoding, and track rack display. */
 export function MediaStemsPage() {
   const tracks = useAudioStore((s) => s.tracks)
-  const currentTime = useAudioStore((s) => s.currentTime)
   const addTrack = useAudioStore((s) => s.addTrack)
   const [isDragOver, setIsDragOver] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -46,13 +45,16 @@ export function MediaStemsPage() {
         }
 
         rack.registerTrack(trackId, buffer)
-        RealtimeAnalyser.register(trackId)
         addTrack(track)
+        // Register the analysis tap after the track exists in the store, so the
+        // pre-fader node chain is fully built.
+        RealtimeAnalyser.register(trackId)
       } catch (err) {
         console.error(`Failed to decode ${file.name}:`, err)
       }
     }
 
+    rack.refreshDuration()
     setIsLoading(false)
   }, [addTrack])
 
@@ -77,26 +79,13 @@ export function MediaStemsPage() {
     }
   }, [importFiles])
 
-  // Calculate progress for waveform playhead
-  const rack = MultiTrackRack.getInstance()
-  const maxDuration = rack.getMaxDuration()
-  const progress = maxDuration > 0 ? currentTime / maxDuration : 0
-
   return (
     <div className="w-full h-full flex flex-col">
       {/* ─── Track Rack ─── */}
       {tracks.length > 0 && (
         <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
           {tracks.map((track) => (
-            <TrackRow
-              key={track.id}
-              track={track}
-              progress={
-                track.buffer
-                  ? Math.min(currentTime / track.buffer.duration, 1)
-                  : progress
-              }
-            />
+            <TrackRow key={track.id} track={track} />
           ))}
         </div>
       )}

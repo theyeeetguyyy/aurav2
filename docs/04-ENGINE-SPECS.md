@@ -1,0 +1,284 @@
+# 04 — Engine Specs
+
+Per-module specifications. Read [03-ARCHITECTURE.md](03-ARCHITECTURE.md) first — the
+hard constraints referenced here (HC-n) are binding.
+
+---
+
+## 4.1 Audio engine
+
+**Capacity.** Unlimited discrete stems. Trap-beat vocabulary is the reference case:
+`Drums`, `Hats`, `Guns`, `Fakeout`, `Sub`, `Atmosphere`, `Extra Gun Layers`.
+
+**Editing.** Trim, cut, move, align, mute, solo — FL Studio rack ergonomics.
+
+**Sync.** All `AudioBufferSourceNode`s anchored to one master clock (HC-2). Seek, pause,
+and resume are computed from `AudioContext.currentTime` deltas, never from wall clock.
+
+**Signal path per track:**
+
+```
+BufferSource ──┬── analysisTap (pre-fader)      ← HC-11
+               └── gainNode (volume/solo/mute) ── masterGain ── destination
+```
+
+**Solo semantics.** Solo isolates *both* audio and visual modulation. Audio isolation is
+gain-based. Visual isolation is `isTrackVisuallyActive(id)`, consumed by the modulation
+matrix. Volume and mute must **not** affect visuals (HC-11).
+
+### Feature extraction (HC-3)
+
+Two tiers, deliberately:
+
+| Tier | Library | When | Output |
+|---|---|---|---|
+| Offline MIR | essentia.js in a worker | once on import | onsets, BPM, beat grid, band energies, spectral features → **feature timelines** |
+| Live | Meyda | only for live mic input (future) | current-frame values |
+
+**Metrics produced per track**, all normalised 0–1 and sampled at 200 Hz:
+
+`rms` · `peak` · `crest` · `onset` (impulse) · `envelope` (ADSR-shaped) ·
+`spectral-centroid` · `spectral-flux` · seven bands: `sub` (20–60 Hz), `bass` (60–250),
+`low-mid` (250–500), `mid` (500–2k), `upper-mid` (2k–4k), `presence` (4k–6k),
+`brilliance` (6k–20k).
+
+> **Band normalisation is not optional.** Naively averaging linear FFT magnitudes across
+> bands is wrong: `sub` spans ~1 bin, `brilliance` spans ~160. The result is a sub band
+> pinned high and a brilliance band pinned at zero — the failure mode reads to a user as
+> *"nothing reacts to my hats."* Bands must be summed as power, converted to dB, and
+> normalised per-band against a rolling reference.
+
+**Derived rhythm fields** (from beat grid): `beat-phase` (0–1 within a beat), `bar-phase`
+(0–1 within 4 beats), `is-buildup`, `drop-decay`. These are Fields like any other (HC-5).
+
+---
+
+## 4.2 Modulation matrix
+
+The architectural core of the product.
+
+**Continuous.** Per connection, in order (Principle 8):
+
+```
+Gain → Rise/Fall (attack/release smoothing) → Min/Max (range clamp) → Weight
+```
+
+Final value for a parameter, evaluated per frame:
+
+```
+final = base + Σᵢ weightᵢ · shapedᵢ(field(sourceᵢ, clock.time))
+```
+
+`shaped()` is stateful (the Rise/Fall envelope has memory), so **it must be reset when
+the clock jumps** — on seek, on loop wrap, and at the start of an export. Otherwise a
+scrub leaves stale envelope state and preview diverges from export, violating HC-3's
+guarantee.
+
+**Discrete events.** Onset crossings above a threshold fire once and are consumed once.
+Never blended. `explode`, `color-flash`, `scale-pulse`, `morph-snap` are the v1 actions.
+
+Event dispatch must be **clock-driven, not tick-driven** — the exporter steps frames at
+irregular wall-clock intervals, so "did an onset occur since the last frame" is a query
+over the interval `[prevTime, time)`, not a callback.
+
+**Weighted N:1.** Multiple sources summing into one parameter is the headline feature
+(*"50% guns + 25% drums + 25% atmosphere"*). Sum, then clamp to the descriptor's range.
+
+**Automation lanes** (Principle 10). Because features are timelines and shaping is
+deterministic, the full modulation curve for any parameter over the whole song can be
+evaluated ahead of playback and drawn. This is only possible because of HC-3.
+
+**Sidechain / cross-track** (v2): one track's signal driven through another's envelope
+settings. The architecture already permits it — `sourceTrackId` and the envelope config
+are independent fields.
+
+---
+
+## 4.3 Scene objects & render backends
+
+One open layer stack (Figma/Blender outliner model), not fixed shape slots.
+
+```ts
+type SceneObjectType = 'shape' | 'light' | 'particleEmitter' | 'backgroundElement' | 'image'
+```
+
+Every object carries `transform` (position/rotation/scale — the explicit original
+requirement that *everything* has transform and rotation), a `backend` (HC-4), an
+ordered `effects[]` stack, and `visible`/`locked`/`order`.
+
+### Effect families
+
+| Family | Runs on | Examples |
+|---|---|---|
+| `geometry` | vertices / SDF field | explode, gun-stretch, perlin-wave, twist, pulse |
+| `instancing` | object count | cloner (linear/radial/grid), Step/Delay/Random effectors |
+| `post-process` | framebuffer | bloom, chromatic aberration, glitch, kaleidoscope, feedback |
+
+**Deformer specs (v1):**
+
+- **Explode & reform** — displace vertices along normals by `amount`, decay over `decayTime`. Driven by kick/snare onset as a *discrete event*, not continuous.
+- **Gun stretch** — directional elongation along an axis on transient spikes.
+- **Perlin wave** — noise-field vertex displacement, amplitude from `band-sub`.
+- **Twist & pulse** — rotation shear + scale oscillation.
+
+**Cloner + Effectors** (Principle 7). Cloner modes linear/radial/grid; radial exposes
+radius, plane, start/end angle. Every clone carries U/V/W coordinates in 0–1 so effectors
+can assign per-clone values. Step offsets a parameter sequentially across clones; Delay
+adds springy staggered propagation. **Effector parameters are ordinary modulation targets**
+(HC-5) — that is what makes "guns drives a cascading rotation offset" free.
+
+**Morph rules.** `morphTargets()` on each backend is authoritative. The UI must never
+offer a morph the backend cannot perform; cross-family transitions present as a
+crossfade, and are labelled as such.
+
+---
+
+## 4.4 Camera
+
+**Dual camera** per HC-10. Scene Camera renders; Preview Camera authors. Preview has Fly
+and Orbit sub-modes — Orbit is preserved from v1 because it is genuinely better for
+composing a static shot.
+
+**Keyframes** live on an independent track (Principle 6), with:
+
+- **Easing per keyframe** — linear / smooth / bezier with tangent handles / step.
+  Blender's Graph Editor is the reference. **This is v1, not polish.** Linear motion
+  reads robotic; uncontrolled smoothing overshoots and drifts. Easing is the difference
+  between a cinematographer and a slideshow, and it is cheap to build.
+- **Extrapolation per section** — `hold` / `continue` / `none` for gaps past a strip's
+  extents (Blender NLA). Default `hold`.
+- **Magnetic snap** to state boundaries and to the beat grid, both toggleable.
+
+**Constraints** (declarative behaviour layer, Principle 1):
+
+- **Follow Path** — parent to a Catmull-Rom spline; auto-travel replaces hand-keyframing every waypoint.
+- **Look-At / Damped Track** — face a target with minimal roll. Toggle instead of keyframing rotation.
+- **Child-Of with animated influence** — blend between two constraints to hand off tracking from Shape A to Shape B without a snap.
+
+Each constraint has an `influence` 0–1 which is itself a modulation target.
+
+**Procedural noise** — Cinemachine-style handheld shake layered *on top* of keyframes.
+Amplitude and frequency are modulation targets, so shake can rise with the drop.
+
+**Motion trail** — dotted path along the trajectory; dot spacing communicates speed at a
+glance (bunched = slow, spread = fast). Blender's pattern; directly useful on the spline
+gizmo.
+
+**Saveable camera moves** — a keyframed move ("Slow Orbit", "Push-In", "Crane") saved
+independently and applied anywhere. Solves the repetition problem without nesting the
+camera inside states.
+
+---
+
+## 4.5 Timeline, states & musical narrative
+
+**State = Blender Action.** Named, reusable, edit-once-updates-everywhere. Holds scene
+objects, active connections, per-state overrides, post-processing, camera snapshot.
+
+**Strip = reference** (HC-7). Strips carry `startTime`, `duration`, `lane`, and a
+`transition` (cut / crossfade / morph) with its own duration and easing.
+
+**Transitions.** Overlapping strips crossfade. Where both states' objects share a
+backend and a morph target, the crossfade becomes a real morph.
+
+**Section markers.** `intro` · `build-up` · `fakeout` · `drop` · `fill` · `breakdown` ·
+`verse` · `chorus` · `bridge` · `outro`. Placed at the playhead with `M`.
+
+> **The engine is section-aware.** Section type drives an intensity multiplier consumed
+> by deformers, shake, flash, and bloom. This was fully implemented in v1
+> (`legacy/aura-v1/js/markers.js`) and was dropped from the v2 design by accident. It is
+> restored here because it is the concrete mechanism behind the product's stated
+> purpose — see below.
+
+**Snap to beat grid.** Derived from detected BPM. Strips, keyframes, markers, and
+triggers all snap to musical subdivisions (1/4, 1/8, 1/16). Offer a "does the detected
+grid line up with the waveform?" confirmation step on import, before the user builds a
+whole project against a misaligned grid.
+
+### Story, tension, call-and-response
+
+The original brief: *"musicians show story, tensions, calls and responses, ups and downs
+through music… they should also be able to simulate them in the visuals."* This sat as an
+open philosophical question through every previous doc. It is not one feature, and it is
+not purely emergent either. Three concrete mechanisms deliver it:
+
+1. **Section awareness** (above) gives visuals a sense of *where in the song we are*, not
+   just what the current frame sounds like. This is what makes a build-up feel like a
+   build-up.
+2. **Persistent musical state** — `drop-decay` and `is-buildup` are Fields with memory
+   that accumulate over bars, so tension can visibly build over eight bars and release.
+   Frame-local metrics like RMS structurally cannot express this.
+3. **Object-to-object routing** — a Field may source from *another object's evaluated
+   parameter*, so Shape B can answer Shape A. Combined with per-track routing, "the
+   guns answer the drums" becomes a two-connection patch rather than a special feature.
+
+Mechanism 3 requires that the modulation graph be evaluated in dependency order with
+cycle detection. Design for it now; it is nearly free at graph-build time and expensive
+to add later.
+
+---
+
+## 4.6 Export
+
+Frame-accurate offline rendering. **Not** screen capture.
+
+```
+FrameClock steps → engine evaluates at t → render to OffscreenCanvas
+  → VideoFrame(timestamp = frameIndex * 1e6 / fps) → VideoEncoder → mp4-muxer
+  → encoder.flush() → muxer.finalize() → bytes → PlatformAdapter.writeVideo()
+```
+
+- Runs in a worker with `OffscreenCanvas` — avoids UI freeze and tab throttling.
+- Timestamps are **manual and integer-derived**, never wall clock.
+- Keyframe every 60–120 encoded frames for seekability.
+- `flush()` before `finalize()`, always. Skipping it produces an unplayable file.
+- Faster than real time. It is a render, not a recording.
+
+**Horizontal + vertical from one pass** — render the scene once at the larger frame and
+derive both crops, or run two encoders off one scene evaluation. Required by the primary
+audience (YouTube + Shorts). Must be designed in, not bolted on.
+
+**Batch queue** — gated on `PlatformAdapter.supportsBatchQueue`. Real on desktop,
+degraded in a browser tab.
+
+---
+
+## 4.7 Project & rig files
+
+**`.aura.json`** — states, strips, markers, scene objects, modulation graph, camera data,
+settings. Stems are **referenced, never embedded**. Feature timelines are cached
+alongside so reopening does not re-analyse.
+
+**`.aura-rig.json`** — a reusable unit *smaller than a project*: scene + routing table +
+camera path + palette, with no audio. This is the "one visual system, many beats" unit
+that the primary audience actually wants, and the seed of a preset economy. **Design the
+format for portability from day one** — a rig referencing absolute object IDs from the
+project it was born in is worthless.
+
+**Undo/redo** — command pattern, `{do, undo}` pairs. Slider drags coalesce into one
+command on release, not one per intermediate value.
+
+**Autosave** — v1 had it (`legacy/aura-v1/js/project/autosave.js`). Carry it forward.
+
+---
+
+## 4.8 Extensibility
+
+Every extension point is the same shape: **a module that declares its parameter
+descriptors and implements a lifecycle**.
+
+```ts
+export interface BrickModule<P = Record<string, unknown>> {
+  readonly id: string
+  readonly family: EffectFamily
+  readonly descriptors: ParamDescriptor[]
+  create(ctx: BrickContext): BrickHandle<P>
+  update(handle: BrickHandle<P>, params: P, clock: Clock): void
+  dispose(handle: BrickHandle<P>): void
+}
+```
+
+Backends, deformers, effectors, and post-process effects all implement variants of this.
+Registration is data — a new brick is added to a registry, never to a `switch` statement
+in core engine code. This is the concrete answer to *"code in such a way that as new
+components are added, they can work together."*

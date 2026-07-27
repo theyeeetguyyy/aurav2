@@ -1,30 +1,35 @@
-/** Stem identity colors from DESIGN_SYSTEM.md v2 */
-const STEM_COLORS = [
-  '#f97316', // drums — orange
-  '#f59e0b', // bass — amber
-  '#10b981', // lead — emerald
-  '#06b6d4', // atmo — cyan
-  '#8b5cf6', // extra 1 — violet
-  '#ec4899', // extra 2 — pink
-  '#14b8a6', // extra 3 — teal
-  '#f43f5e', // extra 4 — rose
-] as const
+import { readToken, STEM_COLOR_TOKENS } from './tokens'
+
+/** Stem identity colour assignment.
+ *
+ *  Colours come from the design-system tokens in index.css (docs/05-DESIGN-SYSTEM.md
+ *  §3.3), read at runtime rather than duplicated as hex literals here. */
 
 let colorIndex = 0
 
-/** Assign the next stem color from the rotating palette */
+/** Fallbacks, used only if the stylesheet has not applied yet. */
+const FALLBACKS = [
+  '#f97316', '#f59e0b', '#10b981', '#06b6d4',
+  '#8b5cf6', '#ec4899', '#14b8a6', '#f43f5e',
+]
+
+/** Next colour from the rotating stem palette. */
 export function getNextStemColor(): string {
-  const color = STEM_COLORS[colorIndex % STEM_COLORS.length]
+  const slot = colorIndex % STEM_COLOR_TOKENS.length
   colorIndex++
-  return color
+  return readToken(STEM_COLOR_TOKENS[slot], FALLBACKS[slot])
 }
 
-/** Reset color assignment (e.g., on project clear) */
+/** Restart colour assignment. Call when a project is cleared or loaded, otherwise
+ *  a second project in the same session starts mid-palette. */
 export function resetStemColors(): void {
   colorIndex = 0
 }
 
-/** Generate a unique ID */
+/** Collision-resistant unique identifier. */
 export function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID()
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }

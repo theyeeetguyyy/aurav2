@@ -1,56 +1,39 @@
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls } from '@react-three/drei'
-import { SceneCamera } from './SceneCamera'
+import { DualCameraRig } from './DualCameraRig'
 import { DefaultScene } from './DefaultScene'
+import { SceneObjects } from './SceneObjects'
 import { ViewportHUD } from './ViewportHUD'
-import { PreviewCameraControls } from './PreviewCamera'
-import { useCameraStore } from '@/store/useCameraStore'
+import { useSceneStore } from '@/store/useSceneStore'
+import { readToken } from '@/utils/tokens'
 
 interface SceneViewportProps {
   showHUD?: boolean
 }
 
-/** 3D Viewport component containing R3F Canvas, Scene Camera, studio environment,
- *  and optional Camera HUD overlay. */
+/** 3D viewport shell: R3F canvas, dual camera rig, studio environment, HUD overlay.
+ *
+ *  TODO (Phase 3D / HC-9): this still mounts a Canvas per page, so switching between
+ *  the Scene and Camera tabs tears down and rebuilds the WebGL context and every GPU
+ *  resource. Both tabs are views of ONE scene. The canvas moves to the app shell and
+ *  pages contribute overlays once the SceneGraph singleton lands. */
 export function SceneViewport({ showHUD = true }: SceneViewportProps) {
-  const activeCamera = useCameraStore((s) => s.activeCamera)
+  const select = useSceneStore((s) => s.select)
 
   return (
     <div className="relative w-full h-full bg-aura-void overflow-hidden select-none">
-      {/* Camera HUD Overlay */}
       {showHUD && <ViewportHUD />}
 
-      {/* R3F 3D Canvas */}
       <Canvas
-        gl={{
-          antialias: true,
-          powerPreference: 'high-performance',
-          alpha: false,
-        }}
+        gl={{ antialias: true, powerPreference: 'high-performance', alpha: false }}
+        shadows
         className="w-full h-full"
+        // Clicking empty space clears the selection, as in any 3D editor.
+        onPointerMissed={() => select(null)}
       >
-        {/* Color background */}
-        <color attach="background" args={['#09090b']} />
-
-        {/* Scene Camera */}
-        <SceneCamera position={[0, 0, 50]} fov={45} />
-
-        {/* Default Lighting & Grid */}
+        <color attach="background" args={[readToken('--color-aura-viewport-bg', '#09090b')]} />
+        <DualCameraRig />
         <DefaultScene />
-
-        {/* WASD Fly controls */}
-        {activeCamera === 'preview' && <PreviewCameraControls />}
-
-        {/* Orbit controls when Preview camera active */}
-        {activeCamera === 'preview' && (
-          <OrbitControls
-            makeDefault
-            enableDamping
-            dampingFactor={0.05}
-            minDistance={5}
-            maxDistance={200}
-          />
-        )}
+        <SceneObjects />
       </Canvas>
     </div>
   )

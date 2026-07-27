@@ -1,19 +1,25 @@
 import { Grid } from '@react-three/drei'
 import * as THREE from 'three'
+import { readToken } from '@/utils/tokens'
 
-/** Clean studio lighting environment and infinite floor grid with high distance visibility.
- *  Uses hemisphere light for even 360° spatial illumination across far distances.
- *  Grid uses DoubleSide rendering so it remains visible from above and below. */
+/** Studio lighting environment and spatial floor grid.
+ *
+ *  Colours are read from the design-system tokens in index.css rather than hardcoded,
+ *  so the viewport and the surrounding chrome cannot drift apart
+ *  (docs/05-DESIGN-SYSTEM.md §3). */
 export function DefaultScene() {
   return (
     <>
-      {/* ─── Studio Lighting Setup ─── */}
-      {/* Hemisphere Light — even sky/ground ambient fill for far distance visibility */}
+      {/* Even sky/ground ambient fill, so distant geometry stays readable */}
       <hemisphereLight
-        args={['#f8fafc', '#1e1e26', 0.8]}
+        args={[
+          readToken('--color-aura-light-sky', '#f8fafc'),
+          readToken('--color-aura-light-ground', '#1e1e26'),
+          0.8,
+        ]}
       />
 
-      {/* Main Key Light (top-right-front) */}
+      {/* Key light */}
       <directionalLight
         position={[30, 50, 30]}
         intensity={1.5}
@@ -25,32 +31,32 @@ export function DefaultScene() {
         shadow-camera-bottom={-50}
       />
 
-      {/* Cyan Rim Fill Light */}
+      {/* Cool rim fill */}
       <directionalLight
         position={[-30, 20, -30]}
         intensity={0.5}
-        color="#06b6d4"
+        color={readToken('--color-aura-light-rim-cool', '#06b6d4')}
       />
 
-      {/* Indigo Accent Rim Light */}
+      {/* Accent rim */}
       <directionalLight
         position={[0, 40, -40]}
         intensity={0.7}
-        color="#6366f1"
+        color={readToken('--color-aura-light-rim-accent', '#6366f1')}
       />
 
-      {/* ─── Spatial Floor Grid (Extended Horizon & Double-Sided) ─── */}
+      {/* Double-sided so the grid reads from above and below */}
       <Grid
         position={[0, -10, 0]}
         args={[300, 300]}
         cellSize={1}
         cellThickness={0.6}
-        cellColor="#3f3f46"
+        cellColor={readToken('--color-aura-grid-cell', '#3f3f46')}
         sectionSize={5}
         sectionThickness={1.2}
-        sectionColor="#6366f1"
+        sectionColor={readToken('--color-aura-grid-section', '#6366f1')}
         fadeDistance={250}
-        fadeStrength={1.0}
+        fadeStrength={1}
         side={THREE.DoubleSide}
         infiniteGrid
       />

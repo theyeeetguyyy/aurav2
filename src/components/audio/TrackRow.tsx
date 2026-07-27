@@ -8,34 +8,40 @@ import type { Track } from '@/types/audio'
 
 interface TrackRowProps {
   track: Track
-  progress: number
 }
 
 /** Single track row in the stem rack.
- *  Displays stem color indicator, track name, solo/mute buttons,
- *  volume slider, waveform, and delete button. */
-export function TrackRow({ track, progress }: TrackRowProps) {
+ *  Stem colour, name, solo/mute, volume, waveform with trim handles, delete. */
+export function TrackRow({ track }: TrackRowProps) {
   const toggleSolo = useAudioStore((s) => s.toggleSolo)
   const toggleMute = useAudioStore((s) => s.toggleMute)
   const setVolume = useAudioStore((s) => s.setVolume)
   const removeTrack = useAudioStore((s) => s.removeTrack)
   const setTrimBounds = useAudioStore((s) => s.setTrimBounds)
 
+  // Zustand's set() is synchronous, so the rack reads committed state immediately.
+  // (The previous setTimeout(…, 0) deferral was a race-condition smell, not a fix.)
+  const applyGains = () => MultiTrackRack.getInstance().applySoloMuteState()
+
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const vol = parseFloat(e.target.value)
-    setVolume(track.id, vol)
-    MultiTrackRack.getInstance().applySoloMuteState()
+    setVolume(track.id, parseFloat(e.target.value))
+    applyGains()
   }
 
   const handleSolo = () => {
     toggleSolo(track.id)
-    // Defer applySoloMuteState to next tick so Zustand state is committed
-    setTimeout(() => MultiTrackRack.getInstance().applySoloMuteState(), 0)
+    applyGains()
   }
 
   const handleMute = () => {
     toggleMute(track.id)
-    setTimeout(() => MultiTrackRack.getInstance().applySoloMuteState(), 0)
+    applyGains()
+  }
+
+  const handleTrimChange = (bounds: { start: number; end: number }) => {
+    setTrimBounds(track.id, bounds)
+    // Trimming changes the project's overall length.
+    MultiTrackRack.getInstance().refreshDuration()
   }
 
   const handleDelete = () => {
@@ -101,16 +107,11 @@ export function TrackRow({ track, progress }: TrackRowProps) {
       <div className="flex-1 min-w-0 relative">
         {track.buffer ? (
           <>
-            <WaveformCanvas
-              buffer={track.buffer}
-              color={track.color}
-              progress={progress}
-              height={32}
-            />
+            <WaveformCanvas buffer={track.buffer} color={track.color} height={32} />
             <TrimHandles
               duration={track.buffer.duration}
               trimBounds={track.trimBounds}
-              onTrimChange={(bounds) => setTrimBounds(track.id, bounds)}
+              onTrimChange={handleTrimChange}
               color={track.color}
               height={32}
             />

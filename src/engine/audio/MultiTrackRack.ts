@@ -1,40 +1,56 @@
-/** Centralized Web Audio API engine managing the AudioContext,
- *  multi-track buffer decoding, synchronized playback, and master clock.
+/** MultiTrackRack — the Web Audio engine: AudioContext ownership, buffer decoding,
+ *  synchronised multi-stem playback, and the master transport.
  *
  *  Design notes:
- *  - Singleton pattern — one AudioContext per app lifetime.
- *  - Each track gets its own GainNode for per-track volume control.
- *  - Solo/Mute logic is applied at the gain level, not by stopping sources.
- *  - The clock uses AudioContext.currentTime for sample-accurate sync.
- *  - Playback offset is tracked so seek/pause/resume are frame-perfect. */
+ *  - Singleton. One AudioContext per app lifetime.
+ *  - Per-track signal path (docs/03-ARCHITECTURE.md HC-11):
+ *
+ *        BufferSource ─→ analysisNode ─→ gainNode ─→ masterGain ─→ destination
+ *                            │              │
+ *                         PRE-FADER      volume / solo / mute
+ *                      (analysis tap)
+ *
+ *    Analysis taps PRE-fader deliberately. Tapping after the gain node would make
+ *    the volume fader a *visual* fader — pulling a stem to −20 dB would silently
+ *    kill its visual reaction, and muting would kill its visuals entirely. Solo's
+ *    visual isolation is an explicit flag (see isTrackVisuallyActive), not a side
+ *    effect of audio gain.
+ *
+ *  - The playhead is published to TransportClock, never to Zustand at frame rate
+ *    (HC-1). React components that display it use useTransportTime().
+ *  - Timing derives from AudioContext.currentTime, never wall clock. */
 
 import { useAudioStore } from '@/store/useAudioStore'
+import { TransportClock } from '@/engine/time/TransportClock'
 import type { ID } from '@/types/audio'
 
 interface TrackNode {
   sourceNode: AudioBufferSourceNode | null
+  /** Unity-gain pre-fader tap point. Analysis connects here. */
+  analysisNode: GainNode
+  /** Post-analysis fader carrying volume / solo / mute. */
   gainNode: GainNode
   buffer: AudioBuffer
 }
+
+/** Ramp time for gain changes, in seconds. Short enough to feel instant,
+ *  long enough to avoid a click. */
+const GAIN_RAMP = 0.02
 
 export class MultiTrackRack {
   private static instance: MultiTrackRack
 
   private ctx: AudioContext | null = null
-  private _trackNodes: Map<ID, TrackNode> = new Map()
+  private readonly _trackNodes = new Map<ID, TrackNode>()
   private masterGain: GainNode | null = null
 
-  /** Expose track nodes for analysis tapping (used by RealtimeAnalyser) */
-  public get trackNodes(): ReadonlyMap<ID, TrackNode> {
-    return this._trackNodes
-  }
-
-  /** AudioContext.currentTime when playback last started */
+  /** AudioContext.currentTime at the moment playback last started. */
   private playStartContextTime = 0
-  /** Offset into the audio when playback last started (for pause/resume) */
+  /** Timeline offset at the moment playback last started. */
   private playStartOffset = 0
-  /** Animation frame ID for clock sync */
   private clockRAF: number | null = null
+  /** Guards pause() against being applied twice (which would double-count elapsed). */
+  private isRunning = false
 
   private constructor() {}
 
@@ -45,7 +61,19 @@ export class MultiTrackRack {
     return MultiTrackRack.instance
   }
 
-  /** Lazily initialize AudioContext on first user interaction */
+  /** Pre-fader analysis tap points, keyed by track. Used by RealtimeAnalyser. */
+  public get analysisNodes(): ReadonlyMap<ID, AudioNode> {
+    const map = new Map<ID, AudioNode>()
+    for (const [id, node] of this._trackNodes) map.set(id, node.analysisNode)
+    return map
+  }
+
+  /** Pre-fader tap for a single track, or null if the track is unknown. */
+  public getAnalysisNode(trackId: ID): AudioNode | null {
+    return this._trackNodes.get(trackId)?.analysisNode ?? null
+  }
+
+  /** Lazily initialise the AudioContext on first user interaction. */
   public getContext(): AudioContext {
     if (!this.ctx) {
       this.ctx = new AudioContext()
@@ -55,61 +83,67 @@ export class MultiTrackRack {
     return this.ctx
   }
 
-  /** Decode an audio file (MP3/WAV/OGG) into an AudioBuffer */
   public async decodeFile(file: File): Promise<AudioBuffer> {
     const ctx = this.getContext()
     const arrayBuffer = await file.arrayBuffer()
     return ctx.decodeAudioData(arrayBuffer)
   }
 
-  /** Register a decoded buffer for a track ID */
+  /** Register a decoded buffer and build its node chain. */
   public registerTrack(trackId: ID, buffer: AudioBuffer): void {
     const ctx = this.getContext()
+
+    const analysisNode = ctx.createGain()
+    analysisNode.gain.value = 1
+
     const gainNode = ctx.createGain()
+    analysisNode.connect(gainNode)
     gainNode.connect(this.masterGain!)
 
-    this._trackNodes.set(trackId, {
-      sourceNode: null,
-      gainNode,
-      buffer,
-    })
+    this._trackNodes.set(trackId, { sourceNode: null, analysisNode, gainNode, buffer })
+    this.refreshDuration()
   }
 
-  /** Remove a track and disconnect its audio nodes */
   public unregisterTrack(trackId: ID): void {
     const node = this._trackNodes.get(trackId)
-    if (node) {
-      node.sourceNode?.stop()
-      node.sourceNode?.disconnect()
-      node.gainNode.disconnect()
-      this._trackNodes.delete(trackId)
+    if (!node) return
+
+    if (node.sourceNode) {
+      node.sourceNode.onended = null
+      try {
+        node.sourceNode.stop()
+      } catch {
+        // Already stopped — safe to ignore.
+      }
+      node.sourceNode.disconnect()
     }
+    node.analysisNode.disconnect()
+    node.gainNode.disconnect()
+    this._trackNodes.delete(trackId)
+    this.refreshDuration()
   }
 
-  /** Start synchronized playback of all tracks from the current offset */
+  /** Start synchronised playback of every track from the current playhead. */
   public play(): void {
     const ctx = this.getContext()
     if (ctx.state === 'suspended') {
-      ctx.resume()
+      void ctx.resume()
     }
 
+    const offset = TransportClock.time
     const store = useAudioStore.getState()
-    const offset = store.currentTime
 
-    // Stop any existing sources
     this.stopAllSources()
 
     this.playStartContextTime = ctx.currentTime
     this.playStartOffset = offset
 
-    // Create new source nodes for each track and start them at the offset
-    for (const [trackId, node] of this._trackNodes.entries()) {
-      // Look up the track's trim bounds from the store
-      const trackState = store.tracks.find((t) => t.id === trackId)
-      const trimStart = trackState?.trimBounds.start ?? 0
-      const trimEnd = trackState?.trimBounds.end ?? node.buffer.duration
+    for (const [trackId, node] of this._trackNodes) {
+      const track = store.tracks.find((t) => t.id === trackId)
+      const trimStart = track?.trimBounds.start ?? 0
+      const trimEnd = track?.trimBounds.end ?? node.buffer.duration
 
-      // Skip tracks whose trim region is entirely before the playhead
+      // The playhead is already past this track's trimmed region — nothing to schedule.
       if (offset >= trimEnd) {
         node.sourceNode = null
         continue
@@ -118,15 +152,16 @@ export class MultiTrackRack {
       const source = ctx.createBufferSource()
       source.buffer = node.buffer
 
-      // Clamp the playback offset to the trim region
+      // Clamp into the trim region, and delay the start if the playhead has not
+      // reached trimStart yet, so the stem enters at the right moment.
       const effectiveOffset = Math.max(offset, trimStart)
       const remainingDuration = trimEnd - effectiveOffset
+      const delay = Math.max(0, trimStart - offset)
 
-      source.connect(node.gainNode)
-      source.start(0, effectiveOffset, remainingDuration)
+      source.connect(node.analysisNode)
+      source.start(ctx.currentTime + delay, effectiveOffset, remainingDuration)
       node.sourceNode = source
 
-      // Handle natural end of buffer
       source.onended = () => {
         if (node.sourceNode === source) {
           node.sourceNode = null
@@ -134,54 +169,58 @@ export class MultiTrackRack {
       }
     }
 
-    // Apply current solo/mute/volume state
     this.applySoloMuteState()
-
-    // Start clock sync
+    this.isRunning = true
     this.startClockSync()
 
+    TransportClock.setPlaying(true)
     useAudioStore.getState().setPlaying(true)
   }
 
-  /** Pause playback — stores current position for resume */
+  /** Pause, retaining the playhead for resume. Safe to call when already paused. */
   public pause(): void {
     const ctx = this.ctx
-    if (!ctx) return
+    // Without this guard a second pause() adds elapsed time measured from a stale
+    // playStartContextTime, jumping the playhead forward.
+    if (!ctx || !this.isRunning) return
 
-    // Calculate where we are in the audio
     const elapsed = ctx.currentTime - this.playStartContextTime
     this.playStartOffset += elapsed
+    this.isRunning = false
 
     this.stopAllSources()
     this.stopClockSync()
 
-    const store = useAudioStore.getState()
-    store.setCurrentTime(this.playStartOffset)
-    store.setPlaying(false)
+    TransportClock.setTime(this.playStartOffset)
+    TransportClock.setPlaying(false)
+    useAudioStore.getState().setPlaying(false)
   }
 
-  /** Seek to a specific time (works while playing or paused) */
+  /** Seek to an absolute time. Works while playing or paused. */
   public seek(time: number): void {
-    const store = useAudioStore.getState()
-    const wasPlaying = store.isPlaying
+    const clamped = Math.max(0, Math.min(time, this.getProjectDuration() || time))
+    const wasPlaying = this.isRunning
 
     if (wasPlaying) {
       this.stopAllSources()
       this.stopClockSync()
+      this.isRunning = false
     }
 
-    this.playStartOffset = time
-    store.setCurrentTime(time)
+    this.playStartOffset = clamped
+    TransportClock.setTime(clamped)
 
     if (wasPlaying) {
       this.play()
     }
   }
 
-  /** Update per-track gain based on solo/mute/volume state in the store */
+  /** Apply volume / solo / mute to each track's fader.
+   *  Analysis is unaffected — it taps pre-fader (HC-11). */
   public applySoloMuteState(): void {
-    const store = useAudioStore.getState()
-    const tracks = store.tracks
+    if (!this.ctx) return
+
+    const tracks = useAudioStore.getState().tracks
     const anySoloed = tracks.some((t) => t.solo)
 
     for (const track of tracks) {
@@ -189,40 +228,42 @@ export class MultiTrackRack {
       if (!node) continue
 
       let gain = track.volume
+      if (track.mute || (anySoloed && !track.solo)) gain = 0
 
-      if (track.mute) {
-        gain = 0
-      } else if (anySoloed && !track.solo) {
-        gain = 0
-      }
-
-      // Smooth ramp to avoid clicks
-      node.gainNode.gain.setTargetAtTime(gain, this.ctx!.currentTime, 0.02)
+      node.gainNode.gain.setTargetAtTime(gain, this.ctx.currentTime, GAIN_RAMP)
     }
   }
 
-  /** Get the duration of the longest loaded track */
-  public getMaxDuration(): number {
+  /** Longest trimmed track length — the true project duration.
+   *  Raw buffer length would run playback past the trimmed end. */
+  public getProjectDuration(): number {
+    const tracks = useAudioStore.getState().tracks
     let max = 0
-    for (const node of this._trackNodes.values()) {
-      if (node.buffer.duration > max) {
-        max = node.buffer.duration
-      }
+
+    for (const [trackId, node] of this._trackNodes) {
+      const track = tracks.find((t) => t.id === trackId)
+      const end = track?.trimBounds.end ?? node.buffer.duration
+      if (end > max) max = end
     }
     return max
   }
 
+  /** Recompute and publish the project duration. Call after any trim or track change. */
+  public refreshDuration(): void {
+    TransportClock.setDuration(this.getProjectDuration())
+  }
+
   private stopAllSources(): void {
     for (const node of this._trackNodes.values()) {
-      if (node.sourceNode) {
-        try {
-          node.sourceNode.stop()
-        } catch {
-          // Already stopped — safe to ignore
-        }
-        node.sourceNode.disconnect()
-        node.sourceNode = null
+      if (!node.sourceNode) continue
+      node.sourceNode.onended = null
+      try {
+        node.sourceNode.stop()
+      } catch {
+        // Already stopped — safe to ignore.
       }
+      node.sourceNode.disconnect()
+      node.sourceNode = null
     }
   }
 
@@ -230,30 +271,29 @@ export class MultiTrackRack {
     this.stopClockSync()
 
     const tick = () => {
-      if (!this.ctx) return
+      if (!this.ctx || !this.isRunning) return
 
       const elapsed = this.ctx.currentTime - this.playStartContextTime
-      const currentPos = this.playStartOffset + elapsed
-      const maxDuration = this.getMaxDuration()
-
+      const position = this.playStartOffset + elapsed
       const store = useAudioStore.getState()
 
-      // Handle loop
-      if (store.loopEnabled && store.loopEnd > store.loopStart && currentPos >= store.loopEnd) {
+      if (store.loopEnabled && store.loopEnd > store.loopStart && position >= store.loopEnd) {
         this.seek(store.loopStart)
         return
       }
 
-      // Handle end of audio
-      if (maxDuration > 0 && currentPos >= maxDuration) {
-        store.setCurrentTime(maxDuration)
-        store.setPlaying(false)
+      const duration = this.getProjectDuration()
+      if (duration > 0 && position >= duration) {
+        this.isRunning = false
         this.stopAllSources()
         this.stopClockSync()
+        TransportClock.setTime(duration)
+        TransportClock.setPlaying(false)
+        store.setPlaying(false)
         return
       }
 
-      store.setCurrentTime(currentPos)
+      TransportClock.setTime(position)
       this.clockRAF = requestAnimationFrame(tick)
     }
 
@@ -267,17 +307,19 @@ export class MultiTrackRack {
     }
   }
 
-  /** Clean up everything */
   public dispose(): void {
     this.stopAllSources()
     this.stopClockSync()
+    this.isRunning = false
     for (const node of this._trackNodes.values()) {
+      node.analysisNode.disconnect()
       node.gainNode.disconnect()
     }
     this._trackNodes.clear()
     this.masterGain?.disconnect()
-    this.ctx?.close()
+    void this.ctx?.close()
     this.ctx = null
     this.masterGain = null
+    TransportClock.reset()
   }
 }

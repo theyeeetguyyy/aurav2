@@ -20,7 +20,7 @@ added to a registry, never to a `switch` in core engine code.
 | CPU noise | `simplex-noise` | 2D/3D/4D simplex on the JS side. |
 | GPU noise | `glsl-noise` / LYGIA `generative/` | In-shader Perlin/simplex FBM. |
 | Node graph UI | `@xyflow/react` | Routing canvas. |
-| Audio features | `essentia.js` + `meyda` | Offline MIR (HC-3) + live features. |
+| Audio features | own FFT worker + `meyda` | Offline MIR (HC-3, D-32) + live tap for future mic input. |
 | Video export | WebCodecs `VideoEncoder` + `mp4-muxer` | Hardware-accelerated MP4. |
 | Camera splines | Three.js `CatmullRomCurve3` | Native, zero dependency. |
 

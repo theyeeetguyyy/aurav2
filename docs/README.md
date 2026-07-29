@@ -3,10 +3,17 @@
 Single source of truth for AURA Studio. Everything in this folder is **current and
 non-contradictory**. If two documents disagree, that is a bug — file it and fix it.
 
+## Start here
+
+**[00-STATUS.md](00-STATUS.md)** — where the project actually is, what runs today, what
+does not, and what to do next. Read it first in any new session; everything else is
+reference.
+
 ## Reading order
 
 | # | Document | Read it when |
 |---|---|---|
+| 00 | [Status](00-STATUS.md) | **First, always.** Current state, verified. |
 | 01 | [Vision & Positioning](01-VISION.md) | Deciding *whether* to build something. Product, audience, what AURA refuses to be. |
 | 02 | [Design Principles](02-PRINCIPLES.md) | Before designing **any** new subsystem. Twelve standing rules distilled from Blender, TouchDesigner, C4D, Cinemachine, Unreal, Ableton. |
 | 03 | [Architecture](03-ARCHITECTURE.md) | Before writing engine code. Hard constraints, the render-backend model, parameter addressing, the time authority. **Non-negotiable.** |
@@ -15,6 +22,10 @@ non-contradictory**. If two documents disagree, that is a bug — file it and fi
 | 06 | [Roadmap](06-ROADMAP.md) | Picking what to build next. Phase status lives here and nowhere else. |
 | 07 | [Decision Log](07-DECISIONS.md) | Wondering "why is it like this?" Every locked decision, dated, with reasoning. |
 | 08 | [Open Questions](08-OPEN-QUESTIONS.md) | Something is ambiguous. If it's here, it is genuinely undecided. |
+| 09 | [Brick Registry](09-BRICK-REGISTRY.md) | Catalogue of geometry, deformer, field and post-process operators. |
+| 10 | [Element Taxonomy](10-ELEMENTS.md) | Deciding *what to build next*. Element families mined from v1 + ideated, with build order. |
+| 11 | [Routing UX](11-ROUTING-UX.md) | The patchbay redesign and why not a node canvas. |
+| 12 | [Deformer Catalogue](12-DEFORMERS.md) | The fifteen deformers, why each is structurally distinct, and the no-built-in-motion rule. |
 | — | [Codebase Map](CODEBASE_MAP.md) | Finding where something lives. File-by-file registry. |
 | — | [Audit 2026-07-27](AUDIT-2026-07-27.md) | Historical record of the full-codebase audit that produced this doc set. |
 

@@ -10,31 +10,54 @@ Constraint references (HC-n) point at [03-ARCHITECTURE.md](03-ARCHITECTURE.md).
 ## Data flow
 
 ```
-                        ┌──────────────────┐
-   audio files ────────▶│  MultiTrackRack  │  decode · schedule · master transport
-                        └────────┬─────────┘
-                    pre-fader ───┤ (HC-11)
-                                 ▼
-                        ┌──────────────────┐      ┌──────────────────┐
-                        │ RealtimeAnalyser │─────▶│   AudioDataBus   │  Float32Array
-                        └──────────────────┘      └────────┬─────────┘  (no React)
-                                 │                         │
-                                 │                         ▼
-                        ┌────────▼─────────┐      ┌──────────────────┐
-                        │  TransportClock  │─────▶│ ModulationMatrix │  ⬜ Phase 5
-                        └────────┬─────────┘      └────────┬─────────┘
-                                 │  (HC-1, HC-2)           ▼
-              ┌──────────────────┼───────────────┐  ┌──────────────┐
-              ▼                  ▼               ▼  │  SceneGraph  │  ⬜ Phase 3D
-     useTransportTime()   WaveformCanvas   DualCameraRig └──────────┘
-       (throttled 12Hz)    (imperative)      (useFrame)
-              │
-              ▼
-      React components ◀──── Zustand stores (coarse state only)
+  audio file
+      │
+      ▼
+ ┌──────────────┐   decode
+ │MultiTrackRack│───────────┬──────────────────────────────┐
+ └──────┬───────┘           │                              │
+        │ schedule          ▼ copy + transfer              ▼ pre-fader tap (HC-11)
+        │            ┌──────────────┐              ┌────────────────┐
+        │            │analysis.worker│ own FFT      │RealtimeAnalyser│ Meyda
+        │            └──────┬───────┘              └───────┬────────┘
+        │                   ▼ once, on import              ▼
+        │            ┌──────────────┐              ┌────────────────┐
+        │            │ AudioFeatures│              │  AudioDataBus  │ live only,
+        │            │ sample(id,k,t)│             └────────────────┘ mic input (future)
+        │            └──────┬───────┘
+        ▼                   │
+ ┌──────────────┐           │  f(t) — deterministic, any order
+ │TransportClock│           │
+ └──────┬───────┘           │
+        │ time              ▼
+        ├──────────▶ ┌─────────────────┐   Map<addressKey, offset>
+        │            │ModulationMatrix │───────────────┐
+        │            └─────────────────┘               │
+        │              ▲ connections/triggers          │
+        │              │ (passed in, not imported)     │
+        │        useModulationStore                    │
+        │                                              ▼
+        │                                    ┌──────────────────┐
+        ├───────────────────────────────────▶│   SceneObjects   │ useFrame writes
+        │                                    │   DualCameraRig  │ straight to Three
+        │                                    └──────────────────┘
+        │
+        ├──▶ WaveformCanvas · SourceList meters   (imperative, no React)
+        │
+        └──▶ useTransportTime()  ──▶ React components   (throttled 12 Hz)
+                                          ▲
+                          Zustand stores ──┘  (coarse state only)
 ```
 
-**The rule the diagram encodes:** frame-rate data flows down the right-hand side into
-typed arrays and `useFrame`. React only ever sees the throttled left branch.
+**The rule the diagram encodes.** Two paths, and they never cross:
+
+- **Frame rate** — `AudioFeatures` → `ModulationMatrix` → `useFrame` → Three.js objects.
+  Typed arrays and imperative writes. Zero React (HC-1).
+- **Human rate** — Zustand → React. Only values a person needs to *watch*, throttled.
+
+**The other rule.** `AudioFeatures.sample(track, metric, t)` is a function of time, not
+of "now" (HC-3). That single property is what lets `FrameClock` render frame 5000 before
+frame 12 and still produce exactly what was previewed.
 
 ---
 
@@ -43,9 +66,10 @@ typed arrays and `useFrame`. React only ever sees the throttled left branch.
 | File | Contains | Status |
 |---|---|---|
 | `audio.ts` | `Track`, `TrimBounds`, `AnalysisData`, `StemMetrics`, `ID` | current |
+| `generator.ts` | `Generator`, `GeneratorType` — synthetic stems (D-37) |
 | `params.ts` | `ParamAddress`, `ParamDescriptor`, `FieldRef`, `ParamValue`, address serialisation, `denormalise()` (HC-5) | current |
 | `visual.ts` | `SceneObject`, `RenderBackend`, `MeshKind`, `Transform3D`, `MaterialParams`, `EffectInstance` (HC-4) | current |
-| `modulation.ts` | `ModulationConnection`, `SignalChain`, `EventTrigger` | ⚠️ `TargetParam` / `SourceMetric` closed unions still to be replaced by `ParamAddress` / `FieldRef` — Phase 5A |
+| `modulation.ts` | `ModulationConnection`, `SignalChain`, `EventTrigger`, defaults | current — both ends are `FieldRef` / `ParamAddress`; the closed unions are gone (HC-5) |
 | `camera.ts` | `SceneCamera`, `PreviewCamera`, `CameraKeyframe`, `SplineWaypoint`, `CameraConstraint` | current |
 | `project.ts` | `VisualState`, `Strip`, `SectionMarker`, `Project` | ⚠️ needs `activeConnectionIds` / `connectionOverrides` (HC-8) — Phase 6A |
 
@@ -58,6 +82,7 @@ typed arrays and `useFrame`. React only ever sees the throttled left branch.
 | `useCameraStore.ts` | active camera view, control mode, keyframes, waypoints, constraints | |
 | `useModulationStore.ts` | global connections, event triggers | project-global by design (HC-8) |
 | `useProjectStore.ts` | states library, strips, markers, project meta | |
+| `useGeneratorStore.ts` | Synthetic stems — LFOs and noise (D-37). Own store, not folded into `useAudioStore`, which would mean a dozen permanently-null fields |
 | `useSceneStore.ts` | **the SceneObject layer stack** — array order *is* layer order; param writes by address | exports `useSelectedObject()` |
 
 > No store may hold an `AudioBuffer`, a `THREE.Object3D`, a GPU handle, or a DOM node.
@@ -75,11 +100,20 @@ typed arrays and `useFrame`. React only ever sees the throttled left branch.
 
 | File | Role |
 |---|---|
-| `MultiTrackRack.ts` | AudioContext owner. Decode, per-track node chain, synchronised playback, seek, loop, trim-aware scheduling, project duration. Publishes to `TransportClock`. |
+| `MultiTrackRack.ts` | AudioContext owner. Exports `resolveLoopRegion()` — an unset loop region means the whole project. Decode, per-track node chain, synchronised playback, seek, loop, trim-aware scheduling, project duration. Publishes to `TransportClock`. |
 | `AudioDataBus.ts` | Fixed-capacity `Float32Array` bus, 9 floats per track slot. Pre-allocated so views never dangle. Zero React. |
-| `RealtimeAnalyser.ts` | Per-track Meyda extraction from the **pre-fader** tap. Adaptive per-band normalisation. Live path only — see HC-3. |
-| `AudioFeatures.ts` | ⬜ Phase 2G — dense feature timelines, `sample(track, metric, t)`. Becomes the source of truth for preview *and* export. |
-| `AnalysisWorker.ts` | ⬜ Phase 2G — essentia.js offline MIR on import. |
+| `RealtimeAnalyser.ts` | Per-track Meyda extraction from the **pre-fader** tap. Live path only — retained for future mic input; modulation does not read it. |
+| `featureTypes.ts` | Shared worker/main contract. Imports nothing — the worker must stay free of stores and DOM. |
+| `analysis.worker.ts` | Offline MIR. Own radix-2 FFT, 13 metrics, spectral-flux onset detection with adaptive median threshold, tempo from folded inter-onset histogram, **percentile normalisation per metric**. |
+| `AudioFeatures.ts` | **The source of truth for audio-derived values.** `sample(track, metric, t)` — a value AT A TIME, deterministic in any call order. `lastOnsetAtOrBefore()` backs stateless event triggers. |
+
+### `engine/modulation/`
+
+| File | Role |
+|---|---|
+| `SignalShaper.ts` | One connection's chain: Gain → Rise/Fall → Min/Max → Weight. The only stateful part of modulation; reset on clock jumps. |
+| `fields.ts` | `evaluateField()` + the source catalogue. Every field is a **pure function of time**. Takes a `FieldContext` rather than importing a store — the engine boundary is absolute. |
+| `ModulationMatrix.ts` | Per-frame evaluation into `Map<addressKey, offset>`. Weighted N:1 summing. Connections passed in, not read from a store, so the exporter can drive it with its own state. |
 
 ### `engine/scene/`
 
@@ -90,6 +124,11 @@ typed arrays and `useFrame`. React only ever sees the throttled left branch.
 | `backends/proceduralMesh.ts` | **The morph-compatible family.** One welded 642-vertex icosphere displaced per shape. Exports `BASE_VERTEX_COUNT`, `assertMorphCompatible()`. |
 | `backends/primitiveMesh.ts` | 10 native Three geometries. `morphGroup: null` — swap-only. |
 | `backends/proceduralMesh.test.ts` | The shared-topology invariant (HC-4). 23 assertions. |
+| `EffectRegistry.ts` | Catalogue of stackable effects. Separate from BrickRegistry because a geometry brick *builds* a mesh and an effect brick *modifies* one. |
+| `DeformRuntime.ts` | Per-object working geometry. Shared geometry is never mutated — an object with deformers gets a private copy; one without allocates nothing. |
+| `effects/types.ts` | `DeformerBrick` contract. Whole-array, not per-vertex callback. |
+| `effects/deformers.ts` | **15 deformers**, each a distinct class of vertex operation (D-38). No `time` in the contract — they cannot self-animate (D-36). See [12-DEFORMERS.md](12-DEFORMERS.md). |
+| `effects/noise.ts` | Stateless 3D value noise + fbm. Stateless because deformers must be pure functions of time (HC-3). |
 
 ### `engine/params/`
 
@@ -105,7 +144,7 @@ typed arrays and `useFrame`. React only ever sees the throttled left branch.
 
 ### Not yet created
 
-`engine/platform/` (adapter) · `engine/scene/SceneGraph.ts` (HC-9) ·
+`engine/platform/` (adapter) ·
 `engine/modulation/` · `engine/timeline/` · `engine/commands/` · `engine/export/`
 
 ### `engine/shortcuts/`
@@ -134,15 +173,34 @@ typed arrays and `useFrame`. React only ever sees the throttled left branch.
 |---|---|
 | `scene/LayerStack.tsx` | Outliner + brick library. Bricks grouped by morph family, because that grouping is what matters before picking a shape |
 | `scene/Inspector.tsx` | Fully descriptor-driven. Knows nothing about radius or roughness — renders whatever `ParamRegistry` describes |
+| `scene/ParamField.tsx` | One parameter row. Shows base value *and* the live modulated value, polled at 15 Hz — modulation never enters React, so the UI samples it |
+| `scene/EffectStack.tsx` | Deformer stack: add, reorder, enable, remove. Order is evaluation order |
+
+### Routing
+
+| File | Role |
+|---|---|
+| `routing/patchbay/Patchbay.tsx` | The routing surface. Two columns + wire layer, drag-to-connect, descriptor-seeded default ranges |
+| `routing/patchbay/SourceColumn.tsx` | Every Field, grouped by stem, plus the Generators section. Each dot is a drag handle with a live level meter behind the label |
+| `routing/patchbay/TargetColumn.tsx` | Every drivable parameter incl. deformer params. Rows carry `data-target-id` for drop detection |
+| `routing/patchbay/WireLayer.tsx` | SVG beziers measured from DOM anchors. Geometry recomputed on change; **pulse animated per-frame imperatively** |
+| `routing/patchbay/anchors.ts` | DOM anchor registry. Wires connect real elements, so columns stay plain scrollable lists |
+| `routing/patchbay/dragState.ts` | In-flight drag, kept outside React — only the coarse "is dragging" flag reaches it |
+| `routing/WireInspector.tsx` | Right dock: selected wire's endpoints, enable/delete, chain or trigger settings |
+| `routing/ChainEditor.tsx` | Per-connection signal chain, presented in evaluation order |
 
 ### Viewport
 
 | File | Role |
 |---|---|
-| `viewport/SceneViewport.tsx` | Canvas shell + HUD. ⚠️ still per-page — moves to the shell in Phase 3D (HC-9) |
+| `viewport/PersistentViewport.tsx` | **The one and only Canvas** (HC-9). Mounted in the shell, never unmounted; tracks the active `ViewportSlot` rect and pauses its frameloop when no page shows it |
+| `viewport/ViewportSlot.tsx` | Empty div a page mounts to say "draw the viewport here". `compact` hides the HUD, `interactive={false}` makes it a monitor |
+| `viewport/SceneMonitor.tsx` | Live scene panel for non-3D pages. Relocates the one renderer — not a copy, not a second context |
+| `viewport/viewportSlotRegistry.ts` | Current slot element + subscribers. Named `…Registry` because `viewportSlot.ts` collides with `ViewportSlot.tsx` on case-insensitive filesystems |
 | `viewport/DualCameraRig.tsx` | **Two real cameras**, explicit active-camera binding, mutually exclusive Fly/Orbit (HC-10) |
 | `viewport/DefaultScene.tsx` | Studio lights + grid, colours read from design tokens |
-| `viewport/SceneObjects.tsx` | Renders the layer stack. Geometry from `BrickRegistry` (cached, never disposed here). Click to select, inflated back-face shell for the selection outline |
+| `viewport/SceneObjects.tsx` | Renders the layer stack. Geometry from `BrickRegistry` (cached, never disposed here). **Applies modulation imperatively in `useFrame`** — never through props or state (HC-1) |
+| `viewport/ModulationDriver.tsx` | Evaluates the matrix once per frame, before anything reads it. Reads stores with `getState()`, never a hook |
 | `viewport/ViewportHUD.tsx` | Reticles, camera + control-mode switchers. Flat, no blur |
 
 ### Audio
@@ -168,6 +226,7 @@ typed arrays and `useFrame`. React only ever sees the throttled left branch.
 | File | Role |
 |---|---|
 | `hooks/useTransportTime.ts` | Throttled playhead for display-only components (HC-1) |
+| `hooks/useModulatedValue.ts` | Polls live modulation offsets for display. **One shared 15 Hz ticker** for all subscribers — the first version created a timer per field |
 | `utils/tokens.ts` | Reads CSS custom properties for canvas/Three.js consumers, so viewport and chrome share one token source |
 | `utils/stemColors.ts` | Rotating stem palette from tokens; `generateId()` via `crypto.randomUUID()` |
 
@@ -176,6 +235,7 @@ typed arrays and `useFrame`. React only ever sees the throttled left branch.
 | File | Role |
 |---|---|
 | `index.html` | Entry, font preloads |
+| `src/main.tsx` | ReactDOM root render |
 | `src/index.css` | Tailwind v4 `@theme` tokens — the single home for design tokens |
 | `vite.config.ts` | React + Tailwind plugins, `@/` → `src/` |
 | `tsconfig.app.json` | Strict, `erasableSyntaxOnly` (no constructor parameter properties, no enums) |

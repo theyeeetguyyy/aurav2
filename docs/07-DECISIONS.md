@@ -142,6 +142,93 @@ emergent side effect.
 prior docs. *Why:* `zundo` snapshots whole stores; AURA's stores would reference decoded
 `AudioBuffer`s and GPU handles. Command pairs also coalesce slider drags naturally.
 
+**D-30 · Event triggers are a generic decaying impulse, not a fixed action list.**
+The spec named four actions — `explode`, `color-flash`, `scale-pulse`, `morph-snap`.
+Replaced by: a trigger adds `amount` to any `ParamAddress`, decaying with time constant
+`decay`. *Why:* the four actions are just impulses into four particular parameters, and
+enumerating them contradicts HC-5 the same way the closed `TargetParam` union did.
+"Explode" is an impulse into a deformer's strength; "flash" is an impulse into emissive
+intensity. Simpler and strictly more capable.
+*Also:* the impulse is derived from the AGE of the most recent onset at or before `t`,
+never accumulated frame to frame — so discrete events stay a pure function of time and
+survive scrubbing backwards and out-of-order export (HC-3).
+
+**D-31 · `ParamDescriptor.realtime` gates frame-rate modulation.**
+Geometry parameters rebuild the mesh. Wiring a kick to `radius` would re-tessellate 60
+times a second and make the geometry cache unbounded. Geometry and resolution
+descriptors are `realtime: false` and do not appear as modulation targets; transform and
+material are `realtime: true`. *Why this rather than just allowing it:* offering a target
+that silently cannot be driven is worse than not offering it. `scale.uniform` already
+covers the common "pulse with the kick" case for free, and genuine continuous shape
+change is what deformers (Phase 4G) are for — they displace an already-built mesh.
+
+**D-32 · Offline analysis is hand-written, not essentia.js.**
+A ~60-line radix-2 FFT covers RMS, peak, seven bands, spectral centroid, spectral flux,
+onset detection and tempo estimation. *Why:* no WASM dependency, no AudioWorklet
+plumbing, and full control over the normalisation step — which is the part that actually
+determines whether the product feels responsive. essentia.js stays available if beat
+tracking needs to be stronger than inter-onset-interval histogramming.
+
+**D-36 · Deformers cannot animate themselves.**
+`DeformContext` has no `time`. A deformer is a pure function of its parameters; all
+motion arrives through modulation. `Noise Wave` and `Wave` lost their `speed` parameter
+and gained `phase`, which a saw LFO drives.
+*Why:* built-in motion produced movement the user never asked for, could not switch off,
+and could not sync to anything — the opposite of the product's premise that the music
+drives the visuals. Removing `time` from the contract makes it structural rather than a
+convention; `deformers.test.ts` asserts the absence, so reintroducing it means arguing
+with a test. *Consequence:* nothing moves while the transport is paused, which is the
+same property that makes preview identical to export (HC-3).
+
+**D-37 · Generators are first-class synthetic stems.**
+LFOs and noise are user-created entities with a name, colour, type, rate, phase offset,
+depth and bias, listed in the patchbay beside imported audio — not a fixed dropdown of
+five options.
+*Why:* D-36 means anything moving on its own needs a driver, and you routinely want
+several differently configured. "A slow sine for background drift" and "a fast saw for
+the strobe" are two sources you name, not one LFO reconfigured per connection. They are
+kept in their own store rather than folded into `useAudioStore`, which would mean a dozen
+permanently-null fields (buffer, trim, solo, analysis).
+
+**D-38 · Deformers are selected for structural distinctness, not count.**
+Fifteen deformers, each a different *class* of vertex operation: radial, axial,
+field-based, angular-along-axis, angular-by-radius, periodic, distance-ring, cellular,
+gravitational, warp, banded, volume-coupled, discretising, point-field, normalising.
+*Why:* value is in how they combine, so "explode but slightly different" earns nothing
+while a genuinely new class multiplies with all fourteen others. Catalogue and the
+distinctions worth knowing: [12-DEFORMERS.md](12-DEFORMERS.md).
+
+**D-33 · Deformers displace on the CPU, not in a shader.**
+Six deformers run as whole-array passes over a per-object working geometry, re-normalised
+each frame. *Why:* 642 vertices × a handful of objects is nothing (well under a
+millisecond), and CPU displacement keeps correct normals, shadows and standard materials
+for free. A vertex-shader path breaks shadow casting unless the depth material is patched
+too, and recomputing normals in-shader is genuinely awkward. *Revisit when:* cloners (4H)
+multiply vertex counts by 50×, or particle counts get large — then the `points` backend
+and GPU displacement earn their complexity.
+*Also:* geometry is shared between objects using the same brick and parameters, so an
+object with an active deformer stack gets a private working copy. Objects without one keep
+the shared geometry and allocate nothing.
+
+**D-34 · Routing becomes a patchbay, not a node canvas.**
+Two fixed columns — sources and targets — with a live wire layer between, and
+drag-to-connect as the single gesture. *Why:* the wires are what TouchDesigner gets right
+(direction is visible, signal visibly flows); the free canvas is what it gets wrong for
+this audience (node layout becomes project state, 8 stems × 13 metrics is 104 potential
+nodes, and spaghetti is a known failure mode). A patchbay keeps the wires and drops the
+canvas. The node graph still ships as the advanced view (5C) for what a patchbay cannot
+express — processor nodes, object-to-object routing. Full reasoning in
+[11-ROUTING-UX.md](11-ROUTING-UX.md). *Supersedes* `StackedRoutingList.tsx`, which is
+replaced rather than extended.
+
+**D-35 · Elements, not modes.**
+v1's 24 modes are mined for *element families* — geometry, data-driven, particle, field,
+environment, light, overlay, post-process — rather than for individual looks. *Why:* a
+mode is a whole screen and combines with nothing; an element shares the layer stack,
+transform, parameter registry and modulation matrix with everything else, so element
+families multiply where modes only add. Catalogue and build order in
+[10-ELEMENTS.md](10-ELEMENTS.md).
+
 **D-29 · Section awareness is restored and is the answer to "musical narrative."**
 The section-aware intensity engine shipped in v1 (`js/markers.js`) and was dropped from
 the v2 design by accident. Combined with memory-carrying Fields (`drop-decay`,

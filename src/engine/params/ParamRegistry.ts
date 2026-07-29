@@ -1,6 +1,8 @@
+import type { ID } from '@/types/audio'
 import type { ParamAddress, ParamDescriptor, ParamValue } from '@/types/params'
 import type { SceneObject } from '@/types/visual'
 import { BrickRegistry } from '@/engine/scene/BrickRegistry'
+import { EffectRegistry } from '@/engine/scene/EffectRegistry'
 
 /** ParamRegistry — resolves parameter addresses to descriptors and values
  *  (docs/03-ARCHITECTURE.md HC-5).
@@ -23,7 +25,21 @@ function axis(
   step: number,
   unit?: ParamDescriptor['unit'],
 ): ParamDescriptor {
-  return { key, label, type: 'float', min, max, step, defaultValue, unit, group, exposed: true }
+  // Transform and material parameters write straight onto an existing Three.js object,
+  // so they are safe to drive at frame rate.
+  return {
+    key,
+    label,
+    type: 'float',
+    min,
+    max,
+    step,
+    defaultValue,
+    unit,
+    group,
+    exposed: true,
+    realtime: true,
+  }
 }
 
 export const TRANSFORM_DESCRIPTORS: ParamDescriptor[] = [
@@ -53,6 +69,7 @@ export const MATERIAL_DESCRIPTORS: ParamDescriptor[] = [
     defaultValue: '#6366f1',
     group: 'Material',
     exposed: false,
+    realtime: false,
   },
   axis('material.roughness', 'Roughness', 'Material', 0.35, 0, 1, 0.01),
   axis('material.metalness', 'Metalness', 'Material', 0.1, 0, 1, 0.01),
@@ -66,6 +83,7 @@ export const MATERIAL_DESCRIPTORS: ParamDescriptor[] = [
     defaultValue: '#000000',
     group: 'Material',
     exposed: false,
+    realtime: false,
   },
   axis('material.emissiveIntensity', 'Emissive Int.', 'Material', 0, 0, 10, 0.01),
   axis('material.opacity', 'Opacity', 'Material', 1, 0, 1, 0.01),
@@ -79,6 +97,7 @@ export const MATERIAL_DESCRIPTORS: ParamDescriptor[] = [
     defaultValue: false,
     group: 'Material',
     exposed: false,
+    realtime: false,
   },
   {
     key: 'material.flatShading',
@@ -90,6 +109,7 @@ export const MATERIAL_DESCRIPTORS: ParamDescriptor[] = [
     defaultValue: false,
     group: 'Material',
     exposed: false,
+    realtime: false,
   },
 ]
 
@@ -107,9 +127,35 @@ export function describeObject(object: SceneObject): ParamDescriptor[] {
 export function describeEffect(object: SceneObject, effectId: string): ParamDescriptor[] {
   const effect = object.effects.find((e) => e.id === effectId)
   if (!effect) return []
-  // Effect bricks register in BrickRegistry alongside geometry bricks once the
-  // deformer/cloner families land (Phase 4G/4H).
-  return BrickRegistry.get(effect.effectId)?.descriptors ?? []
+  return EffectRegistry.get(effect.effectId)?.descriptors ?? []
+}
+
+/** Every modulation target on an object, including its effect stack.
+ *
+ *  Deformer parameters are the interesting ones — they are the only geometry-changing
+ *  values that can be driven at frame rate (D-31), so this is where "kick → explode"
+ *  actually becomes available. */
+export interface TargetEntry {
+  descriptor: ParamDescriptor
+  /** Absent for the object's own parameters. */
+  effectId?: ID
+  /** Label prefix shown in the routing list, e.g. "Explode". */
+  ownerLabel?: string
+}
+
+export function allModulationTargets(object: SceneObject): TargetEntry[] {
+  const entries: TargetEntry[] = modulationTargets(object).map((descriptor) => ({ descriptor }))
+
+  for (const effect of object.effects) {
+    const brick = EffectRegistry.get(effect.effectId)
+    if (!brick) continue
+    for (const descriptor of brick.descriptors) {
+      if (!descriptor.exposed || !descriptor.realtime) continue
+      entries.push({ descriptor, effectId: effect.id, ownerLabel: effect.name })
+    }
+  }
+
+  return entries
 }
 
 /** Resolve an address to its descriptor, or null if it does not exist. */
@@ -147,10 +193,16 @@ export function readParam(object: SceneObject, address: ParamAddress): ParamValu
   }
 }
 
-/** Only exposed parameters may be modulation targets (Niagara "User Parameters").
- *  Making everything internal globally linkable produces an unusable routing list. */
+/** Parameters that may be modulation targets.
+ *
+ *  Two filters, for two different reasons:
+ *  - `exposed` — Niagara's "User Parameters". Making everything internal globally
+ *    linkable produces an unusable routing list.
+ *  - `realtime` — the parameter must be drivable at frame rate. Geometry parameters
+ *    rebuild the mesh, so wiring a kick to `radius` would re-tessellate 60 times a
+ *    second. Offering a target that cannot be driven is worse than not offering it. */
 export function modulationTargets(object: SceneObject): ParamDescriptor[] {
-  return describeObject(object).filter((d) => d.exposed)
+  return describeObject(object).filter((d) => d.exposed && d.realtime)
 }
 
 export function axisIndex(axisKey: string): number {

@@ -14,26 +14,43 @@ Nothing auto-generates. You direct it.
 
 ## Status
 
-**Early.** Phase 1 (shell, viewport, dual cameras, shortcuts) and Phase 2 (multi-track
-audio engine, stem rack, trim, live analysis) are working. Scene objects, modulation,
-timeline, camera authoring, and export are not built yet.
+**The core loop works.** Import stems → add a shape → route a stem to one of its
+parameters → press play → the shape reacts, deterministically.
 
-Current phase status lives in [`docs/06-ROADMAP.md`](docs/06-ROADMAP.md).
+Built: workspace shell · dual camera · multi-track audio with offline MIR analysis ·
+scene layer stack with 17 shapes across two render backends · descriptor-driven
+inspector · weighted N:1 modulation matrix with envelope shaping and discrete triggers.
+
+Not built: morphing · deformers · timeline & states · camera authoring · export · undo.
+
+👉 **[docs/00-STATUS.md](docs/00-STATUS.md)** — exact current state, known gaps, next step.
 
 ## Getting started
 
 ```bash
 npm install
 npm run dev        # http://localhost:5173
+npm run check      # typecheck + lint + test — green before any commit
 ```
 
-```bash
-npm run typecheck  # tsc --noEmit
-npm run lint       # oxlint
-npm run build      # typecheck + production build
-```
+| Script | Does |
+|---|---|
+| `dev` | Vite dev server |
+| `typecheck` | `tsc -b --noEmit` |
+| `lint` | oxlint |
+| `test` / `test:watch` | Vitest |
+| `check` | typecheck + lint + test |
+| `build` | typecheck + production build |
 
-Drop MP3/WAV/OGG stems onto the **Media & Stems** tab to import them.
+### Try the loop
+
+1. **Media & Stems** — drop in MP3/WAV stems.
+2. **Scene & Shapes** — add a Sphere from the *Morphable* group.
+3. **Routing** — expand it, `+` on **Scale**, pick **Envelope** + your drum stem, Connect.
+4. Press play.
+
+Tick *Discrete trigger* when connecting to fire once per hit instead of blending — that
+is the difference between a kick that punches and one that smears.
 
 ## Documentation
 

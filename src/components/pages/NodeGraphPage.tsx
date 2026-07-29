@@ -1,11 +1,29 @@
+import { useState } from 'react'
+import { WorkspaceLayout } from '@/components/shell/WorkspaceLayout'
+import { Patchbay } from '@/components/routing/patchbay/Patchbay'
+import { WireInspector } from '@/components/routing/WireInspector'
+import { SceneMonitor } from '@/components/viewport/SceneMonitor'
+
+/** Workspace 3 — Routing.
+ *
+ *  Patchbay in the centre: sources left, parameters right, live wires between. One drag
+ *  connects. See docs/11-ROUTING-UX.md for why this rather than a node canvas (D-34).
+ *
+ *  The scene monitor stays pinned bottom-left — wiring while watching the result is the
+ *  entire point, and it costs no extra WebGL context (HC-9). */
 export function NodeGraphPage() {
+  const [selectedWireId, setSelectedWireId] = useState<string | null>(null)
+
   return (
-    <div className="flex items-center justify-center h-full text-aura-accent">
-      <div className="text-center">
-        <p className="text-2xl mb-2">🕸️</p>
-        <p className="text-sm font-medium uppercase tracking-wider">Routing</p>
-        <p className="text-xs text-slate-500 mt-1">Audio → Visual modulation matrix</p>
-      </div>
-    </div>
+    <WorkspaceLayout
+      center={
+        <Patchbay
+          selectedWireId={selectedWireId}
+          onSelectWire={setSelectedWireId}
+          bottomLeft={<SceneMonitor />}
+        />
+      }
+      right={<WireInspector wireId={selectedWireId} onClear={() => setSelectedWireId(null)} />}
+    />
   )
 }

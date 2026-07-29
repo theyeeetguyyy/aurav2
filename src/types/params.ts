@@ -39,6 +39,14 @@ export interface ParamDescriptor {
   /** Niagara "User Parameters": only exposed params are modulation targets.
    *  Not everything internal should be globally linkable. */
   exposed: boolean
+  /** Whether this parameter can be driven at frame rate.
+   *
+   *  False for anything that rebuilds geometry or re-tessellates. A radius knob wired
+   *  to a kick would rebuild a mesh 60 times a second and blow the geometry cache to
+   *  unbounded size. Continuous shape change belongs to deformers (Phase 4G), which
+   *  displace an already-built mesh — `scale.uniform` covers the common "pulse with
+   *  the kick" case for free. */
+  realtime: boolean
   /** Only for type 'enum'. */
   options?: ParamOption[]
 }
@@ -91,6 +99,8 @@ export interface FieldRef {
   key: string
   /** For kind 'object': which parameter of sourceId to read. */
   paramKey?: string
+  /** Cycles per second, for generative fields. Ignored by other kinds. */
+  rate?: number
 }
 
 export function formatField(field: FieldRef): string {

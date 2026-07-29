@@ -7,6 +7,7 @@ import { ShapesScenePage } from '@/components/pages/ShapesScenePage'
 import { NodeGraphPage } from '@/components/pages/NodeGraphPage'
 import { CameraPage } from '@/components/pages/CameraPage'
 import { DeliverPage } from '@/components/pages/DeliverPage'
+import { PersistentViewport } from '@/components/viewport/PersistentViewport'
 import { useUIStore } from '@/store/useUIStore'
 import { useAudioStore } from '@/store/useAudioStore'
 import { ShortcutManager } from '@/engine/shortcuts/ShortcutManager'
@@ -67,6 +68,11 @@ export default function App() {
       <main className="flex-1 min-h-0 bg-aura-base">
         <ActivePage />
       </main>
+
+      {/* One long-lived 3D renderer for the whole app (HC-9). It positions itself over
+          whichever page exposes a ViewportSlot, so switching tabs moves the viewport
+          instead of destroying and rebuilding the WebGL context. */}
+      <PersistentViewport />
 
       {/* ─── Persistent Transport Strip ─── */}
       <TransportBar />

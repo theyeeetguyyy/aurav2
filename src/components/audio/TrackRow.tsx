@@ -4,6 +4,7 @@ import { WaveformCanvas } from './WaveformCanvas'
 import { TrimHandles } from './TrimHandles'
 import { MultiTrackRack } from '@/engine/audio/MultiTrackRack'
 import { RealtimeAnalyser } from '@/engine/audio/RealtimeAnalyser'
+import { AudioFeatures } from '@/engine/audio/AudioFeatures'
 import type { Track } from '@/types/audio'
 
 interface TrackRowProps {
@@ -46,6 +47,7 @@ export function TrackRow({ track }: TrackRowProps) {
 
   const handleDelete = () => {
     RealtimeAnalyser.unregister(track.id)
+    AudioFeatures.release(track.id)
     MultiTrackRack.getInstance().unregisterTrack(track.id)
     removeTrack(track.id)
   }

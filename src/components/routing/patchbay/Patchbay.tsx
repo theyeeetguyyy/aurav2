@@ -1,0 +1,152 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useModulationStore } from '@/store/useModulationStore'
+import { useSceneStore } from '@/store/useSceneStore'
+import { resolveDescriptor } from '@/engine/params/ParamRegistry'
+import { parseAddress, type FieldRef, type ParamAddress } from '@/types/params'
+import { SourceColumn } from './SourceColumn'
+import { TargetColumn } from './TargetColumn'
+import { WireLayer } from './WireLayer'
+import { endDrag, moveDrag } from './dragState'
+
+interface PatchbayProps {
+  selectedWireId: string | null
+  onSelectWire: (id: string | null) => void
+  /** Pinned to the bottom of the source column. Hosts the scene monitor, so the result
+   *  of a routing is visible in the same glance as the wire that causes it. */
+  bottomLeft?: React.ReactNode
+}
+
+/** Patchbay — the routing surface (docs/11-ROUTING-UX.md).
+ *
+ *  Two fixed columns with a live wire layer between. Replaces a five-click dropdown
+ *  flow with one drag, and — more importantly — makes the patch legible: you can see
+ *  what drives what, and watch signal move along the wires.
+ *
+ *  Deliberately not a free node canvas. Wires are what TouchDesigner gets right; a blank
+ *  canvas is what it gets wrong for this audience (D-34). */
+export function Patchbay({ selectedWireId, onSelectWire, bottomLeft }: PatchbayProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const connect = useModulationStore((s) => s.connect)
+  const addTrigger = useModulationStore((s) => s.addTrigger)
+  const [hint, setHint] = useState<string | null>(null)
+
+  /** Create a connection with defaults that actually do something visible. */
+  const createConnection = useCallback(
+    (field: FieldRef, address: ParamAddress) => {
+      const object = useSceneStore.getState().objects.find((o) => o.id === address.objectId)
+      const descriptor = object ? resolveDescriptor(object, address) : null
+
+      // Onset sources are percussive, so they default to a discrete fire-once trigger.
+      // Everything else defaults to a continuous blend (Principle 4). The source already
+      // implies the answer, so the user is not asked at drop time.
+      if (field.kind === 'audio' && field.key === 'onset') {
+        addTrigger(field, address)
+        setHint(`Trigger → ${descriptor?.label ?? address.paramKey}`)
+      } else {
+        connect(field, address, seedRange(descriptor))
+        setHint(`${field.key} → ${descriptor?.label ?? address.paramKey}`)
+      }
+    },
+    [connect, addTrigger],
+  )
+
+
+  const handleDragStart = useCallback(
+    (field: FieldRef, event: React.PointerEvent) => {
+      const container = containerRef.current
+      if (!container) return
+
+      const toLocal = (clientX: number, clientY: number) => {
+        const box = container.getBoundingClientRect()
+        return { x: clientX - box.left, y: clientY - box.top }
+      }
+
+      const start = toLocal(event.clientX, event.clientY)
+      moveDrag(start.x, start.y, null)
+
+      const onMove = (e: PointerEvent) => {
+        const local = toLocal(e.clientX, e.clientY)
+        const row = (e.target as HTMLElement | null)?.closest?.('[data-target-id]')
+        moveDrag(local.x, local.y, row?.getAttribute('data-target-id') ?? null)
+      }
+
+      const onUp = (e: PointerEvent) => {
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+
+        // elementFromPoint rather than e.target: the cursor wire and the SVG overlay sit
+        // above the rows, so the event target is not the row the user is aiming at.
+        const under = document.elementFromPoint(e.clientX, e.clientY)
+        const row = under?.closest('[data-target-id]')
+        const serialised = row?.getAttribute('data-target-id')
+
+        endDrag()
+        if (!serialised) return
+
+        const address = parseAddress(serialised)
+        if (address) createConnection(field, address)
+      }
+
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
+    },
+    [createConnection],
+  )
+
+  useEffect(() => {
+    if (!hint) return
+    const id = window.setTimeout(() => setHint(null), 2200)
+    return () => window.clearTimeout(id)
+  }, [hint])
+
+  return (
+    <div className="relative h-full flex flex-col">
+      <div ref={containerRef} className="relative flex-1 min-h-0 grid grid-cols-[1fr_7rem_1fr]">
+        <div className="min-h-0 border-r border-aura-line flex flex-col">
+          <div className="flex-1 min-h-0">
+            <SourceColumn onDragStart={handleDragStart} />
+          </div>
+          {bottomLeft}
+        </div>
+
+        {/* Wire gutter. Empty on purpose — it is where the lines live. */}
+        <div className="min-h-0" />
+
+        <div className="min-h-0 border-l border-aura-line">
+          <TargetColumn />
+        </div>
+
+        <WireLayer
+          containerRef={containerRef}
+          selectedId={selectedWireId}
+          onSelect={onSelectWire}
+        />
+      </div>
+
+      <footer className="shrink-0 h-6 px-3 flex items-center justify-between border-t border-aura-line">
+        <span className="text-[10px] text-slate-600">
+          Drag a source dot onto a parameter · click a wire to edit it
+        </span>
+        {hint && <span className="text-[10px] text-aura-accent font-mono">{hint}</span>}
+      </footer>
+    </div>
+  )
+}
+
+/** Seed the modulation range from the target's own descriptor.
+ *
+ *  The old flat `0 → 1` default was invisible on a parameter whose range is −500…500,
+ *  so a fresh connection appeared to do nothing. Scaling to the parameter's own default
+ *  value — or a slice of its range when the default is zero — means a new wire is
+ *  immediately visible without being absurd. */
+function seedRange(
+  descriptor: ReturnType<typeof resolveDescriptor>,
+): { min: number; max: number } | undefined {
+  if (!descriptor || (descriptor.type !== 'float' && descriptor.type !== 'int')) return undefined
+
+  const base = Number(descriptor.defaultValue)
+  const span = descriptor.max - descriptor.min
+  const magnitude = base !== 0 ? Math.abs(base) : span * 0.05
+
+  return { min: 0, max: Math.min(magnitude, descriptor.max) }
+}

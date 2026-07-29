@@ -30,26 +30,44 @@ matrix. Volume and mute must **not** affect visuals (HC-11).
 
 Two tiers, deliberately:
 
-| Tier | Library | When | Output |
+| Tier | Implementation | When | Output |
 |---|---|---|---|
-| Offline MIR | essentia.js in a worker | once on import | onsets, BPM, beat grid, band energies, spectral features → **feature timelines** |
-| Live | Meyda | only for live mic input (future) | current-frame values |
+| Offline MIR | `analysis.worker.ts` — own radix-2 FFT (D-32) | once on import | 13 metric timelines + onsets + BPM + beat grid |
+| Live | Meyda → `AudioDataBus` | retained for future mic input only | current-frame values |
 
-**Metrics produced per track**, all normalised 0–1 and sampled at 200 Hz:
+> **Modulation reads the offline tier, never the live one.** `AudioDataBus` still exists
+> and still works, but nothing in the modulation path consumes it. That is deliberate:
+> a live analyser cannot answer "what was the RMS at frame 5000" (HC-3).
 
-`rms` · `peak` · `crest` · `onset` (impulse) · `envelope` (ADSR-shaped) ·
+**Metrics per track**, normalised 0–1, sampled at `FEATURE_RATE` = 200 Hz:
+
+`rms` · `peak` · `envelope` (fast attack / slow release) · `onset` (decaying impulse) ·
 `spectral-centroid` · `spectral-flux` · seven bands: `sub` (20–60 Hz), `bass` (60–250),
 `low-mid` (250–500), `mid` (500–2k), `upper-mid` (2k–4k), `presence` (4k–6k),
 `brilliance` (6k–20k).
 
-> **Band normalisation is not optional.** Naively averaging linear FFT magnitudes across
-> bands is wrong: `sub` spans ~1 bin, `brilliance` spans ~160. The result is a sub band
-> pinned high and a brilliance band pinned at zero — the failure mode reads to a user as
-> *"nothing reacts to my hats."* Bands must be summed as power, converted to dB, and
-> normalised per-band against a rolling reference.
+Plus `onsetTimes[]` (discrete), `bpm` (nullable), `beatGrid[]`.
 
-**Derived rhythm fields** (from beat grid): `beat-phase` (0–1 within a beat), `bar-phase`
-(0–1 within 4 beats), `is-buildup`, `drop-decay`. These are Fields like any other (HC-5).
+> **Band normalisation is not optional, and only works offline.** Naively averaging
+> linear FFT magnitudes across bands is wrong: `sub` spans ~1 bin, `brilliance` spans
+> ~150. The result is a sub band pinned high and a brilliance band pinned at zero — the
+> failure mode reads to a user as *"nothing reacts to my hats."*
+>
+> Implemented as: sum **power**, take the per-bin mean, then scale each metric against
+> the **98th percentile of its own distribution across the whole file**. Percentile
+> rather than max, so one clipped transient cannot squash the rest of the track into the
+> bottom of the range. Seeing every frame before deciding the scale is precisely what a
+> live analyser cannot do.
+
+**Tempo** comes from a histogram of inter-onset intervals, folded into 60–180 BPM by
+octave doubling/halving so a kick pattern and its double-time hats reinforce rather than
+split the histogram. Returns `null` below 6 agreeing intervals — reporting a
+confident-looking wrong tempo is worse than reporting none, because the whole beat grid
+would be built on it.
+
+**Derived rhythm fields** (from beat grid): `beat-phase` (0–1 within a beat) ✅,
+`bar-phase` (0–1 within 4 beats) ✅. Narrative fields `is-buildup` and `drop-decay`
+are Phase 6C. All are Fields like any other (HC-5).
 
 ---
 
@@ -74,12 +92,16 @@ the clock jumps** — on seek, on loop wrap, and at the start of an export. Othe
 scrub leaves stale envelope state and preview diverges from export, violating HC-3's
 guarantee.
 
-**Discrete events.** Onset crossings above a threshold fire once and are consumed once.
-Never blended. `explode`, `color-flash`, `scale-pulse`, `morph-snap` are the v1 actions.
+**Discrete events.** An `EventTrigger` adds `amount` to any `ParamAddress`, decaying
+with time constant `decay`. Generic by design (D-30) — enumerating fixed actions
+(`explode`, `color-flash`, …) repeats the mistake the closed `TargetParam` union made.
+"Explode" is an impulse into a deformer's strength; "flash" is an impulse into emissive
+intensity.
 
-Event dispatch must be **clock-driven, not tick-driven** — the exporter steps frames at
-irregular wall-clock intervals, so "did an onset occur since the last frame" is a query
-over the interval `[prevTime, time)`, not a callback.
+Evaluated as a **pure function of time**: the value derives from the age of the most
+recent onset at or before `t` (`AudioFeatures.lastOnsetAtOrBefore`, binary search), never
+accumulated frame to frame. The exporter steps frames at irregular wall-clock intervals
+and may render out of order, so anything fired from a tick or a callback would diverge.
 
 **Weighted N:1.** Multiple sources summing into one parameter is the headline feature
 (*"50% guns + 25% drums + 25% atmosphere"*). Sum, then clamp to the descriptor's range.

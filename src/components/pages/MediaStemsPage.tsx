@@ -3,6 +3,7 @@ import { Upload, Music } from 'lucide-react'
 import { useAudioStore } from '@/store/useAudioStore'
 import { MultiTrackRack } from '@/engine/audio/MultiTrackRack'
 import { RealtimeAnalyser } from '@/engine/audio/RealtimeAnalyser'
+import { AudioFeatures } from '@/engine/audio/AudioFeatures'
 import { TrackRow } from '@/components/audio/TrackRow'
 import { getNextStemColor, generateId } from '@/utils/stemColors'
 import type { Track } from '@/types/audio'
@@ -46,9 +47,14 @@ export function MediaStemsPage() {
 
         rack.registerTrack(trackId, buffer)
         addTrack(track)
-        // Register the analysis tap after the track exists in the store, so the
-        // pre-fader node chain is fully built.
+        // Register the live tap after the track exists in the store, so the pre-fader
+        // node chain is fully built.
         RealtimeAnalyser.register(trackId)
+
+        // Offline MIR runs once, in a worker, and is what modulation actually reads
+        // (HC-3). Deliberately not awaited — decoding the next stem should not wait on
+        // the previous one's analysis, and the UI reflects arrival via onProgress.
+        void AudioFeatures.analyse(trackId, buffer)
       } catch (err) {
         console.error(`Failed to decode ${file.name}:`, err)
       }

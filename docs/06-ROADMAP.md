@@ -34,9 +34,13 @@ Rule: every sub-phase produces a working, testable build. No big-bang steps.
 | 2D | Trim handles, trim-aware playback | ✅ |
 | 2E | Live analysis → `AudioDataBus` | ✅ |
 | **2F** | **Audit remediation** — pre-fader tap (HC-11), correct spectral-centroid scaling, power/dB band normalisation, bus aliasing fix, transport clock off React (HC-1) | ✅ 2026-07-27 |
-| **2G** | **Feature timelines** (HC-3) — essentia.js worker, offline MIR on import, `AudioFeatures.sample(track, metric, t)`, BPM + beat grid + onsets, analysis cache | ⬜ next |
+| **2G** | **Feature timelines** (HC-3) — analysis worker with own radix-2 FFT, offline MIR on import, `AudioFeatures.sample(track, metric, t)`, 13 metrics, onsets, BPM, beat grid | ✅ 2026-07-27 |
 
-**2G test:** import a stem → progress → BPM shown, beat grid overlays the waveform, onsets marked. `AudioFeatures.sample()` returns identical values for the same `t` on every call, whether playing, paused, or scrubbing.
+**2G notes.** Written without essentia.js — a ~60-line FFT covers RMS, peak, 7 bands, spectral centroid, spectral flux, onset detection and tempo estimation, with no WASM dependency and no AudioWorklet plumbing. essentia.js remains an option if beat tracking needs to be stronger than inter-onset-interval histogramming.
+
+The step that matters most is **percentile normalisation per metric**, which is only possible offline: each band is scaled against its own distribution across the whole file, so a band spanning one FFT bin (sub) and one spanning 150 (brilliance) both use the full 0–1 range. That is the root fix for the defect a live analyser cannot avoid — bands that read to a user as "nothing reacts to my hats".
+
+**2G remaining:** feature timelines are not yet serialised into the project file, so reopening re-analyses (Phase 8E).
 
 ## Phase 3 — Engine foundations
 
@@ -47,11 +51,11 @@ Rule: every sub-phase produces a working, testable build. No big-bang steps.
 | 3A | **Time authority** (HC-2) — `Clock` interface, `SteppedClock` / `FrameClock`, `TransportClock` singleton with throttled store mirror | ✅ |
 | 3B | **Parameter registry** (HC-5) — `ParamAddress`, `ParamDescriptor`, `FieldRef`, transform/material descriptors, address resolution, exposed-param filtering | ✅ |
 | 3C | **`useSceneStore`** — the SceneObject layer stack; add / remove / duplicate / reorder / rename / select / lock / hide, param writes by address | ✅ |
-| 3D | **Persistent scene** (HC-9) — one engine-owned `SceneGraph` + one shell-level canvas; pages contribute overlays | ⬜ |
+| 3D | **Persistent scene** (HC-9) — one shell-level Canvas positioned over whichever page exposes a `ViewportSlot` | ✅ |
 | 3E | **Platform adapter** (§1) — interface + web implementation; move all file I/O behind it | ⬜ |
 | 3F | **Command history** — `{do, undo}` pairs, coalescing, `Ctrl+Z`/`Ctrl+Y` | ⬜ |
 
-**3D test:** switch tabs repeatedly → WebGL context count stays at 1, GPU memory flat.
+**3D test:** ✅ verified — 16 Scene↔Camera switches leave exactly 1 canvas, zero `Context Lost`.
 **3F test:** add and undo 50 operations; a slider drag is one undo step, not two hundred.
 
 ## Phase 4 — Scene objects & render backends
@@ -63,9 +67,9 @@ Rule: every sub-phase produces a working, testable build. No big-bang steps.
 | 4C | `mesh/procedural` — shared-topology icosphere factory, 6 shapes, **invariant test** | ✅ |
 | 4D | `mesh/primitive` — 10 native Three geometries, swap-only | ✅ |
 | 4E | Inspector — fully descriptor-driven, `ScrubField` with pointer lock | ✅ |
-| 4F | Morph engine — vertex lerp within the procedural family | ⬜ next |
-| 4G | Deformers — explode, gun-stretch, perlin wave, twist/pulse | ⬜ |
-| 4H | Cloner + Effectors — linear/radial/grid, Step/Delay/Random | ⬜ |
+| 4F | Morph engine — vertex lerp within the procedural family | ⬜ |
+| 4G | Deformers — **15 structurally distinct** (D-38). See [12-DEFORMERS.md](12-DEFORMERS.md) | ✅ |
+| 4H | Cloner + Effectors — linear/radial/grid, Step/Delay/Random | ⬜ **next** |
 | 4I | Post-processing — bloom, tone mapping, chromatic aberration, glitch | ⬜ |
 | 4J | `mesh/imported` — GLTF loading, swap-only | ⬜ |
 | 4K | `sdf` backend — Shader Park / LYGIA raymarch, `smooth-min` morphing | ⬜ |
@@ -78,21 +82,60 @@ Rule: every sub-phase produces a working, testable build. No big-bang steps.
 > silently producing 183 vertices instead of 642 — which would have surfaced as corrupted
 > morphing in Phase 4F, far from the cause.
 
+**4G notes.** CPU vertex displacement, not shaders (D-33). Deformers displace an
+already-built mesh, which is what makes them the only geometry-changing values drivable at
+frame rate — `radius` rebuilds, `Explode · Strength` does not. Delivers the original
+brief's vocabulary directly: *"drums make the sphere explode and reform"*, *"guns make it
+stretch, protrude out"*.
+
+**4G test:** ✅ passing — every deformer is inert at defaults, is deterministic, declares
+at least one realtime exposed parameter, and `DeformContext` provably has no `time` (D-36).
+Plus structural assertions: squash conserves volume, quantize lands on the grid, spherify
+converges to one radius, fracture moves cell-mates identically.
+
 **4F test:** sphere → torus morphs without self-intersection; a cross-family transition presents as a crossfade and is labelled as such.
 **4K test:** `sdf` and `mesh` objects coexist in one scene so the two looks can be judged side by side.
 
-## Phase 5 — Modulation ⬜
+## Phase 5 — Modulation
 
 | | | |
 |---|---|---|
-| 5A | `ModulationMatrix` + `SignalShaper` — Gain→Rise/Fall→Min/Max→Weight, envelope reset on clock jump | ⬜ |
-| 5B | Stacked list UI (the default view — Principle 2) | ⬜ |
+| 5A | `ModulationMatrix` + `SignalShaper` — Gain→Rise/Fall→Min/Max→Weight, weighted N:1 summing, envelope reset on clock jump | ✅ |
+| 5B | Stacked list UI (the default view — Principle 2), per-connection chain editor, live source meters | ✅ |
+| 5D | Discrete event triggers — generic decaying impulse, evaluated as a pure function of time | ✅ |
 | 5C | React Flow node graph (advanced toggle), typed connections | ⬜ |
-| 5D | Discrete event triggers — interval-queried, clock-driven | ⬜ |
 | 5E | Object-to-object routing + dependency ordering with cycle detection (§4.5) | ⬜ |
 | 5F | Automation lane visualisation | ⬜ |
+| **5H** | **Generators** — LFO/noise as first-class synthetic stems (D-37) | ✅ |
+| **5G** | **Patchbay routing UI** — drag-to-connect, live pulsing wires, wire inspector. Replaced the stacked list. See [11-ROUTING-UX.md](11-ROUTING-UX.md) | ✅ |
 
-**5 test:** wire drums-RMS → sphere scale at 50% + guns-onset → explode. Play → continuous scaling plus discrete bursts on hits. Scrub backwards → identical values. Zero React re-renders in the profiler during playback.
+**5A/5D notes.** Two design changes from the original spec, both recorded in
+[07-DECISIONS.md](07-DECISIONS.md):
+
+- **Event triggers are a generic decaying impulse into any parameter address**, not four
+  hardcoded actions (`explode` / `color-flash` / `scale-pulse` / `morph-snap`). Simpler
+  *and* strictly more capable — "explode" is an impulse into a deformer's strength,
+  "flash" is an impulse into emissive intensity. (D-30)
+- **`ParamDescriptor.realtime`** gates what may be driven at frame rate. Geometry
+  parameters rebuild the mesh, so wiring a kick to `radius` would re-tessellate 60 times
+  a second and blow the geometry cache. `scale.uniform` covers the common "pulse with
+  the kick" case for free; genuine continuous shape change is Phase 4G deformers. (D-31)
+
+**5G shipped.** One drag connects. Wires are measured from real DOM anchors, so both
+columns stay ordinary scrollable lists and the SVG owns no layout. Colour encodes source
+family, thickness encodes weight, and opacity/width pulse with the live signal — animated
+imperatively off `TransportClock`, never React (HC-1). `onset` sources default to a
+discrete trigger, everything else to a continuous blend, so the drop gesture asks nothing.
+New connections seed their range from the target descriptor rather than a flat 0→1, which
+was invisible on a parameter spanning −500…500.
+
+**5G test:** ✅ verified in-browser — two drags create two wires, the cursor wire renders
+mid-drag, clicking a wire opens its 6-field chain editor, wires track column scrolling,
+zero console errors.
+
+**5 test:** ⬜ manual — wire drums envelope → sphere `scale.uniform` and a drums onset
+trigger → `emissiveIntensity`. Play; scrub backwards and confirm identical values;
+profile for zero React re-renders during playback.
 
 ## Phase 6 — Timeline & states ⬜
 

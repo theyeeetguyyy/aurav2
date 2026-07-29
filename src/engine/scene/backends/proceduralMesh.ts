@@ -276,6 +276,7 @@ const RADIUS = {
   unit: 'm' as const,
   group: 'Geometry',
   exposed: true,
+  realtime: false,
 }
 
 const ROUNDNESS = {
@@ -288,6 +289,7 @@ const ROUNDNESS = {
   defaultValue: 0,
   group: 'Geometry',
   exposed: true,
+  realtime: false,
 }
 
 const HEIGHT = {
@@ -301,6 +303,7 @@ const HEIGHT = {
   unit: 'm' as const,
   group: 'Geometry',
   exposed: true,
+  realtime: false,
 }
 
 function proceduralBrick(
@@ -341,6 +344,7 @@ export const PROCEDURAL_BRICKS: GeometryBrick[] = [
       unit: 'm',
       group: 'Geometry',
       exposed: true,
+      realtime: false,
     },
   ]),
   proceduralBrick('proc-cylinder', 'Cylinder', displaceCylinder, [HEIGHT, ROUNDNESS]),

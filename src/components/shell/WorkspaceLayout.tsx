@@ -44,7 +44,9 @@ export function WorkspaceLayout({ left, center, right }: WorkspaceLayoutProps) {
         </>
       )}
 
-      <main className="min-w-0 min-h-0 overflow-hidden">{center}</main>
+      {/* A section, not <main> — the app shell already owns the document's single
+          <main>, and nesting them is invalid HTML. */}
+      <section className="min-w-0 min-h-0 overflow-hidden">{center}</section>
 
       {showRight && (
         <>

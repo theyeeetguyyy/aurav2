@@ -35,6 +35,7 @@ function descriptor(
     unit: 'm',
     group: 'Geometry',
     exposed: true,
+    realtime: false,
     ...options,
   }
 }
@@ -53,6 +54,7 @@ function segments(key: string, label: string, min: number, max: number, defaultV
     defaultValue,
     group: 'Resolution',
     exposed: false,
+    realtime: false,
   }
 }
 

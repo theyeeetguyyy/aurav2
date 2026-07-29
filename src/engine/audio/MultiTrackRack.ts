@@ -37,6 +37,20 @@ interface TrackNode {
  *  long enough to avoid a click. */
 const GAIN_RAMP = 0.02
 
+/** Resolve the effective loop region.
+ *
+ *  An unset region (both bounds 0, the default) means "the whole project", not "a
+ *  zero-length region". Exported so the transport UI can display the same bounds the
+ *  engine will actually use. */
+export function resolveLoopRegion(
+  start: number,
+  end: number,
+  duration: number,
+): { loopStart: number; loopEnd: number } {
+  if (end > start) return { loopStart: start, loopEnd: end }
+  return { loopStart: 0, loopEnd: duration }
+}
+
 export class MultiTrackRack {
   private static instance: MultiTrackRack
 
@@ -130,8 +144,18 @@ export class MultiTrackRack {
       void ctx.resume()
     }
 
-    const offset = TransportClock.time
     const store = useAudioStore.getState()
+    const duration = this.getProjectDuration()
+    let offset = TransportClock.time
+
+    // Playback stops with the playhead parked at the end. Pressing play there would
+    // schedule nothing and sit in silence, so rewind first — to the loop start when
+    // looping, otherwise to zero. Standard transport behaviour.
+    if (duration > 0 && offset >= duration - 1e-3) {
+      const { loopStart } = resolveLoopRegion(store.loopStart, store.loopEnd, duration)
+      offset = store.loopEnabled ? loopStart : 0
+      TransportClock.setTime(offset)
+    }
 
     this.stopAllSources()
 
@@ -276,13 +300,18 @@ export class MultiTrackRack {
       const elapsed = this.ctx.currentTime - this.playStartContextTime
       const position = this.playStartOffset + elapsed
       const store = useAudioStore.getState()
+      const duration = this.getProjectDuration()
 
-      if (store.loopEnabled && store.loopEnd > store.loopStart && position >= store.loopEnd) {
-        this.seek(store.loopStart)
+      // With no explicit loop region set, loop the whole project. Both bounds default
+      // to 0, so requiring `loopEnd > loopStart` made the Loop button toggle a flag
+      // that could never do anything until a region UI existed (Phase 6B).
+      const { loopStart, loopEnd } = resolveLoopRegion(store.loopStart, store.loopEnd, duration)
+
+      if (store.loopEnabled && loopEnd > loopStart && position >= loopEnd) {
+        this.seek(loopStart)
         return
       }
 
-      const duration = this.getProjectDuration()
       if (duration > 0 && position >= duration) {
         this.isRunning = false
         this.stopAllSources()

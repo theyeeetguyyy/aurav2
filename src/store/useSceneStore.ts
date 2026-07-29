@@ -4,7 +4,9 @@ import type { ParamAddress, ParamValue } from '@/types/params'
 import type { EffectInstance, MaterialParams, SceneObject, SceneObjectType } from '@/types/visual'
 import { DEFAULT_MATERIAL, DEFAULT_TRANSFORM } from '@/types/visual'
 import { BrickRegistry } from '@/engine/scene/BrickRegistry'
+import { EffectRegistry } from '@/engine/scene/EffectRegistry'
 import { axisIndex } from '@/engine/params/ParamRegistry'
+import { useModulationStore } from '@/store/useModulationStore'
 import { generateId } from '@/utils/stemColors'
 
 /** useSceneStore — the open SceneObject layer stack (docs/03-ARCHITECTURE.md).
@@ -38,8 +40,12 @@ interface SceneState {
   setMaterial: (id: ID, patch: Partial<MaterialParams>) => void
 
   addEffect: (id: ID, effect: EffectInstance) => void
+  /** Add by registered brick id, using its declared defaults. */
+  addEffectBrick: (id: ID, effectId: string) => ID | null
   removeEffect: (id: ID, effectId: ID) => void
   updateEffect: (id: ID, effectId: ID, patch: Partial<EffectInstance>) => void
+  /** Move an effect within the stack. Order is evaluation order. */
+  reorderEffect: (id: ID, effectId: ID, delta: number) => void
 
   clear: () => void
 }
@@ -132,11 +138,15 @@ export const useSceneStore = create<SceneState>((set, get) => ({
     return id
   },
 
-  removeObject: (id) =>
+  removeObject: (id) => {
+    // Drop any routing that targeted this object, or the matrix keeps evaluating
+    // connections pointing at something that no longer exists.
+    useModulationStore.getState().releaseObject(id)
     set((s) => ({
       objects: s.objects.filter((o) => o.id !== id),
       selectedId: s.selectedId === id ? null : s.selectedId,
-    })),
+    }))
+  },
 
   duplicateObject: (id) => {
     const source = get().objects.find((o) => o.id === id)
@@ -233,12 +243,61 @@ export const useSceneStore = create<SceneState>((set, get) => ({
       objects: s.objects.map((o) => (o.id === id ? { ...o, effects: [...o.effects, effect] } : o)),
     })),
 
-  removeEffect: (id, effectId) =>
+  /** Add an effect by brick id, with its registered defaults. The path the UI uses. */
+  addEffectBrick: (id, effectId) => {
+    const brick = EffectRegistry.get(effectId)
+    if (!brick) return null
+
+    const instanceId = generateId()
+    set((s) => ({
+      objects: s.objects.map((o) =>
+        o.id === id
+          ? {
+              ...o,
+              effects: [
+                ...o.effects,
+                {
+                  id: instanceId,
+                  effectId,
+                  name: brick.label,
+                  family: brick.family,
+                  params: EffectRegistry.defaultParams(effectId),
+                  enabled: true,
+                },
+              ],
+            }
+          : o,
+      ),
+    }))
+    return instanceId
+  },
+
+  reorderEffect: (id, effectId, delta) =>
+    set((s) => ({
+      objects: s.objects.map((o) => {
+        if (o.id !== id) return o
+        const from = o.effects.findIndex((e) => e.id === effectId)
+        if (from === -1) return o
+        const to = Math.max(0, Math.min(o.effects.length - 1, from + delta))
+        if (from === to) return o
+        const effects = [...o.effects]
+        const [moved] = effects.splice(from, 1)
+        effects.splice(to, 0, moved)
+        return { ...o, effects }
+      }),
+    })),
+
+  removeEffect: (id, effectId) => {
+    // Deleting a deformer must also delete the wires pointing at its parameters.
+    // Otherwise the matrix keeps evaluating connections whose target no longer exists —
+    // invisible in the patchbay, but still burning a shaper and an envelope every frame.
+    useModulationStore.getState().releaseEffect(id, effectId)
     set((s) => ({
       objects: s.objects.map((o) =>
         o.id === id ? { ...o, effects: o.effects.filter((e) => e.id !== effectId) } : o,
       ),
-    })),
+    }))
+  },
 
   updateEffect: (id, effectId, patch) =>
     set((s) => ({

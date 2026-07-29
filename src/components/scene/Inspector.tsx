@@ -1,9 +1,8 @@
-import { Link2 } from 'lucide-react'
 import { useSceneStore, useSelectedObject } from '@/store/useSceneStore'
 import { BrickRegistry } from '@/engine/scene/BrickRegistry'
 import { describeObject, groupsOf, readParam } from '@/engine/params/ParamRegistry'
-import { ScrubField } from '@/components/common/ScrubField'
-import type { ParamDescriptor } from '@/types/params'
+import { ParamField } from './ParamField'
+import { EffectStack } from './EffectStack'
 import type { SceneObject } from '@/types/visual'
 
 /** Inspector — entirely descriptor-driven (docs/03-ARCHITECTURE.md HC-5).
@@ -39,11 +38,18 @@ export function Inspector() {
               {descriptors
                 .filter((d) => d.group === group)
                 .map((descriptor) => (
-                  <ParamRow key={descriptor.key} object={object} descriptor={descriptor} />
+                  <ParamField
+                    key={descriptor.key}
+                    object={object}
+                    descriptor={descriptor}
+                    value={readParam(object, { objectId: object.id, paramKey: descriptor.key })}
+                  />
                 ))}
             </div>
           </section>
         ))}
+
+        <EffectStack object={object} />
       </div>
     </div>
   )
@@ -95,67 +101,5 @@ function ObjectHeader({ object }: { object: SceneObject }) {
           : 'Swap-only — transitions to other shapes are a crossfade, not a morph'}
       </p>
     </header>
-  )
-}
-
-function ParamRow({ object, descriptor }: { object: SceneObject; descriptor: ParamDescriptor }) {
-  const setParam = useSceneStore((s) => s.setParam)
-  const raw = readParam(object, { objectId: object.id, paramKey: descriptor.key })
-  const address = { objectId: object.id, paramKey: descriptor.key }
-
-  const control = (() => {
-    switch (descriptor.type) {
-      case 'color':
-        return (
-          <label className="flex items-center justify-between h-7 px-2 bg-aura-surface hover:bg-aura-elevated border border-aura-line rounded text-[11px] cursor-pointer">
-            <span className="text-slate-400 font-medium truncate">{descriptor.label}</span>
-            <input
-              type="color"
-              value={typeof raw === 'string' ? raw : '#000000'}
-              onChange={(e) => setParam(address, e.target.value)}
-              className="w-6 h-4 bg-transparent border-0 cursor-pointer p-0"
-            />
-          </label>
-        )
-
-      case 'bool':
-        return (
-          <label className="flex items-center justify-between h-7 px-2 bg-aura-surface hover:bg-aura-elevated border border-aura-line rounded text-[11px] cursor-pointer">
-            <span className="text-slate-400 font-medium truncate">{descriptor.label}</span>
-            <input
-              type="checkbox"
-              checked={raw === true}
-              onChange={(e) => setParam(address, e.target.checked)}
-              className="accent-aura-accent"
-            />
-          </label>
-        )
-
-      default:
-        return (
-          <ScrubField
-            descriptor={descriptor}
-            value={typeof raw === 'number' ? raw : Number(descriptor.defaultValue)}
-            onChange={(value) =>
-              setParam(address, descriptor.type === 'int' ? Math.round(value) : value)
-            }
-          />
-        )
-    }
-  })()
-
-  return (
-    <div className="flex items-center gap-1">
-      <div className="flex-1 min-w-0">{control}</div>
-      {/* Exposed parameters are the modulation targets (Niagara "User Parameters").
-          Wiring lands in Phase 5; the affordance is shown now so the distinction
-          between exposed and internal is visible while authoring. */}
-      <span
-        className={`shrink-0 ${descriptor.exposed ? 'text-slate-600' : 'text-transparent'}`}
-        title={descriptor.exposed ? 'Can be driven by a Field (Phase 5)' : undefined}
-      >
-        <Link2 className="w-3 h-3" />
-      </span>
-    </div>
   )
 }

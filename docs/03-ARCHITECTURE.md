@@ -45,7 +45,7 @@ stems by path on reopen; long batch renders are subject to tab throttling.
 | 3D | Three.js + React Three Fiber + Drei | **WebGL2 now.** WebGPU is a Phase-3F toggle — it needs async renderer init and TSL shaders. Do not block on it. |
 | State | Zustand | Plain stores. No middleware in the audio path. |
 | Node graph UI | React Flow (`@xyflow/react`) | |
-| Audio analysis | **essentia.js** (offline MIR, in a worker) + **Meyda** (cheap live features) | See HC-3. |
+| Audio analysis | **Hand-written FFT in a worker** (offline MIR) + **Meyda** (live tap, mic input only) | D-32. essentia.js remains an option if beat tracking needs to beat inter-onset histogramming. |
 | Audio playback | Web Audio API | |
 | Video export | WebCodecs `VideoEncoder` + `mp4-muxer` | In a worker with `OffscreenCanvas`. |
 | Undo | **Command pattern** (`{do, undo}` pairs) | Locked. Not `zundo` — snapshotting stores that reference `AudioBuffer`s and GPU resources is a memory disaster. |

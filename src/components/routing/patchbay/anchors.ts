@@ -56,6 +56,14 @@ export function measureAnchor(
   }
 }
 
+/** Force a re-measure without any anchor changing.
+ *
+ *  Resizing a column moves every endpoint but changes neither the container's size nor
+ *  the set of registered anchors, so no observer fires. This is the nudge. */
+export function refreshAnchors(): void {
+  notify()
+}
+
 /** Subscribe to anchor mount/unmount so the wire layer can re-measure. */
 export function subscribeAnchors(listener: () => void): () => void {
   listeners.add(listener)

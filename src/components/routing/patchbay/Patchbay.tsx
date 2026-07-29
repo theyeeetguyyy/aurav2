@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useModulationStore } from '@/store/useModulationStore'
 import { useSceneStore } from '@/store/useSceneStore'
+import { useUIStore } from '@/store/useUIStore'
+import { Splitter } from '@/components/common/Splitter'
+import { refreshAnchors } from './anchors'
 import { resolveDescriptor } from '@/engine/params/ParamRegistry'
 import { parseAddress, type FieldRef, type ParamAddress } from '@/types/params'
 import { SourceColumn } from './SourceColumn'
@@ -29,6 +32,17 @@ export function Patchbay({ selectedWireId, onSelectWire, bottomLeft }: PatchbayP
   const connect = useModulationStore((s) => s.connect)
   const addTrigger = useModulationStore((s) => s.addTrigger)
   const [hint, setHint] = useState<string | null>(null)
+
+  const sourceWidth = useUIStore((s) => s.patchSourceWidth)
+  const targetWidth = useUIStore((s) => s.patchTargetWidth)
+  const setSourceWidth = useUIStore((s) => s.setPatchSourceWidth)
+  const setTargetWidth = useUIStore((s) => s.setPatchTargetWidth)
+
+  // Resizing a column moves every wire endpoint, but changes neither the container's
+  // size nor the set of anchors — so no observer fires on its own. Nudge the wire layer.
+  useEffect(() => {
+    refreshAnchors()
+  }, [sourceWidth, targetWidth])
 
   /** Create a connection with defaults that actually do something visible. */
   const createConnection = useCallback(
@@ -101,18 +115,37 @@ export function Patchbay({ selectedWireId, onSelectWire, bottomLeft }: PatchbayP
 
   return (
     <div className="relative h-full flex flex-col">
-      <div ref={containerRef} className="relative flex-1 min-h-0 grid grid-cols-[1fr_7rem_1fr]">
-        <div className="min-h-0 border-r border-aura-line flex flex-col">
+      <div
+        ref={containerRef}
+        className="relative flex-1 min-h-0 grid"
+        // Columns are user-resizable; the wire gutter takes whatever is left.
+        style={{ gridTemplateColumns: `${sourceWidth}px 1px minmax(2rem, 1fr) 1px ${targetWidth}px` }}
+      >
+        <div className="min-h-0 flex flex-col">
           <div className="flex-1 min-h-0">
             <SourceColumn onDragStart={handleDragStart} />
           </div>
           {bottomLeft}
         </div>
 
+        <Splitter
+          onDrag={(clientX) =>
+            setSourceWidth(clientX - (containerRef.current?.getBoundingClientRect().left ?? 0))
+          }
+          title="Drag to resize the source column"
+        />
+
         {/* Wire gutter. Empty on purpose — it is where the lines live. */}
         <div className="min-h-0" />
 
-        <div className="min-h-0 border-l border-aura-line">
+        <Splitter
+          onDrag={(clientX) =>
+            setTargetWidth((containerRef.current?.getBoundingClientRect().right ?? 0) - clientX)
+          }
+          title="Drag to resize the parameter column"
+        />
+
+        <div className="min-h-0">
           <TargetColumn />
         </div>
 

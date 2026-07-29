@@ -77,7 +77,7 @@ frame 12 and still produce exactly what was previewed.
 
 | Store | Owns | Notes |
 |---|---|---|
-| `useUIStore.ts` | active page, dock sizes, collapse state, `preImmersiveDocks` | immersive view restores prior dock state |
+| `useUIStore.ts` | active page, dock sizes, collapse state, `preImmersiveDocks`, patchbay column widths | immersive view restores prior dock state |
 | `useAudioStore.ts` | tracks, trim, solo/mute/volume, loop, `isPlaying` | **no playhead** — that is TransportClock (HC-1). Exports `isTrackVisuallyActive()` |
 | `useCameraStore.ts` | active camera view, control mode, keyframes, waypoints, constraints | |
 | `useModulationStore.ts` | global connections, event triggers | project-global by design (HC-8) |
@@ -163,7 +163,8 @@ frame 12 and still produce exactly what was previewed.
 | `topbar/TopBar.tsx` | Brand, project name, REC, settings |
 | `workspace/WorkspaceNavBar.tsx` | 5 DaVinci-style workspace tabs |
 | `shell/TransportBar.tsx` | Persistent transport. Timecode via `useTransportTime()` |
-| `shell/WorkspaceLayout.tsx` | Shared left/centre/right dock grid with draggable splitters. Docked CSS Grid — no floating panels, no z-index wars |
+| `shell/WorkspaceLayout.tsx` | Shared left/centre/right dock grid. Docked CSS Grid — no floating panels, no z-index wars |
+| `common/Splitter.tsx` | 1px draggable divider, shared by the docks and the patchbay columns. Absolute-position based, so it never drifts from the pointer |
 | `common/ShortcutSettingsModal.tsx` | Rebinding UI — click a row, press a chord, conflicts reported |
 | `common/ScrubField.tsx` | Pointer-lock scrub control. Range, step and unit all come from the `ParamDescriptor` — nothing parameter-specific is hardcoded |
 
@@ -180,11 +181,11 @@ frame 12 and still produce exactly what was previewed.
 
 | File | Role |
 |---|---|
-| `routing/patchbay/Patchbay.tsx` | The routing surface. Two columns + wire layer, drag-to-connect, descriptor-seeded default ranges |
+| `routing/patchbay/Patchbay.tsx` | The routing surface. Two **resizable** columns + wire layer, drag-to-connect, descriptor-seeded default ranges |
 | `routing/patchbay/SourceColumn.tsx` | Every Field, grouped by stem, plus the Generators section. Each dot is a drag handle with a live level meter behind the label |
 | `routing/patchbay/TargetColumn.tsx` | Every drivable parameter incl. deformer params. Rows carry `data-target-id` for drop detection |
 | `routing/patchbay/WireLayer.tsx` | SVG beziers measured from DOM anchors. Geometry recomputed on change; **pulse animated per-frame imperatively** |
-| `routing/patchbay/anchors.ts` | DOM anchor registry. Wires connect real elements, so columns stay plain scrollable lists |
+| `routing/patchbay/anchors.ts` | DOM anchor registry. Wires connect real elements, so columns stay plain scrollable lists. `refreshAnchors()` re-measures after a column resize, which no observer would catch |
 | `routing/patchbay/dragState.ts` | In-flight drag, kept outside React — only the coarse "is dragging" flag reaches it |
 | `routing/WireInspector.tsx` | Right dock: selected wire's endpoints, enable/delete, chain or trigger settings |
 | `routing/ChainEditor.tsx` | Per-connection signal chain, presented in evaluation order |

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { useUIStore } from '@/store/useUIStore'
+import { Splitter } from '@/components/common/Splitter'
 
 interface WorkspaceLayoutProps {
   left?: ReactNode
@@ -40,7 +41,7 @@ export function WorkspaceLayout({ left, center, right }: WorkspaceLayoutProps) {
       {showLeft && (
         <>
           <aside className="min-w-0 min-h-0 bg-aura-base overflow-hidden">{left}</aside>
-          <Splitter edge="left" onResize={setLeftWidth} onCollapse={toggleLeft} />
+          <Splitter onDrag={(x) => setLeftWidth(x)} onDoubleClick={toggleLeft} />
         </>
       )}
 
@@ -50,63 +51,10 @@ export function WorkspaceLayout({ left, center, right }: WorkspaceLayoutProps) {
 
       {showRight && (
         <>
-          <Splitter edge="right" onResize={setRightWidth} onCollapse={toggleRight} />
+          <Splitter onDrag={(x) => setRightWidth(window.innerWidth - x)} onDoubleClick={toggleRight} />
           <aside className="min-w-0 min-h-0 bg-aura-base overflow-hidden">{right}</aside>
         </>
       )}
-    </div>
-  )
-}
-
-interface SplitterProps {
-  edge: 'left' | 'right'
-  onResize: (width: number) => void
-  onCollapse: () => void
-}
-
-function Splitter({ edge, onResize, onCollapse }: SplitterProps) {
-  const dragging = useRef(false)
-
-  const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    e.preventDefault()
-    dragging.current = true
-    document.body.style.cursor = 'col-resize'
-    // Stops the drag from selecting page text or landing on the 3D canvas.
-    document.body.style.userSelect = 'none'
-  }, [])
-
-  useEffect(() => {
-    const handleMove = (e: PointerEvent) => {
-      if (!dragging.current) return
-      // Width is measured from the window edge the dock is anchored to, so the panel
-      // tracks the cursor exactly regardless of how the grid has reflowed.
-      onResize(edge === 'left' ? e.clientX : window.innerWidth - e.clientX)
-    }
-
-    const handleUp = () => {
-      if (!dragging.current) return
-      dragging.current = false
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-    }
-
-    window.addEventListener('pointermove', handleMove)
-    window.addEventListener('pointerup', handleUp)
-    return () => {
-      window.removeEventListener('pointermove', handleMove)
-      window.removeEventListener('pointerup', handleUp)
-    }
-  }, [edge, onResize])
-
-  return (
-    <div
-      onPointerDown={handlePointerDown}
-      onDoubleClick={onCollapse}
-      title="Drag to resize · double-click to collapse"
-      className="relative bg-aura-line hover:bg-aura-accent transition-colors cursor-col-resize"
-    >
-      {/* Widen the hit area without widening the visible rule. */}
-      <div className="absolute inset-y-0 -left-1 -right-1" />
     </div>
   )
 }

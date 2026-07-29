@@ -162,6 +162,7 @@ which is exactly why this swap is cheap. `ChainEditor` survives and moves to the
 | 11F | Wire selection, re-target, delete; `ChainEditor` in right dock |
 | 11G | Descriptor-seeded default range on connect |
 | 11H | Keep the scene monitor visible throughout |
+| 11I | Resizable columns — both sides drag independently, gutter takes the remainder |
 
 Scene monitor stays pinned. Wiring while watching the result is the whole point.
 

@@ -27,6 +27,10 @@ interface UIState {
   bottomPanelHeight: number
   /** Dock collapse state captured on entering immersive view, restored on exit. */
   preImmersiveDocks: { left: boolean; right: boolean; bottom: boolean } | null
+  /** Patchbay column widths. Separate from the dock widths — the patchbay lives inside
+   *  the centre area and has its own two resizable columns. */
+  patchSourceWidth: number
+  patchTargetWidth: number
 
   // Actions
   setActivePage: (page: WorkspacePage) => void
@@ -37,6 +41,8 @@ interface UIState {
   setLeftPanelWidth: (w: number) => void
   setRightPanelWidth: (w: number) => void
   setBottomPanelHeight: (h: number) => void
+  setPatchSourceWidth: (w: number) => void
+  setPatchTargetWidth: (w: number) => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -49,6 +55,8 @@ export const useUIStore = create<UIState>((set) => ({
   rightPanelWidth: 320,
   bottomPanelHeight: 240,
   preImmersiveDocks: null,
+  patchSourceWidth: 280,
+  patchTargetWidth: 300,
 
   setActivePage: (page) => set({ activePage: page }),
 
@@ -86,4 +94,12 @@ export const useUIStore = create<UIState>((set) => ({
   setLeftPanelWidth: (w) => set({ leftPanelWidth: Math.max(200, Math.min(480, w)) }),
   setRightPanelWidth: (w) => set({ rightPanelWidth: Math.max(200, Math.min(480, w)) }),
   setBottomPanelHeight: (h) => set({ bottomPanelHeight: Math.max(120, Math.min(400, h)) }),
+  setPatchSourceWidth: (w) => set({ patchSourceWidth: clampColumn(w) }),
+  setPatchTargetWidth: (w) => set({ patchTargetWidth: clampColumn(w) }),
 }))
+
+/** Keep a patchbay column wide enough to read a label and narrow enough to leave a wire
+ *  gutter. Below ~160px the parameter names truncate to uselessness. */
+function clampColumn(width: number): number {
+  return Math.max(160, Math.min(600, width))
+}

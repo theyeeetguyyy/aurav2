@@ -21,7 +21,7 @@ export function WorldPanel() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({ lighting: true })
 
   return (
-    <section className="border-t border-aura-line shrink-0 flex flex-col min-h-0">
+    <section className="border-t border-aura-line shrink-0 flex flex-col min-h-0 max-h-[35%]">
       <header className="flex items-center gap-1 px-2 py-1.5 shrink-0">
         <button
           onClick={() => setOpen((v) => !v)}

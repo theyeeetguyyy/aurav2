@@ -23,7 +23,7 @@ export function LayerStack() {
   const [draft, setDraft] = useState('')
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="flex flex-col h-full min-h-0 overflow-hidden">
       <ShapeLibrary />
 
       <header className="px-3 py-2 border-b border-aura-line shrink-0">
@@ -200,7 +200,7 @@ function ShapeLibrary() {
   const primitive = bricks.filter((b) => b.meshKind === 'primitive')
 
   return (
-    <div className="border-b border-aura-line shrink-0">
+    <div className="border-b border-aura-line shrink-0 max-h-[55%] overflow-y-auto">
       <BrickGroup
         title="Morphable"
         hint="One shared topology — any of these can morph into any other"

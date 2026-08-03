@@ -17,19 +17,18 @@ export function ShapesScenePage() {
   return (
     <WorkspaceLayout
       left={
-        <div className="flex flex-col h-full min-h-0">
-          <div className="flex-1 min-h-0">
+        // Ordered the way the frame is built: objects, then the world they sit in, then
+        // what happens to the picture afterwards.
+        //
+        // The layer stack takes the remaining space and scrolls; the two panels below
+        // size to their content and cap themselves. Wrapping them in sized divs instead
+        // let their content overflow the box and draw over the rows above.
+        <div className="flex flex-col h-full min-h-0 overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-hidden">
             <LayerStack />
           </div>
-          {/* Capped so the world and post panels cannot squeeze the object list out of
-              view. Ordered the way the frame is built: objects, then the world they sit
-              in, then what happens to the picture afterwards. */}
-          <div className="max-h-[38%] flex flex-col min-h-0">
-            <WorldPanel />
-          </div>
-          <div className="max-h-[45%] flex flex-col min-h-0">
-            <PostStack />
-          </div>
+          <WorldPanel />
+          <PostStack />
         </div>
       }
       center={<ViewportSlot />}

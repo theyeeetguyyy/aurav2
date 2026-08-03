@@ -83,32 +83,71 @@ export class CloneRuntime {
     return this.buffers.count
   }
 
+  /** Bounding volume of the whole array, in the object's local space.
+   *  Written by `applyTo`; read by the renderer for culling and the selection box. */
+  readonly bounds = new THREE.Sphere()
+
   /** Write the resolved clones into an InstancedMesh. */
   applyTo(mesh: THREE.InstancedMesh): void {
     const { count, position, rotation, scale, tint } = this.buffers
     mesh.count = count
 
+    // The source geometry's own extent, so the bounds enclose the clones' surfaces
+    // rather than just their origins. Only computed when missing — a deformed geometry
+    // already had it refreshed by DeformRuntime this frame.
+    if (!mesh.geometry.boundingSphere) mesh.geometry.computeBoundingSphere()
+    const sourceRadius = mesh.geometry.boundingSphere?.radius ?? 1
+
+    let minX = Infinity, minY = Infinity, minZ = Infinity
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity
+    let maxScale = 0
+
     for (let i = 0; i < count; i++) {
       const o = i * 3
-      this.translation.set(position[o], position[o + 1], position[o + 2])
+      const x = position[o]
+      const y = position[o + 1]
+      const z = position[o + 2]
+
+      this.translation.set(x, y, z)
       this.euler.set(rotation[o], rotation[o + 1], rotation[o + 2])
       this.quaternion.setFromEuler(this.euler)
       this.scaleVector.set(scale[o], scale[o + 1], scale[o + 2])
       this.matrix.compose(this.translation, this.quaternion, this.scaleVector)
       mesh.setMatrixAt(i, this.matrix)
 
-      if (mesh.instanceColor) {
-        this.colour.setRGB(tint[o], tint[o + 1], tint[o + 2])
-        mesh.setColorAt(i, this.colour)
-      }
+      this.colour.setRGB(tint[o], tint[o + 1], tint[o + 2])
+      mesh.setColorAt(i, this.colour)
+
+      if (x < minX) minX = x
+      if (y < minY) minY = y
+      if (z < minZ) minZ = z
+      if (x > maxX) maxX = x
+      if (y > maxY) maxY = y
+      if (z > maxZ) maxZ = z
+      const s = Math.max(scale[o], scale[o + 1], scale[o + 2])
+      if (s > maxScale) maxScale = s
     }
 
     mesh.instanceMatrix.needsUpdate = true
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+
     // Instance transforms live outside the geometry, so Three cannot derive the culling
-    // volume itself. Without this a ring of clones vanishes the moment the object's own
-    // origin leaves the frustum.
-    mesh.computeBoundingSphere()
+    // volume itself — without a correct one the whole array vanishes the moment the
+    // object's own origin leaves the frustum. Derived from the positions we already have
+    // rather than via `computeBoundingSphere()`, which decomposes every matrix again.
+    if (count === 0) {
+      this.bounds.center.set(0, 0, 0)
+      this.bounds.radius = 0
+    } else {
+      this.bounds.center.set((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2)
+      this.bounds.radius =
+        Math.hypot(maxX - minX, maxY - minY, maxZ - minZ) / 2 + sourceRadius * maxScale
+    }
+
+    // A private Sphere per mesh: sharing this object between the render mesh and the
+    // selection box would make one of them silently follow the other's culling.
+    mesh.boundingSphere ??= new THREE.Sphere()
+    mesh.boundingSphere.copy(this.bounds)
   }
 }
 

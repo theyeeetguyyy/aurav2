@@ -42,7 +42,7 @@ export function PostStack() {
   const activeCount = effects.filter((e) => e.enabled).length
 
   return (
-    <section className="border-t border-aura-line shrink-0 flex flex-col min-h-0">
+    <section className="border-t border-aura-line shrink-0 flex flex-col min-h-0 max-h-[35%]">
       <header className="flex items-center gap-1 px-2 py-1.5 shrink-0">
         <button
           onClick={() => setOpen((v) => !v)}

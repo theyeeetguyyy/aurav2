@@ -49,6 +49,8 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
   const meshRef = useRef<THREE.Mesh>(null)
   const instancedRef = useRef<THREE.InstancedMesh>(null)
   const outlineRef = useRef<THREE.Mesh>(null)
+  /** Selection box for a cloned object — one wireframe cube around the whole array. */
+  const selectionRef = useRef<THREE.Mesh>(null)
 
   const cloned = hasCloner(object.effects)
 
@@ -184,13 +186,16 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
       clone.current.resolve(object.effects, activeClock().time, resolveEffectParams)
       clone.current.applyTo(instanced)
 
-      const outline = outlineRef.current
-      if (outline instanceof THREE.InstancedMesh) {
-        // Share the matrix attribute rather than recomputing it: the outline is the same
-        // array of clones, one shell wider.
-        outline.instanceMatrix = instanced.instanceMatrix
-        outline.count = instanced.count
-        outline.boundingSphere = instanced.boundingSphere
+      // Selection for a cloned object is ONE wireframe box around the whole array, not
+      // a shell per clone. Two reasons: sixty-four wireframe shells obscure the art they
+      // are meant to indicate, and the earlier version shared the instance matrix
+      // attribute between the two meshes — so unmounting the outline on deselect freed
+      // the buffer the visible mesh was still drawing from, and clones disappeared.
+      const box = selectionRef.current
+      if (box) {
+        const { center, radius } = clone.current.bounds
+        box.position.copy(center)
+        box.scale.setScalar(Math.max(0.001, radius * 2))
       }
     }
 
@@ -218,10 +223,11 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
   return (
     <group ref={groupRef}>
       {cloned ? (
+        // `count` is deliberately not a prop: it is owned by useFrame, and passing it
+        // would reset the array to zero instances on every unrelated re-render.
         <instancedMesh
           ref={instancedRef}
           args={[geometry, material.material, MAX_CLONES]}
-          count={0}
           castShadow
           receiveShadow
           onClick={onSelect}
@@ -242,15 +248,10 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
           transform, and for a cloned object the clone matrices too. */}
       {isSelected &&
         (cloned ? (
-          <instancedMesh
-            ref={outlineRef as React.Ref<THREE.InstancedMesh>}
-            args={[geometry, undefined, MAX_CLONES]}
-            count={0}
-            scale={1.015}
-            raycast={() => {}}
-          >
-            <meshBasicMaterial color={outlineColour} side={THREE.BackSide} wireframe />
-          </instancedMesh>
+          <mesh ref={selectionRef} raycast={() => {}}>
+            <boxGeometry args={[1, 1, 1]} />
+            <meshBasicMaterial color={outlineColour} wireframe transparent opacity={0.35} />
+          </mesh>
         ) : (
           <mesh ref={outlineRef} geometry={geometry} scale={1.015} raycast={() => {}}>
             <meshBasicMaterial color={outlineColour} side={THREE.BackSide} wireframe />

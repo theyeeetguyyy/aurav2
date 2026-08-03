@@ -218,6 +218,18 @@ describe('CloneRuntime', () => {
     expect(first[4 * 3 + 1]).toBeGreaterThan(0)
   })
 
+  it('bounds the whole array, not just the object origin', () => {
+    // The regression this guards: without a bounding volume covering every clone, the
+    // renderer culls the entire array as soon as the object's own origin leaves the
+    // frustum — clones simply stop drawing while plainly on screen.
+    const runtime = new CloneRuntime()
+    runtime.resolve([instance('cloner-radial', { count: 8, radius: 30 })], 0, (e) => e.params)
+    captureY(runtime, new Float32Array(24))
+
+    expect(runtime.bounds.radius).toBeGreaterThan(30)
+    expect(runtime.bounds.center.length()).toBeLessThan(1)
+  })
+
   it('ignores a second cloner rather than half-applying it', () => {
     const runtime = new CloneRuntime()
     const single = runtime.resolve(
@@ -238,6 +250,7 @@ describe('CloneRuntime', () => {
 function captureY(runtime: CloneRuntime, scratch: Float32Array): number[] {
   const fake = {
     count: 0,
+    geometry: { boundingSphere: { radius: 1 }, computeBoundingSphere: () => {} },
     instanceMatrix: { needsUpdate: false },
     instanceColor: null,
     boundingSphere: null,
@@ -245,7 +258,6 @@ function captureY(runtime: CloneRuntime, scratch: Float32Array): number[] {
       if (index * 3 + 1 < scratch.length) scratch[index * 3 + 1] = matrix.elements[13]
     },
     setColorAt: () => {},
-    computeBoundingSphere: () => {},
   }
   runtime.applyTo(fake as unknown as Parameters<CloneRuntime['applyTo']>[0])
   return Array.from(scratch)

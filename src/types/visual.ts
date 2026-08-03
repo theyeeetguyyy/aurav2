@@ -29,16 +29,12 @@ export type RenderBackend = 'mesh' | 'sdf' | 'points'
  *  - imported   — arbitrary GLTF topology, swap only */
 export type MeshKind = 'procedural' | 'primitive' | 'imported'
 
-export interface MaterialParams {
-  color: string
-  roughness: number
-  metalness: number
-  emissive: string
-  emissiveIntensity: number
-  opacity: number
-  wireframe: boolean
-  flatShading: boolean
-}
+/** Material values, keyed by descriptor key with the `material.` prefix removed.
+ *
+ *  Open rather than a fixed struct: the previous eight-field interface admitted exactly
+ *  one shading model, which is the closed enumeration HC-5 forbids. Which keys are
+ *  meaningful is declared by the material brick. */
+export type MaterialParams = Record<string, ParamValue>
 
 export interface SceneObject {
   id: ID
@@ -51,6 +47,8 @@ export interface SceneObject {
   transform: Transform3D
   /** Brick-specific values, keyed by ParamDescriptor.key. */
   params: Record<string, ParamValue>
+  /** Registered material brick id, e.g. 'mat-standard', 'mat-fresnel'. */
+  materialId: string
   material: MaterialParams
   /** Ordered effect stack, applied in sequence. */
   effects: EffectInstance[]
@@ -59,6 +57,14 @@ export interface SceneObject {
 }
 
 export type EffectFamily = 'geometry' | 'instancing' | 'post-process'
+
+/** Reserved object id for the project-wide post-processing stack.
+ *
+ *  Post effects belong to the frame, not to any one object, so they have no SceneObject
+ *  to hang off. Giving the stack a reserved id keeps `ParamAddress` unchanged and lets
+ *  the patchbay, the modulation matrix and the inspector address a bloom knob exactly
+ *  the way they address a deformer knob (HC-5) — no second addressing scheme. */
+export const POST_STACK_ID = '@post'
 
 export interface EffectInstance {
   id: ID
@@ -76,13 +82,3 @@ export const DEFAULT_TRANSFORM: Transform3D = {
   scale: [1, 1, 1],
 }
 
-export const DEFAULT_MATERIAL: MaterialParams = {
-  color: '#6366f1',
-  roughness: 0.35,
-  metalness: 0.1,
-  emissive: '#000000',
-  emissiveIntensity: 0,
-  opacity: 1,
-  wireframe: false,
-  flatShading: false,
-}

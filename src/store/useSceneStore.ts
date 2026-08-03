@@ -2,9 +2,10 @@ import { create } from 'zustand'
 import type { ID } from '@/types/audio'
 import type { ParamAddress, ParamValue } from '@/types/params'
 import type { EffectInstance, MaterialParams, SceneObject, SceneObjectType } from '@/types/visual'
-import { DEFAULT_MATERIAL, DEFAULT_TRANSFORM } from '@/types/visual'
+import { DEFAULT_TRANSFORM } from '@/types/visual'
 import { BrickRegistry } from '@/engine/scene/BrickRegistry'
 import { EffectRegistry } from '@/engine/scene/EffectRegistry'
+import { DEFAULT_MATERIAL_ID, MaterialRegistry } from '@/engine/scene/materials/MaterialRegistry'
 import { axisIndex } from '@/engine/params/ParamRegistry'
 import { useModulationStore } from '@/store/useModulationStore'
 import { generateId } from '@/utils/stemColors'
@@ -35,9 +36,11 @@ interface SceneState {
 
   /** Swap an object's geometry brick, keeping any parameters both bricks share. */
   setBrick: (id: ID, brickId: string) => void
+  /** Swap an object's shading model, keeping any values both materials share. */
+  setMaterialBrick: (id: ID, materialId: string) => void
 
   setParam: (address: ParamAddress, value: ParamValue) => void
-  setMaterial: (id: ID, patch: Partial<MaterialParams>) => void
+  setMaterial: (id: ID, patch: MaterialParams) => void
 
   addEffect: (id: ID, effect: EffectInstance) => void
   /** Add by registered brick id, using its declared defaults. */
@@ -126,7 +129,8 @@ export const useSceneStore = create<SceneState>((set, get) => ({
             scale: [...DEFAULT_TRANSFORM.scale],
           },
           params: BrickRegistry.defaultParams(brickId),
-          material: { ...DEFAULT_MATERIAL },
+          materialId: DEFAULT_MATERIAL_ID,
+          material: MaterialRegistry.defaultParams(DEFAULT_MATERIAL_ID),
           effects: [],
           visible: true,
           locked: false,
@@ -224,6 +228,15 @@ export const useSceneStore = create<SceneState>((set, get) => ({
           params,
         }
       }),
+    })),
+
+  setMaterialBrick: (id, materialId) =>
+    set((s) => ({
+      objects: s.objects.map((o) =>
+        o.id === id
+          ? { ...o, materialId, material: MaterialRegistry.migrateParams(materialId, o.material) }
+          : o,
+      ),
     })),
 
   setParam: (address, value) =>

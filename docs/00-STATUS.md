@@ -3,7 +3,9 @@
 **Read this first.** Where the project actually is, what runs today, what does not, and
 what to do next. Everything here is verified against the code, not aspirational.
 
-*Last verified: 2026-07-29 · `npm run check` green (typecheck · lint · 103 tests)*
+*Last verified: 2026-08-03 · `npm run check` green (typecheck · lint · 230 tests)*
+
+> **What is missing and what it costs: [13-PRODUCT-GAP.md](13-PRODUCT-GAP.md).**
 
 ---
 
@@ -20,7 +22,7 @@ visual states on a timeline, render a video. Nothing auto-generates — see
 aura/
 ├── aurav2/          the application — React 19 · TS strict · Vite · R3F · Zustand
 │   ├── docs/        source of truth (you are here)
-│   └── src/         83 files, ~10.1k lines
+│   └── src/         101 files
 └── legacy/aura-v1/  frozen vanilla-JS v1, 64 mode files. Parts donor, never shipped.
 ```
 
@@ -34,8 +36,8 @@ Both work from the **workspace root** (scripts forward into `aurav2/`) or from i
 `aurav2/` directly.
 
 Runtime deps are deliberately few: `three`, `@react-three/fiber`, `@react-three/drei`,
-`zustand`, `meyda`, `lucide-react`, `react`. No FFT library, no state middleware, no
-node-graph library yet.
+`postprocessing`, `zustand`, `meyda`, `lucide-react`, `react`. No FFT library, no state
+middleware, no node-graph library yet.
 
 ---
 
@@ -52,7 +54,11 @@ This is the whole product in miniature, and it runs end to end:
    (say *Scale*, or *Explode · Strength*). One gesture. A wire appears and pulses with the
    signal. Click it to edit its chain. The **scene monitor** is pinned bottom-left, so you
    watch the result while you wire it.
-4. **Press play.** The shape reacts. Scrub backwards — identical values, because features
+4. **Treat the frame.** Pick a shading model — chrome, neon, a Fresnel rim — set the world
+   (gradient background, fog, light angles), then stack post effects: bloom, feedback
+   trails, kaleidoscope, grade. Every knob in all three is a modulation target, so the
+   background can brighten on the downbeat and the kaleidoscope can turn on a generator.
+5. **Press play.** The shape reacts. Scrub backwards — identical values, because features
    are sampled by time, not tapped live.
 
 Solo a stem and its visual contribution isolates with it. That is an explicit flag, not a
@@ -88,13 +94,24 @@ one shared 642-vertex icosphere** (any↔any morphable) · **10 native primitive
 · **15 deformers**, each a structurally distinct class of vertex operation, with a stack
 UI, all drivable at frame rate · inspector shows live modulated values.
 See [12-DEFORMERS.md](12-DEFORMERS.md).
-⬜ **4H cloner/effectors** · 4F morph · 4I post-processing · 4J GLTF · 4K SDF backend.
+✅ **4I post-processing** — 14 whole-frame effects in five groups (Glow · Distort · Time ·
+Colour · Texture), a project-global reorderable stack with a master bypass, adjacent
+effects merged into one fullscreen pass.
+✅ **4L materials** — 7 shading models as bricks (Standard, Physical, Unlit, Gradient,
+Fresnel Rim, Toon, Normal). `MaterialParams` is open, not a fixed struct.
+✅ **4M environment** — gradient background, fog, three-point rig with drivable intensity
+and angle, procedural image-based reflections, grid. All routable.
+✅ **4H cloners** — radial/linear/grid layouts + Step/Random/Wave/**Time Delay** effectors,
+GPU instanced, clone count drivable at frame rate.
+⬜ 4F morph · 4J GLTF · 4K SDF backend.
 
 ### Phase 5 — Modulation (partial)
 ✅ `SignalShaper` (Gain→Rise/Fall→Min/Max→Weight) · `ModulationMatrix` with weighted N:1 ·
 field evaluation (audio, rhythm, generative) · discrete triggers as decaying impulses ·
 **patchbay UI** — drag-to-connect, live pulsing wires, wire inspector, per-stem meters ·
-**Generators** — LFO/noise as first-class synthetic stems you can name and configure.
+**Generators** — LFO/noise as first-class synthetic stems · **response curves** with an
+editor, **real value ranges** in the parameter's own units, and a **modulation graph**
+drawn from the real engine.
 ⬜ 5C node graph (advanced view) · 5E object-to-object routing · 5F automation lanes.
 
 ### Not started
@@ -135,19 +152,21 @@ break by accident:
 6. **D-36 — deformers cannot animate themselves.** `DeformContext` has no `time`, and a
    test asserts its absence. Motion arrives through modulation, never from inside an
    effect. If something needs to move on its own, wire a Generator to it.
+7. **D-45 — the render path reads `activeClock()`, never `TransportClock` directly.**
+   That indirection is the only reason `FrameClock` is reachable at all. Post effects may
+   read time; they may not read a wall clock or an accumulator (D-46).
+8. **D-42/D-44 — post and world address themselves with reserved owner ids** (`@post`,
+   `@env`) through the ordinary `ParamAddress`. Do not add a second addressing scheme.
 
 ---
 
 ## Next
 
-**Phase 4H — cloner + effectors.** From the original brief (*"replicate shape and
-symmetrically offset it"*), and it multiplies everything already built: one shape becomes
-8 in a radial array, each clone individually offset by a Step effector that is itself a
-modulation target.
+**GPU particles** — the `points` backend. The largest remaining jump in visual density,
+and the last of the four element families that changes what a frame can look like.
 
-After that: **4I post-process** (bloom + kaleidoscope + feedback — three shaders, transforms
-every scene) → **save/load** (before real authoring time is invested) → **undo** →
-**Phase 6 timeline** → **Phase 8 export**.
+After that: **export** (the product still has no output at all) → **save/load** →
+**undo** → **Phase 6 timeline**.
 
 Full breakdown with test criteria: [06-ROADMAP.md](06-ROADMAP.md).
 

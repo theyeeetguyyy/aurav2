@@ -1,11 +1,10 @@
-import { Trash2, Power, Activity, Zap } from 'lucide-react'
+import { Trash2, Power, Zap } from 'lucide-react'
 import { useAudioStore } from '@/store/useAudioStore'
-import { useSceneStore } from '@/store/useSceneStore'
 import { useModulationStore } from '@/store/useModulationStore'
-import { resolveDescriptor } from '@/engine/params/ParamRegistry'
+import { useTargetInfo } from './targetInfo'
 import { fieldLabel } from '@/engine/modulation/fields'
 import { ScrubField } from '@/components/common/ScrubField'
-import { ChainEditor } from './ChainEditor'
+import { ConnectionInspector } from './ConnectionInspector'
 import type { ParamDescriptor } from '@/types/params'
 
 /** Right dock of the Routing page — the selected wire's settings.
@@ -45,19 +44,13 @@ function useEndpointLabels(source: { sourceId?: string; kind: string; key: strin
   paramKey: string
 }) {
   const tracks = useAudioStore((s) => s.tracks)
-  const objects = useSceneStore((s) => s.objects)
-
-  const object = objects.find((o) => o.id === target.objectId)
-  const descriptor = object ? resolveDescriptor(object, target) : null
-  const effect = object?.effects.find((e) => e.id === target.effectId)
+  const { descriptor, ownerLabel, groupLabel } = useTargetInfo(target)
 
   return {
     from: [tracks.find((t) => t.id === source.sourceId)?.name, fieldLabel(source as never)]
       .filter(Boolean)
       .join(' · '),
-    to: [object?.name, effect?.name, descriptor?.label ?? target.paramKey]
-      .filter(Boolean)
-      .join(' · '),
+    to: [groupLabel, ownerLabel, descriptor?.label ?? target.paramKey].filter(Boolean).join(' · '),
   }
 }
 
@@ -99,31 +92,6 @@ function Header({
       <p className="text-[11px] text-slate-200 leading-snug">{from}</p>
       <p className="text-[10px] text-slate-500 leading-snug">↓ {to}</p>
     </header>
-  )
-}
-
-function ConnectionInspector({ id, onClear }: { id: string; onClear: () => void }) {
-  const connection = useModulationStore((s) => s.connections.find((c) => c.id === id))!
-  const disconnect = useModulationStore((s) => s.disconnect)
-  const update = useModulationStore((s) => s.updateConnection)
-  const labels = useEndpointLabels(connection.source, connection.target)
-
-  return (
-    <div className="flex flex-col h-full min-h-0">
-      <Header
-        {...labels}
-        icon={<Activity className="w-3 h-3 text-aura-node-signal" />}
-        enabled={connection.enabled}
-        onToggle={() => update(id, { enabled: !connection.enabled })}
-        onDelete={() => {
-          disconnect(id)
-          onClear()
-        }}
-      />
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        <ChainEditor connectionId={id} />
-      </div>
-    </div>
   )
 }
 

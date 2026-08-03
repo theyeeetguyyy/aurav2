@@ -1,17 +1,18 @@
 import { useMemo } from 'react'
 import { Link2 } from 'lucide-react'
-import { useSceneStore } from '@/store/useSceneStore'
 import { addressKey } from '@/engine/modulation/ModulationMatrix'
 import { useModulatedOffset } from '@/hooks/useModulatedValue'
 import { ScrubField } from '@/components/common/ScrubField'
-import type { ParamDescriptor } from '@/types/params'
-import type { SceneObject } from '@/types/visual'
+import { useAudioStore } from '@/store/useAudioStore'
+import type { ParamDescriptor, ParamValue } from '@/types/params'
 
 interface ParamFieldProps {
-  object: SceneObject
+  /** Owner of the parameter — a SceneObject id, or POST_STACK_ID for the post chain. */
+  objectId: string
   descriptor: ParamDescriptor
-  value: number | string | boolean | undefined
+  value: ParamValue | undefined
   effectId?: string
+  onChange: (value: ParamValue) => void
 }
 
 /** One editable parameter, showing both its base value and what modulation is doing
@@ -19,14 +20,14 @@ interface ParamFieldProps {
  *
  *  Without the live readout you are authoring blind: the shape visibly moves while the
  *  number sits still, because modulation bypasses React entirely (HC-1). The driven
- *  value is polled at display rate instead — see useModulatedOffset. */
-export function ParamField({ object, descriptor, value, effectId }: ParamFieldProps) {
-  const setParam = useSceneStore((s) => s.setParam)
-  const address = { objectId: object.id, effectId, paramKey: descriptor.key }
-
+ *  value is polled at display rate instead — see useModulatedOffset.
+ *
+ *  Takes an owner id and a writer rather than a SceneObject, so the post chain — which
+ *  has no SceneObject to belong to — renders through exactly the same control. */
+export function ParamField({ objectId, descriptor, value, effectId, onChange }: ParamFieldProps) {
   const key = useMemo(
-    () => (descriptor.realtime ? addressKey(object.id, descriptor.key, effectId) : null),
-    [object.id, descriptor.key, descriptor.realtime, effectId],
+    () => (descriptor.realtime ? addressKey(objectId, descriptor.key, effectId) : null),
+    [objectId, descriptor.key, descriptor.realtime, effectId],
   )
   const offset = useModulatedOffset(key)
   const isDriven = Math.abs(offset) > 1e-4
@@ -39,7 +40,7 @@ export function ParamField({ object, descriptor, value, effectId }: ParamFieldPr
           <input
             type="color"
             value={typeof value === 'string' ? value : '#000000'}
-            onChange={(e) => setParam(address, e.target.value)}
+            onChange={(e) => onChange(e.target.value)}
             className="w-6 h-4 bg-transparent border-0 cursor-pointer p-0"
           />
         </label>
@@ -52,11 +53,14 @@ export function ParamField({ object, descriptor, value, effectId }: ParamFieldPr
           <input
             type="checkbox"
             checked={value === true}
-            onChange={(e) => setParam(address, e.target.checked)}
+            onChange={(e) => onChange(e.target.checked)}
             className="accent-aura-accent"
           />
         </label>
       )
+
+    case 'stem':
+      return <StemField descriptor={descriptor} value={value} onChange={onChange} />
 
     case 'enum':
       return (
@@ -64,7 +68,7 @@ export function ParamField({ object, descriptor, value, effectId }: ParamFieldPr
           <span className="text-slate-400 font-medium truncate">{descriptor.label}</span>
           <select
             value={String(value ?? descriptor.defaultValue)}
-            onChange={(e) => setParam(address, e.target.value)}
+            onChange={(e) => onChange(e.target.value)}
             className="bg-transparent text-aura-accent text-[11px] outline-none cursor-pointer"
           >
             {descriptor.options?.map((option) => (
@@ -86,9 +90,7 @@ export function ParamField({ object, descriptor, value, effectId }: ParamFieldPr
             <ScrubField
               descriptor={descriptor}
               value={base}
-              onChange={(next) =>
-                setParam(address, descriptor.type === 'int' ? Math.round(next) : next)
-              }
+              onChange={(next) => onChange(descriptor.type === 'int' ? Math.round(next) : next)}
             />
           </div>
 
@@ -125,4 +127,38 @@ export function ParamField({ object, descriptor, value, effectId }: ParamFieldPr
       )
     }
   }
+}
+
+/** Stem picker. Its options are the imported tracks, so it cannot come from the
+ *  descriptor's static `options` list. */
+function StemField({
+  descriptor,
+  value,
+  onChange,
+}: {
+  descriptor: ParamDescriptor
+  value: ParamValue | undefined
+  onChange: (value: ParamValue) => void
+}) {
+  const tracks = useAudioStore((s) => s.tracks)
+
+  return (
+    <label className="flex items-center justify-between gap-2 h-7 px-2 bg-aura-surface border border-aura-line rounded text-[11px]">
+      <span className="text-slate-400 font-medium truncate">{descriptor.label}</span>
+      <select
+        value={typeof value === 'string' ? value : ''}
+        onChange={(e) => onChange(e.target.value)}
+        className="bg-transparent text-aura-accent text-[11px] outline-none cursor-pointer max-w-[60%] truncate"
+      >
+        <option value="" className="bg-aura-elevated">
+          {tracks.length === 0 ? 'No stems loaded' : 'None'}
+        </option>
+        {tracks.map((track) => (
+          <option key={track.id} value={track.id} className="bg-aura-elevated">
+            {track.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
 }

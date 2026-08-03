@@ -1,5 +1,6 @@
 import { useSceneStore, useSelectedObject } from '@/store/useSceneStore'
 import { BrickRegistry } from '@/engine/scene/BrickRegistry'
+import { MaterialRegistry } from '@/engine/scene/materials/MaterialRegistry'
 import { describeObject, groupsOf, readParam } from '@/engine/params/ParamRegistry'
 import { ParamField } from './ParamField'
 import { EffectStack } from './EffectStack'
@@ -12,6 +13,7 @@ import type { SceneObject } from '@/types/visual'
  *  registered brick gets a correct, correctly-ranged editor for free. */
 export function Inspector() {
   const object = useSelectedObject()
+  const setParam = useSceneStore((s) => s.setParam)
 
   if (!object) {
     return (
@@ -40,9 +42,12 @@ export function Inspector() {
                 .map((descriptor) => (
                   <ParamField
                     key={descriptor.key}
-                    object={object}
+                    objectId={object.id}
                     descriptor={descriptor}
                     value={readParam(object, { objectId: object.id, paramKey: descriptor.key })}
+                    onChange={(value) =>
+                      setParam({ objectId: object.id, paramKey: descriptor.key }, value)
+                    }
                   />
                 ))}
             </div>
@@ -57,7 +62,9 @@ export function Inspector() {
 
 function ObjectHeader({ object }: { object: SceneObject }) {
   const setBrick = useSceneStore((s) => s.setBrick)
+  const setMaterialBrick = useSceneStore((s) => s.setMaterialBrick)
   const brick = BrickRegistry.get(object.brickId)
+  const material = MaterialRegistry.get(object.materialId)
   const morphTargets = BrickRegistry.morphTargets(object.brickId)
 
   return (
@@ -100,6 +107,21 @@ function ObjectHeader({ object }: { object: SceneObject }) {
           ? `Can morph into ${morphTargets.length} other shape${morphTargets.length === 1 ? '' : 's'}`
           : 'Swap-only — transitions to other shapes are a crossfade, not a morph'}
       </p>
+
+      {/* Shading model. Separate from geometry because they are separate questions —
+          the same sphere is a different object as chrome, as neon, or as a rim glow. */}
+      <select
+        value={object.materialId}
+        onChange={(e) => setMaterialBrick(object.id, e.target.value)}
+        className="w-full h-6 px-1.5 bg-aura-surface border border-aura-line rounded text-[11px] text-slate-300 outline-none focus:border-aura-focus"
+        title={material?.hint ?? 'Shading model'}
+      >
+        {MaterialRegistry.list().map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.label}
+          </option>
+        ))}
+      </select>
     </header>
   )
 }

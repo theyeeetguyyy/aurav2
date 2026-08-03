@@ -1,5 +1,7 @@
 import type { ID } from './audio'
 import type { FieldRef, ParamAddress } from './params'
+import type { CurvePoint } from '@/engine/modulation/curve'
+import { LINEAR_CURVE } from '@/engine/modulation/curve'
 
 /** Modulation: routing Fields onto parameters (docs/04-ENGINE-SPECS.md §4.2).
  *
@@ -40,6 +42,9 @@ export interface SignalChain {
   weight: number
   /** Flip the shaped signal (1 - x) before ranging — "quieter means bigger". */
   invert: boolean
+  /** Response curve: how the incoming 0–1 signal maps to 0–1 before smoothing.
+   *  Gain and Min/Max control how much; this controls the *shape* of the reaction. */
+  curve: CurvePoint[]
 }
 
 export const DEFAULT_SIGNAL_CHAIN: SignalChain = {
@@ -50,6 +55,7 @@ export const DEFAULT_SIGNAL_CHAIN: SignalChain = {
   max: 1,
   weight: 1,
   invert: false,
+  curve: LINEAR_CURVE,
 }
 
 /** Discrete event trigger (Principle 4).

@@ -1,0 +1,202 @@
+# 14 — Visual Idea Bank
+
+> Research pass across TouchDesigner, Notch, Resolume and the creative-coding /
+> shader-art world, plus original ideas. Ordered by **what is worth building**, not by
+> what exists elsewhere.
+>
+> Companion to [10-ELEMENTS.md](10-ELEMENTS.md) (the element families) and
+> [12-DEFORMERS.md](12-DEFORMERS.md) (the fifteen built).
+
+## Benchmark
+
+Notch ships **70+ deformer nodes** and **20+ cloner nodes**. AURA has 15 deformers,
+14 post effects, 7 materials, 3 cloners and 4 effectors. That gap is a roadmap, not a verdict — Notch is a decade old, and about
+half of its list is things AURA should never build (face tracking, MDD import, fertilizer
+times). The half worth taking is below.
+
+---
+
+## Part 1 — Things AURA can do that Notch and TouchDesigner structurally cannot
+
+This is the part worth caring about most. It follows from one property: **features are
+timelines sampled by `t`, per stem** (HC-3). Every other tool taps a live signal, which
+means it only knows the present, and only for the whole mix.
+
+### 1.1 Look-ahead — the shape *braces* before the hit
+
+A deformer or field reads `sample(t + lookahead)`. The object anticipates: it tenses a
+sixteenth before the kick lands and releases into it.
+
+No live-tap architecture can do this at all — the future has not happened yet. It is the
+single most distinctive thing available to us, it costs almost nothing to implement, and
+it reads instantly as "choreographed" rather than "reacting".
+
+### 1.2 Time-smear across space — geometry that *holds* the last second
+
+Vertex or clone index maps to a time offset: `sample(t − index × delay)`.
+
+- On a cloner array: clone 0 is now, clone 7 is half a second ago. The ring becomes a
+  physical waveform of the recent past, and every hit visibly travels outward.
+- On a mesh axis: the shape's left side is older than its right. A drum fill draws itself
+  across the surface.
+
+### 1.3 Per-stem geometry — the mesh *is* one stem's spectrum
+
+An **FFT deformer** where vertex angle maps to frequency bin and displacement to that
+bin's energy — but sourced from **one stem**, not the mix. The sphere becomes the drums'
+spectrum while a second object becomes the atmosphere's.
+
+Notch has an FFT deformer; it reads the master output. Ours reads whichever stem you wire,
+which is the entire product thesis made geometric.
+
+### 1.4 One clone per stem
+
+A cloner whose index maps to a *stem*, not just an offset. Eight stems, eight objects,
+each driven by its own. The mix becomes visibly decomposed — literally what the original
+brief described and what no competitor can express.
+
+### 1.5 Section-aware behaviour
+
+Elements that read `is-buildup` / `drop-decay` / section markers and change *what they do*,
+not just how much. Kaleidoscope only in the drop. Particles only in the breakdown.
+(Needs Phase 6.)
+
+---
+
+## Part 2 — Deformer backlog
+
+Ranked. Cross-referenced against Notch's node list where relevant.
+
+| Deformer | Class | Why |
+|---|---|---|
+| **FFT / Spectrum** | audio-native | §1.3. The most on-brand deformer possible. |
+| **Curl Noise** | divergence-free field | Fluid swirl with no sources or sinks — reads as smoke, not as wobble. Categorically better-looking than plain noise. |
+| **Look-ahead wrapper** | temporal | §1.1. Arguably a Field modifier rather than a deformer. |
+| **Echo / Time-smear** | temporal | §1.2. |
+| **Cull / Dissolve** | subtractive | Hide vertices past a threshold. The shape *disintegrates*. Nothing currently removes geometry, only moves it. |
+| **Smooth / Relax** | inverse | The anti-deformer. Stack it after chaos to regain control — makes the whole stack more usable. |
+| **Ocean Wave (Gerstner)** | periodic | Layered sine + noise with peaked crests. Real water, not a sine ripple. |
+| **Displacement Map** | image-driven | Push a logo or texture into geometry. Also the bridge to importing any image as form. |
+| **Voronoi Shatter** | cellular | True cells rather than the grid cells `Fracture` uses. Glass, not blocks. |
+| **Mirror / Symmetry** | reflective | 3D kaleidoscope. Cheap, transforms silhouettes. |
+| **Taper** | axial | Linear cross-section scaling. Trivial, and pairs with everything. |
+| **Spline Deform** | path | Bend geometry along a curve — also how text-on-path works later. |
+| **Inflate / Pressure** | volumetric | Volume-preserving swell. Breathing. |
+| **Jelly / Inertia** | temporal | Overshoot and settle. Implemented as a *convolution over past samples* rather than an accumulator, so it stays pure (D-36). |
+| **Vertex Colour by displacement** | shading | Colour where the mesh is stretched. Makes every other deformer legible. |
+
+---
+
+## Part 3 — Particles
+
+The largest single jump in visual density available.
+
+| System | Notes |
+|---|---|
+| **Curl-noise advection** | The default good-looking particle motion. Smoke, ink, ribbons. |
+| **Surface emission** | Particles born off another object's surface — dust off an exploding shape. |
+| **Strange attractors** | Lorenz, Thomas, Aizawa, Halvorsen. Deterministic, stateless from a seed, and stunning. Attractor parameters are modulation targets — the *shape of the attractor* changes with the music. |
+| **Flocking / boids** | Emergent, organic, feels alive. |
+| **SPH fluid** | Expensive but unmistakable. |
+| **Gravity wells** | Scene objects act as attractors/repellers on the particle field. |
+| **Per-particle trails** | Ribbons. Doubles the perceived density for little cost. |
+| **Particles → metaballs** | Particles as SDF sources, smooth-min'd into liquid metal. |
+
+---
+
+## Part 4 — Raymarched fields
+
+Different render path, "impossible geometry" aesthetic.
+
+| Field | Notes |
+|---|---|
+| **SDF metaballs** | `smooth-min` blending. Clay that melts and separates with the music. |
+| **Domain warping** | Inigo Quilez's technique — noise offsets the sample point of more noise. Each layer adds swirls, folds and tendrils. Enormous complexity from very little code. |
+| **Reaction–diffusion** | Turing patterns. Organic growth, coral, fingerprints. Feed/kill rates as modulation targets. |
+| **Fractals** | Mandelbulb, Menger sponge, Apollonian gaskets, Kaliset. Infinite zoom, and fractal parameters are extraordinary modulation targets. |
+| **Volumetric clouds / nebula** | Depth and atmosphere. |
+| **Tunnel** | Solves "the camera needs somewhere to go" better than any object. |
+| **Gravitational lens** | Screen-space warp — a black hole bending the scene behind it. |
+
+---
+
+## Part 5 — Post-processing
+
+Cheapest quality-per-hour in the entire document.
+
+**Tier 1 — build these first**
+- **Bloom** — the single largest perceived-quality jump available.
+- **Feedback trails** — previous frame transformed (zoom / rotate / offset) and blended. Zoom-feedback alone creates infinite tunnels from any content.
+- **Kaleidoscope** — turns any scene, however plain, into something that reads as designed.
+- **Chromatic aberration + RGB delay** — per-channel *time* offset, not just spatial. Colour fringing that lags with the music.
+
+**Tier 2**
+- **Slit-scan** — one column of the screen sampled per moment in time. With feature timelines this becomes literal time-as-space, and it is a genuinely striking look.
+- **Pixel sort** · **datamosh** — glitch, currently very much in fashion.
+- **Optical-flow displacement** — the frame drags itself along its own motion.
+- **Edge detect / contour** — instant line-art or toon rendering.
+- **Halftone · ASCII · dither · posterise** — print and terminal aesthetics.
+- **CRT / VHS / scanlines** — analogue nostalgia.
+- **Anamorphic streaks · god rays · lens dirt** — cinematic.
+- **Cosine palettes** — recolour the entire frame from four vectors. Palette cycling on the beat.
+
+---
+
+## Part 6 — Data elements
+
+The parts that make a video read instantly as *music* rather than as abstract 3D.
+
+- **Spectrum bars** — linear, radial, or wrapped around an arbitrary curve
+- **Waveform / oscilloscope trace**
+- **Lissajous / vectorscope** — stereo X vs Y. Audio-native, genuinely beautiful, nearly free
+- **Spectrogram** — scrolling time × frequency
+- **Onset sparks** — a visible mark at each detected hit
+- **Beat-grid rings** — pulses on the detected grid, so the visual proves it is in time
+
+---
+
+## Part 7 — Type and structure
+
+- **Extruded 3D text** — producer tag, beat name. The audience's most concrete unmet need.
+- **Kinetic typography** — a documented 2026 motion-design trend; letters that stretch, flow and respond.
+- **Variable-font weight driven by loudness** — the typography *breathes*. Modern and almost nobody does it audio-reactively.
+- **Per-character deformation by band** — each letter driven by a different frequency.
+- **Text on path**, **text as cloner source** (a ring of your logo).
+- **L-systems / fractal trees**, **space colonisation growth**, **Truchet tiles**,
+  **Delaunay / Voronoi wireframes**.
+- **Render modes as a property**: wireframe, point cloud, contour lines. One toggle, three
+  completely different products from the same geometry.
+
+---
+
+## Part 8 — What I would actually build, in order
+
+1. ~~**Bloom + Feedback + Kaleidoscope** (4I)~~ — ✅ built, and fourteen effects rather than
+   three. Materials (4L) and environment (4M) shipped alongside, because untreated PBR on a
+   grid was as much of the problem as the missing post chain.
+2. ~~**Cloners + Effectors** (4H)~~ — ✅ built, and 1.1 look-ahead plus 1.2 time-smear
+   shipped with them as the Time Delay effector rather than waiting for their own phase.
+3. **Curl-noise GPU particles + surface emission** — density. **Next.**
+4. ~~**Look-ahead + time-smear**~~ — ✅ built into the Time Delay effector.
+5. **FFT deformer** — the most on-brand deformer possible.
+6. **Spectrum bars + waveform + Lissajous** — instant musical legibility.
+7. **Extruded text** — the audience's clearest unmet need.
+8. **Domain warping + SDF metaballs** — proves the `sdf` backend.
+9. **Slit-scan + RGB delay** — signature looks that lean on the timeline architecture.
+10. Everything else, as appetite dictates.
+
+---
+
+## Sources
+
+- [Notch — Procedural Everything](https://www.notch.one/features/procedural-everything)
+- [Notch Manual — Deformer node reference](https://manual.notch.one/1.0/en/docs/reference/nodes/deformers/)
+- [Notch — Particles, Simulations & Volumetrics](https://www.notch.one/features/particles-simulations-volumetrics)
+- [TouchDesigner — GPU Particles and Optical Flow](https://interactiveimmersive.io/blog/touchdesigner-lessons/touchdesigner-gpu-particles/)
+- [Derivative — Raymarching & Shader Programming with RayTK](https://derivative.ca/workshop/raymarching-shader-programming-raytk/70463)
+- [Domain warping technique reference](https://github.com/MiniMax-AI/skills/blob/main/skills/shader-dev/techniques/domain-warping.md)
+- [Shader Art: GLSL and WebGL effects](https://lumitree.art/blog/shader-art)
+- [Resolume — effects reference](https://resolume.com/support/en/effects)
+- [Top effects for Resolume](https://crazyartist.net/en/top-effects-for-resolume-that-you-have-to-try-out/)
+- [WebGPU compute — SPH, boids, DLA examples](https://github.com/scttfrdmn/webgpu-compute-exploration)
+- [Typography & motion trends 2026](https://www.fontfabric.com/blog/10-design-trends-shaping-the-visual-typographic-landscape-in-2026/)

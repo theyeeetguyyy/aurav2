@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { DualCameraRig } from './DualCameraRig'
-import { DefaultScene } from './DefaultScene'
+import { EnvironmentRig } from './EnvironmentRig'
 import { SceneObjects } from './SceneObjects'
 import { ModulationDriver } from './ModulationDriver'
+import { PostChain } from './PostChain'
 import { ViewportHUD } from './ViewportHUD'
 import {
   getViewportSlot,
@@ -12,7 +13,6 @@ import {
   type ViewportSlotOptions,
 } from './viewportSlotRegistry'
 import { useSceneStore } from '@/store/useSceneStore'
-import { readToken } from '@/utils/tokens'
 
 interface Rect {
   x: number
@@ -109,12 +109,15 @@ export function PersistentViewport() {
         frameloop={visible ? 'always' : 'never'}
         onPointerMissed={() => select(null)}
       >
-        <color attach="background" args={[readToken('--color-aura-viewport-bg', '#09090b')]} />
         {/* Before SceneObjects, so the matrix is evaluated before it is read. */}
         <ModulationDriver />
         <DualCameraRig />
-        <DefaultScene />
+        {/* Owns scene.background now — a routable gradient, not a fixed token colour. */}
+        <EnvironmentRig />
         <SceneObjects />
+        {/* Last in the tree: it takes over the render loop, so everything that writes to
+            the scene must have run first. */}
+        <PostChain />
       </Canvas>
 
       {visible && !options.compact && <ViewportHUD />}

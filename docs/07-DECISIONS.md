@@ -169,6 +169,99 @@ plumbing, and full control over the normalisation step — which is the part tha
 determines whether the product feels responsive. essentia.js stays available if beat
 tracking needs to be stronger than inter-onset-interval histogramming.
 
+**D-39 · Every connection has an editable response curve.**
+`SignalChain` gains `curve: CurvePoint[]` — point-based with per-segment exponential
+tension, the model every DAW envelope editor already uses. Applied after Gain and *before*
+Rise/Fall, so a gate curve genuinely gates rather than gating a smoothed average. Chain
+order is now **Gain → Curve → Rise/Fall → Min/Max → Weight**.
+*Why:* Gain and Min/Max control how much and Rise/Fall controls how fast, but nothing
+controlled the *shape* of the reaction — whether quiet detail matters or only peaks do.
+That is the single most expressive control in a modulation system and it was missing.
+
+**D-40 · Routing shows real parameter values, not abstractions.**
+The patchbay and the connection inspector display the span the parameter will actually
+move between, in its own units — `1.00× → 2.50×`, `0.00 → 3.00` — computed by sampling
+the curve rather than assuming its endpoints.
+*Why:* "Min 0 / Max 1.5 / Weight 1" requires mental arithmetic to answer the only question
+that matters. Sampling rather than assuming matters because a Band curve peaks mid-range
+and returns to zero at both ends, so endpoint-only maths would report a range of zero
+while the parameter visibly moves.
+
+**D-41 · The modulation curve is drawn from the real engine.**
+`previewConnection()` runs the actual `SignalShaper` over the actual feature timeline and
+returns the values the parameter will take. The inspector graph and the per-stem signal
+strips draw that, not an illustration of the settings.
+*Why:* it is the "show me the LFO underneath" view, and drawing anything less than the
+real thing would eventually lie. Only possible because features are timelines and the
+chain is deterministic (HC-3) — a live-tap architecture could only ever draw the past,
+never the four seconds ahead of the playhead.
+
+**D-42 · The post chain is project-global and addresses itself with a reserved owner id.**
+Post effects live in `usePostStore`, not in `SceneObject.effects`, and address themselves
+as `{ objectId: '@post', effectId: <instance>, paramKey }`. `ParamAddress` is unchanged.
+*Why:* bloom is a property of the frame, not of the sphere — hanging it off an object
+would mean deciding which object owns it, and duplicating the object would duplicate the
+bloom. The reserved id is what makes the patchbay, the modulation matrix, the inspector
+and the serialiser handle a bloom knob with zero special cases. Ids come from
+`crypto.randomUUID()`, so a leading `@` can never collide.
+
+**D-43 · Materials are bricks; `MaterialParams` is open.**
+The fixed eight-field material struct is replaced by `materialId` plus an open
+`Record<string, ParamValue>`, with descriptors declared by a `MaterialBrick`.
+*Why:* the old struct was exactly the closed enumeration HC-5 forbids, and it was the
+direct cause of every object looking like the same grey plastic — there was one shading
+model and no way to declare a second. Seven models ship (Standard, Physical, Unlit,
+Gradient, Fresnel Rim, Toon, Normal). Descriptor keys keep the `material.` prefix so
+addressing and serialisation are unchanged; stored values stay unprefixed, which is the
+split `writeParam` already used.
+
+**D-44 · The world is a fixed set of sections, not an open stack.**
+Background, fog, lighting, reflections and grid live in `useEnvironmentStore` under the
+reserved id `@env`, each section addressed as an `effectId`.
+*Why:* a scene has exactly one background and one fog — an open stack would model
+something that cannot happen. But every knob still needs to be a modulation target, and
+reusing the effect slot of `ParamAddress` gets that for free. This is what finally
+delivers the brief's routable background colour, and what makes light intensity and
+angle drivable. Image-based lighting is generated from `RoomEnvironment` rather than
+loaded from an HDRI: no asset, no network, and it is the single largest improvement to
+how metal and rough surfaces read.
+
+**D-45 · The render path reads `activeClock()`, not `TransportClock`.**
+`engine/time/timeAuthority.ts` returns the transport during preview and whatever clock
+the exporter installs during an offline render.
+*Why:* HC-2 promises three implementations of one interface, but the render path named
+one of them directly, which made the other two unreachable — `FrameClock` could be
+constructed and nothing would ever read it, so "if a system cannot be driven by
+FrameClock it is broken" was unenforceable. This is the seam that makes it enforceable.
+
+**D-46 · Post effects may read time; deformers still may not.**
+`PostContext` carries `time`; `DeformContext` still has no `time` (D-36).
+*Why:* film grain that does not move is not grain, and a feedback trail is stateful by
+definition. The rule that actually matters is not "no time" but "no time source other
+than the clock": grain quantises `activeClock().time` into a seed, and the composer's own
+wall-clock `time` uniform is banned. Anything animated from an internal accumulator would
+render differently on the second export of the same project.
+
+**D-47 · Cloners and effectors are separate bricks, and effectors may read time.**
+A cloner lays copies out; effectors vary them. One cloner per object (a second would
+overwrite the first's placement, so it is disabled rather than silently ignored); any
+number of effectors, applied in stack order. All three kinds — deformer, cloner, effector
+— live in one `EffectRegistry` and are told apart by which method they carry (`apply` /
+`layout` / `affect`), not by a discriminant field, so the fifteen existing deformers
+needed no edit.
+
+`EffectorContext` carries `time`, which `DeformContext` deliberately does not (D-36). Not
+a relaxation: the Time Delay effector's entire purpose is reading a signal at a moment
+other than now, which is not expressible without time. It stays a pure function of it —
+no accumulator, no frame counter — so scrubbing backwards reproduces exactly. The rule
+that actually matters, here as in D-46, is *no time source other than the clock*.
+
+That effector reads `AudioFeatures` directly rather than going through the modulation
+matrix, and the reason is structural: the matrix evaluates one value per address per
+frame, and this needs `count` values at `count` different moments. It also needs to name
+a stem, which no static `enum` descriptor can express — hence the `stem` `ParamType`,
+whose options are whatever the user has imported.
+
 **D-36 · Deformers cannot animate themselves.**
 `DeformContext` has no `time`. A deformer is a pure function of its parameters; all
 motion arrives through modulation. `Noise Wave` and `Wave` lost their `speed` parameter

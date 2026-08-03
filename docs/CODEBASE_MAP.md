@@ -67,8 +67,8 @@ frame 12 and still produce exactly what was previewed.
 |---|---|---|
 | `audio.ts` | `Track`, `TrimBounds`, `AnalysisData`, `StemMetrics`, `ID` | current |
 | `generator.ts` | `Generator`, `GeneratorType` — synthetic stems (D-37) |
-| `params.ts` | `ParamAddress`, `ParamDescriptor`, `FieldRef`, `ParamValue`, address serialisation, `denormalise()` (HC-5) | current |
-| `visual.ts` | `SceneObject`, `RenderBackend`, `MeshKind`, `Transform3D`, `MaterialParams`, `EffectInstance` (HC-4) | current |
+| `params.ts` | `ParamAddress`, `ParamDescriptor`, `FieldRef`, `ParamValue`, address serialisation, `denormalise()` (HC-5). `ParamType` includes `stem`, whose options are the loaded tracks rather than a static list | current |
+| `visual.ts` | `SceneObject`, `RenderBackend`, `MeshKind`, `Transform3D`, `MaterialParams`, `EffectInstance`, `POST_STACK_ID` (HC-4). `MaterialParams` is an open record now, not a fixed struct (D-43) | current |
 | `modulation.ts` | `ModulationConnection`, `SignalChain`, `EventTrigger`, defaults | current — both ends are `FieldRef` / `ParamAddress`; the closed unions are gone (HC-5) |
 | `camera.ts` | `SceneCamera`, `PreviewCamera`, `CameraKeyframe`, `SplineWaypoint`, `CameraConstraint` | current |
 | `project.ts` | `VisualState`, `Strip`, `SectionMarker`, `Project` | ⚠️ needs `activeConnectionIds` / `connectionOverrides` (HC-8) — Phase 6A |
@@ -84,6 +84,8 @@ frame 12 and still produce exactly what was previewed.
 | `useProjectStore.ts` | states library, strips, markers, project meta | |
 | `useGeneratorStore.ts` | Synthetic stems — LFOs and noise (D-37). Own store, not folded into `useAudioStore`, which would mean a dozen permanently-null fields |
 | `useSceneStore.ts` | **the SceneObject layer stack** — array order *is* layer order; param writes by address | exports `useSelectedObject()` |
+| `usePostStore.ts` | The project-global post chain. Array order is evaluation order; owns the master bypass (D-42) |
+| `useEnvironmentStore.ts` | Background, fog, lighting, reflections, grid — one flat record per section (D-44) |
 
 > No store may hold an `AudioBuffer`, a `THREE.Object3D`, a GPU handle, or a DOM node.
 
@@ -95,6 +97,7 @@ frame 12 and still produce exactly what was previewed.
 |---|---|
 | `Clock.ts` | The `Clock` interface plus `SteppedClock` and `FrameClock`. Anything not drivable by `FrameClock` cannot be exported (HC-2). |
 | `TransportClock.ts` | Live playhead singleton. Per-frame subscribers read imperatively; React uses `useTransportTime()`. |
+| `timeAuthority.ts` | `activeClock()` — the seam the render path reads. Transport during preview, whatever the exporter installs during a render (D-45). |
 
 ### `engine/audio/`
 
@@ -113,6 +116,8 @@ frame 12 and still produce exactly what was previewed.
 |---|---|
 | `SignalShaper.ts` | One connection's chain: Gain → Rise/Fall → Min/Max → Weight. The only stateful part of modulation; reset on clock jumps. |
 | `fields.ts` | `evaluateField()` + the source catalogue. Every field is a **pure function of time**. Takes a `FieldContext` rather than importing a store — the engine boundary is absolute. |
+| `curve.ts` | Response curves — points + per-segment exponential tension, presets, `evaluateCurve()` (D-39) |
+| `preview.ts` | Runs the real shaper over the real timeline to produce the drawn curve and the reachable value range (D-41) |
 | `ModulationMatrix.ts` | Per-frame evaluation into `Map<addressKey, offset>`. Weighted N:1 summing. Connections passed in, not read from a store, so the exporter can drive it with its own state. |
 
 ### `engine/scene/`
@@ -124,11 +129,39 @@ frame 12 and still produce exactly what was previewed.
 | `backends/proceduralMesh.ts` | **The morph-compatible family.** One welded 642-vertex icosphere displaced per shape. Exports `BASE_VERTEX_COUNT`, `assertMorphCompatible()`. |
 | `backends/primitiveMesh.ts` | 10 native Three geometries. `morphGroup: null` — swap-only. |
 | `backends/proceduralMesh.test.ts` | The shared-topology invariant (HC-4). 23 assertions. |
-| `EffectRegistry.ts` | Catalogue of stackable effects. Separate from BrickRegistry because a geometry brick *builds* a mesh and an effect brick *modifies* one. |
+| `EffectRegistry.ts` | Catalogue of stackable effects — deformers, cloners and effectors under one roof, told apart by which method they carry. Separate from BrickRegistry because a geometry brick *builds* a mesh and an effect brick *modifies* one. |
 | `DeformRuntime.ts` | Per-object working geometry. Shared geometry is never mutated — an object with deformers gets a private copy; one without allocates nothing. |
 | `effects/types.ts` | `DeformerBrick` contract. Whole-array, not per-vertex callback. |
 | `effects/deformers.ts` | **15 deformers**, each a distinct class of vertex operation (D-38). No `time` in the contract — they cannot self-animate (D-36). See [12-DEFORMERS.md](12-DEFORMERS.md). |
 | `effects/noise.ts` | Stateless 3D value noise + fbm. Stateless because deformers must be pure functions of time (HC-3). |
+| `cloners/types.ts` | `ClonerBrick` / `EffectorBrick`, `CloneBuffers` (structure-of-arrays), `MAX_CLONES`. `EffectorContext` carries time; `DeformContext` still does not (D-47) |
+| `cloners/cloners.ts` | Three layouts — radial, linear, grid. Three and not thirty: anything else is a layout plus an effector |
+| `cloners/effectors.ts` | Step, Random, Wave and **Time Delay**. Each is a weight function feeding one shared set of transform/tint outputs |
+| `cloners/CloneRuntime.ts` | Per-object clone state. Buffers allocated once at MAX_CLONES, so clone count is drivable at frame rate. Restarts from the layout every frame (HC-3) |
+
+### `engine/post/` — whole-frame effects (4I)
+
+| File | Role |
+|---|---|
+| `types.ts` | `PostBrick` / `PostHandle` contract, `PostContext` (carries clock time — D-46), descriptor helpers. A handle's node is either a mergeable `Effect` or a `Pass` that owns render targets |
+| `PostRegistry.ts` | The catalogue, grouped Glow · Distort · Time · Colour · Texture |
+| `bricks/builtins.ts` | Seven wrappers over `postprocessing` effects. Re-declared rather than exposed raw, so every knob arrives as a `ParamDescriptor` with a real range (HC-5) |
+| `bricks/shaders.ts` | Six hand-written effects — Kaleidoscope, Mirror, Zoom Blur, Colour Grade, Palette, Film Grain. `resolution`/`aspect`/`time` are supplied by the material and must not be re-declared; the composer's `time` is banned (HC-2) |
+| `bricks/feedback.ts` | Feedback Trails. The only stateful thing in the render path — ping-pong frame history, cleared on any clock jump |
+
+### `engine/environment/` — the world (4M)
+
+| File | Role |
+|---|---|
+| `sections.ts` | The five world sections and their descriptors. A fixed set, not an open stack — a scene has one background (D-44) |
+
+### `engine/scene/materials/` — shading models (4L)
+
+| File | Role |
+|---|---|
+| `types.ts` | `MaterialBrick` / `MaterialHandle`. Descriptor keys carry the `material.` prefix; stored values do not — `materialKey()` is the single place that bridges them |
+| `materials.ts` | Seven models: Standard, Physical, Unlit, Gradient, Fresnel Rim, Toon, Normal. The unlit family matters more than it looks — bloom and feedback key off bright flat colour |
+| `MaterialRegistry.ts` | Catalogue + `migrateParams()`, which carries shared values across a model swap |
 
 ### `engine/params/`
 
@@ -176,6 +209,8 @@ frame 12 and still produce exactly what was previewed.
 | `scene/Inspector.tsx` | Fully descriptor-driven. Knows nothing about radius or roughness — renders whatever `ParamRegistry` describes |
 | `scene/ParamField.tsx` | One parameter row. Shows base value *and* the live modulated value, polled at 15 Hz — modulation never enters React, so the UI samples it |
 | `scene/EffectStack.tsx` | Deformer stack: add, reorder, enable, remove. Order is evaluation order |
+| `scene/WorldPanel.tsx` | The five world sections. Sits above Post because that is the order a frame is built |
+| `scene/PostStack.tsx` | The post chain with inline parameters, grouped effect picker and a master bypass. A/B against the untreated render is one click |
 
 ### Routing
 
@@ -188,7 +223,12 @@ frame 12 and still produce exactly what was previewed.
 | `routing/patchbay/anchors.ts` | DOM anchor registry. Wires connect real elements, so columns stay plain scrollable lists. `refreshAnchors()` re-measures after a column resize, which no observer would catch |
 | `routing/patchbay/dragState.ts` | In-flight drag, kept outside React — only the coarse "is dragging" flag reaches it |
 | `routing/WireInspector.tsx` | Right dock: selected wire's endpoints, enable/delete, chain or trigger settings |
+| `routing/ConnectionInspector.tsx` | Real value range, modulation graph, curve editor, chain — in the order you think about them |
+| `routing/CurveEditor.tsx` | SVG response-curve editor. Drag points, drag segments to bend, double-click add, Alt-click remove |
+| `routing/ModulationGraph.tsx` | The parameter's real value over time, plus a ghost of the raw signal. Canvas, imperative |
+| `routing/patchbay/StemSignalStrip.tsx` | Each stem's own signal over time — the shape everything wired from it inherits |
 | `routing/ChainEditor.tsx` | Per-connection signal chain, presented in evaluation order |
+| `routing/targetInfo.ts` | Resolves any target address — SceneObject, post chain or world — to descriptor, base value and labels. Lives here rather than in `ParamRegistry` because it reads stores, and `engine/` may not |
 
 ### Viewport
 
@@ -199,8 +239,9 @@ frame 12 and still produce exactly what was previewed.
 | `viewport/SceneMonitor.tsx` | Live scene panel for non-3D pages. Relocates the one renderer — not a copy, not a second context |
 | `viewport/viewportSlotRegistry.ts` | Current slot element + subscribers. Named `…Registry` because `viewportSlot.ts` collides with `ViewportSlot.tsx` on case-insensitive filesystems |
 | `viewport/DualCameraRig.tsx` | **Two real cameras**, explicit active-camera binding, mutually exclusive Fly/Orbit (HC-10) |
-| `viewport/DefaultScene.tsx` | Studio lights + grid, colours read from design tokens |
-| `viewport/SceneObjects.tsx` | Renders the layer stack. Geometry from `BrickRegistry` (cached, never disposed here). **Applies modulation imperatively in `useFrame`** — never through props or state (HC-1) |
+| `viewport/EnvironmentRig.tsx` | The world: gradient background, fog, three-point rig, `RoomEnvironment` reflections, authoring grid. Replaced the hardcoded `DefaultScene`. Values applied in `useFrame`, never as props (HC-1) |
+| `viewport/PostChain.tsx` | The composer. Mounted only while something is enabled — a `useFrame` at priority ≥ 1 takes the render loop from R3F, so unmounting is what hands it back. Rebuilt on stack SHAPE change only |
+| `viewport/SceneObjects.tsx` | Renders the layer stack. Object transform lives on a `<group>`; below it either one `<mesh>` or an `<instancedMesh>` when the stack has a cloner. Geometry from `BrickRegistry` (cached, never disposed here). **Applies modulation imperatively in `useFrame`** — never through props or state (HC-1) |
 | `viewport/ModulationDriver.tsx` | Evaluates the matrix once per frame, before anything reads it. Reads stores with `getState()`, never a hook |
 | `viewport/ViewportHUD.tsx` | Reticles, camera + control-mode switchers. Flat, no blur |
 
@@ -228,6 +269,7 @@ frame 12 and still produce exactly what was previewed.
 |---|---|
 | `hooks/useTransportTime.ts` | Throttled playhead for display-only components (HC-1) |
 | `hooks/useModulatedValue.ts` | Polls live modulation offsets for display. **One shared 15 Hz ticker** for all subscribers — the first version created a timer per field |
+| `utils/units.ts` | Display suffix per parameter unit, so every readout spells a value the same way |
 | `utils/tokens.ts` | Reads CSS custom properties for canvas/Three.js consumers, so viewport and chrome share one token source |
 | `utils/stemColors.ts` | Rotating stem palette from tokens; `generateId()` via `crypto.randomUUID()` |
 

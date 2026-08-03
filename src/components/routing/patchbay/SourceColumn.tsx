@@ -8,6 +8,7 @@ import { TransportClock } from '@/engine/time/TransportClock'
 import { AUDIO_FIELDS, GENERATOR_FIELD, RHYTHM_FIELDS } from '@/engine/modulation/fields'
 import type { FeatureKey } from '@/engine/audio/featureTypes'
 import type { FieldRef } from '@/types/params'
+import { StemSignalStrip } from './StemSignalStrip'
 import { registerAnchor, sourceAnchorId } from './anchors'
 import { beginDrag } from './dragState'
 
@@ -34,6 +35,8 @@ export function SourceColumn({ onDragStart }: SourceColumnProps) {
       {tracks.map((track) => (
         <Group key={track.id}>
           <StemHeader trackId={track.id} name={track.name} color={track.color} />
+          {/* The stem's own signal — the shape everything wired from it inherits. */}
+          <StemSignalStrip trackId={track.id} color={track.color} />
           {AUDIO_FIELDS.map((option) => (
             <SourceDot
               key={option.key}
@@ -195,7 +198,7 @@ function GeneratorSection({ onDragStart }: SourceColumnProps) {
               onChange={(e) =>
                 updateGenerator(generator.id, { type: e.target.value as GeneratorType })
               }
-              className="bg-transparent text-[10px] text-slate-300 outline-none cursor-pointer max-w-24"
+              className="flex-1 min-w-0 bg-transparent text-[10px] text-slate-300 outline-none cursor-pointer"
             >
               {GENERATOR_TYPES.map((t) => (
                 <option key={t.value} value={t.value} className="bg-aura-elevated">
@@ -213,7 +216,7 @@ function GeneratorSection({ onDragStart }: SourceColumnProps) {
               onChange={(e) =>
                 updateGenerator(generator.id, { rate: Number(e.target.value) || 0.01 })
               }
-              className="w-12 bg-aura-surface border border-aura-line rounded px-1 text-[10px] font-mono tabular-nums text-aura-accent outline-none focus:border-aura-focus"
+              className="w-14 shrink-0 bg-aura-surface border border-aura-line rounded px-1 text-[10px] font-mono tabular-nums text-aura-accent outline-none focus:border-aura-focus"
               title="Rate in Hz"
             />
             <span className="text-[9px] text-slate-600">Hz</span>

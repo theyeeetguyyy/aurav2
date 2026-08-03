@@ -62,7 +62,8 @@ export class DeformRuntime {
 
     for (const effect of active) {
       const brick = EffectRegistry.get(effect.effectId)
-      if (!brick) continue
+      // The registry holds cloners and effectors too; only a deformer carries `apply`.
+      if (!brick || !('apply' in brick)) continue
       ctx.params = resolveParams(effect)
       brick.apply(ctx)
     }

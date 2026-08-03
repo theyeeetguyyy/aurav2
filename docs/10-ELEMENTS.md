@@ -96,9 +96,12 @@ different aesthetic — the "impossible geometry" family.
 | **Fog / Atmosphere** | Depth haze; makes any scene read as deep | — | high |
 | **Environment Map** | HDRI reflections — the cheapest way to make metal look real | — | medium |
 
-> The grid is currently hardcoded in `DefaultScene`. It should become a real element with
-> parameters, so it can be modulated and turned off. Same for background colour, which
-> the brief explicitly asked to be routable.
+> ✅ **Built as `engine/environment/`.** Background (solid or gradient), fog, a three-point
+> lighting rig and the grid are now parameterised sections addressed under `@env`, so
+> background intensity, fog density and light angle are all wires in the patchbay — which
+> is what the brief asked for. Environment reflections are generated procedurally from
+> `RoomEnvironment`, so there is no HDRI to ship. Modelled as a fixed set of sections
+> rather than an open stack: a scene has exactly one background (D-44).
 
 ## F · Light elements — Q2
 
@@ -126,17 +129,93 @@ Applied after render, in order. Stack per project, not per object.
 
 | Effect | Legacy source | Priority |
 |---|---|---|
-| **Bloom** | already in v1 stack | **4I** |
-| **Kaleidoscope** | `kaleidoscope` | **high** — cheap, transforms any scene |
-| **Feedback trails** | — | high — frame ping-pong, huge character |
-| **Chromatic aberration · glitch · RGB shift** | `fractalShader` | 4I |
-| **Film grain · vignette · scanlines · VHS** | — | medium |
-| **Pixelate / dither / posterise** | — | medium |
+| **Bloom** | already in v1 stack | ✅ built |
+| **Kaleidoscope** | `kaleidoscope` | ✅ built — plus a separate axis Mirror |
+| **Feedback trails** | — | ✅ built — zoom, spin, drift, hue shift |
+| **Chromatic aberration** | `fractalShader` | ✅ built |
+| **Film grain · vignette · scanlines** | — | ✅ built |
+| **Pixelate · halftone** | — | ✅ built |
+| **Colour grade · cosine palette · zoom blur · lens distortion** | — | ✅ built |
+| **RGB delay · slit-scan · pixel sort · datamosh** | — | next tier |
 | **Motion blur** | — | low, expensive |
 
 > Kaleidoscope is the highest leverage single effect in the whole list: it turns any
 > scene, however plain, into something that reads as designed. One shader, applied to
 > everything.
+
+---
+
+## What a finished frame actually looks like
+
+> *"how will the visuals look after the product is complete, will we only have basic
+> shapes?"* — No. But the honest answer has two halves.
+
+**Today, yes — it is shapes.** One or more meshes with deformers, on a grid, lit by three
+lights. That is a real limitation right now, not a misreading.
+
+**What the ceiling is set by, though, is not shapes.** In order of how much they change
+the look of a frame:
+
+1. **Post-processing** (4I). Bloom, feedback trails, kaleidoscope, chromatic aberration,
+   grain. This is the single largest jump available and it is three or four shaders.
+   The same untouched sphere with bloom + feedback reads as a finished product; without
+   them it reads as a viewport.
+2. **Particles** (C). Density. A hundred thousand points reacting is a different medium
+   from one mesh reacting.
+3. **Cloners** (4H). One shape becomes forty, each individually offset and delayed.
+4. **Fields** (D) — tunnels, plasma, metaballs. Volume rather than surface.
+5. **Data elements** (B) — spectrum bars, waveform traces. The parts that read instantly
+   as *music*.
+6. **Environment** (E) — fog, gradient backgrounds, reflections. Depth and mood.
+7. **Text** (A) — the producer tag, the beat name.
+
+Shapes are the *skeleton*. Everything above is what makes a frame look like something
+someone made on purpose.
+
+### A concrete eight-second clip
+
+```
+  BACKGROUND   deep gradient, hue ← atmosphere brightness
+  FOG          density ← sub-bass
+  TUNNEL       flying toward camera, speed ← bar phase
+  GRID         floor, distortion ← kick envelope
+
+  SPHERE       procedural, metal
+    Fracture     ← kick trigger        chunks burst on every hit
+    Noise Wave   ← sub-bass            surface breathing underneath
+    × Radial Cloner ×8
+      Step effector rotation ← guns    cascade around the ring
+
+  PARTICLES    50k, scattered off the sphere's surface,
+               emission ← snare, drag ← atmosphere
+
+  SPECTRUM     radial bars behind everything, per-band
+
+  LOGO TEXT    extruded, scale ← master envelope
+
+  ── post ──
+  Bloom  →  Feedback trails  →  Kaleidoscope (drop only)  →  Grain
+```
+
+Every line is a `SceneObject` or an effect brick. Every arrow is a wire in the patchbay.
+Nothing there needs a new architecture — the layer stack, parameter registry, modulation
+matrix and effect stack already carry all of it.
+
+**Built today:** the sphere, its deformers, its shading model, the wires, the background,
+the fog, the lighting — and the whole post row.
+**Still unbuilt:** the tunnel, the cloner, the particles, the spectrum and the logo text —
+which is exactly the gap [13-PRODUCT-GAP.md](13-PRODUCT-GAP.md) measures.
+
+### Why it will not look like everyone else's
+
+Two structural reasons, not aesthetic ones:
+
+- **No presets to fall back on.** There is no "Kaleidoscope mode" to pick, so no two
+  users land on the same frame by picking the same item from a list.
+- **The stack is per-project.** Element order, deformer order, routing weights and curves
+  are all authored. The combinatorics are large enough that a recognisable channel
+  identity is achievable — which is the stated growth loop in
+  [01-VISION.md](01-VISION.md).
 
 ---
 

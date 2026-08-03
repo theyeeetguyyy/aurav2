@@ -10,7 +10,10 @@ import type { ID } from './audio'
 
 export type ParamValue = number | boolean | string
 
-export type ParamType = 'float' | 'int' | 'bool' | 'color' | 'enum'
+/** `stem` is an enum whose options cannot be declared statically — the list is whatever
+ *  the user has imported. It exists because the Time Delay effector must name a stem, and
+ *  a descriptor with fixed `options` cannot express "one of the loaded tracks". */
+export type ParamType = 'float' | 'int' | 'bool' | 'color' | 'enum' | 'stem'
 
 /** Display unit. Scene units are metres (HC-12). */
 export type ParamUnit = 'm' | 'deg' | 'x' | '%' | 'hz' | 's'

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ParamDescriptor } from '@/types/params'
+import { UNIT_SUFFIX } from '@/utils/units'
 
 interface ScrubFieldProps {
   descriptor: ParamDescriptor
@@ -8,15 +9,6 @@ interface ScrubFieldProps {
   /** Called once when a drag ends, for undo coalescing (Phase 3F). */
   onCommit?: (value: number) => void
   disabled?: boolean
-}
-
-const UNIT_SUFFIX: Record<string, string> = {
-  m: ' m',
-  deg: '°',
-  x: '×',
-  '%': '%',
-  hz: ' Hz',
-  s: ' s',
 }
 
 /** Scrubbable numeric field — the primary way any parameter is edited

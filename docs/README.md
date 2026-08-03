@@ -26,6 +26,8 @@ reference.
 | 10 | [Element Taxonomy](10-ELEMENTS.md) | Deciding *what to build next*. Element families mined from v1 + ideated, with build order. |
 | 11 | [Routing UX](11-ROUTING-UX.md) | The patchbay redesign and why not a node canvas. |
 | 12 | [Deformer Catalogue](12-DEFORMERS.md) | The fifteen deformers, why each is structurally distinct, and the no-built-in-motion rule. |
+| 13 | [Product Gap](13-PRODUCT-GAP.md) | **What is done, what is missing, and what actually blocks being a product.** |
+| 14 | [Visual Idea Bank](14-VISUAL-IDEAS.md) | Researched + original element ideas, ranked. What only AURA can do. |
 | — | [Codebase Map](CODEBASE_MAP.md) | Finding where something lives. File-by-file registry. |
 | — | [Audit 2026-07-27](AUDIT-2026-07-27.md) | Historical record of the full-codebase audit that produced this doc set. |
 

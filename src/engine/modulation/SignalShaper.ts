@@ -1,8 +1,9 @@
 import type { SignalChain } from '@/types/modulation'
+import { evaluateCurve } from './curve'
 
 /** SignalShaper — one connection's signal chain (Principle 8, Ableton Envelope Follower).
  *
- *      Gain → Rise/Fall → Min/Max → Weight
+ *      Gain → Curve → Rise/Fall → Min/Max → Weight
  *
  *  Rise/Fall is the part people skip and the part that matters. Mapping raw audio
  *  straight onto a parameter produces jitter: the value chatters at frame rate and
@@ -22,22 +23,26 @@ export class SignalShaper {
     //     above 1 means "reach full range sooner", not "exceed full range".
     const gained = clamp01(input * chain.gain)
 
-    // 2 — Rise/Fall. Time constants are in milliseconds; a one-pole exponential
+    // 2 — Response curve. Shapes *how* the signal reacts before any smoothing, so a
+    //     gate curve genuinely gates rather than gating a smoothed average.
+    const curved = chain.curve ? evaluateCurve(chain.curve, gained) : gained
+
+    // 3 — Rise/Fall. Time constants are in milliseconds; a one-pole exponential
     //     reaches ~63% of a step in one constant.
-    const tauMs = gained > this.envelope ? chain.rise : chain.fall
+    const tauMs = curved > this.envelope ? chain.rise : chain.fall
     if (tauMs <= 0 || dt <= 0) {
-      this.envelope = gained
+      this.envelope = curved
     } else {
       const coefficient = Math.exp(-dt / (tauMs / 1000))
-      this.envelope = gained + (this.envelope - gained) * coefficient
+      this.envelope = curved + (this.envelope - curved) * coefficient
     }
 
     const shaped = chain.invert ? 1 - this.envelope : this.envelope
 
-    // 3 — Min/Max maps the shaped 0–1 onto an offset range in the TARGET's units.
+    // 4 — Min/Max maps the shaped 0–1 onto an offset range in the TARGET's units.
     const ranged = chain.min + (chain.max - chain.min) * shaped
 
-    // 4 — Weight. The N:1 mix control; the matrix sums weighted contributions.
+    // 5 — Weight. The N:1 mix control; the matrix sums weighted contributions.
     return ranged * chain.weight
   }
 

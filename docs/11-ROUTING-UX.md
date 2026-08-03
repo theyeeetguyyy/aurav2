@@ -123,17 +123,76 @@ parameter whose range is −500…500.
 
 ---
 
-## Node graph — still coming, still secondary
+## Node graph — what it is actually for
 
-Phase 5C, React Flow, unchanged in intent. It earns its place when the patch needs things
-a patchbay structurally cannot express:
+Phase 5C. Not a second routing UI — the patchbay already routes. The node graph is a
+**signal-processing environment**: it exists for the things a one-hop source→target wire
+structurally cannot express.
 
-- **Processor nodes between source and target** — math, mix, quantise, sample-and-hold
-- **Object-to-object routing** (5E) — shape B answering shape A, which is a graph, not two columns
-- **Reusable sub-patches**
+### The four things the patchbay cannot do
 
-Toggle in the page header: `Patchbay ⟷ Graph`. Same data, two views — exactly the Niagara
-stack/graph duality (Principle 2). Neither is a mode; both edit the same connections.
+1. **Maths between two signals.** The patchbay sums weighted contributions at the target.
+   Sum is the only operator available. There is no way to express *drums minus sub*, or
+   *guns × LFO*, or *max(kick, snare)*.
+2. **Shape once, fan out.** Driving five parameters from the same shaped envelope means
+   five connections and five chains to keep in sync. A graph shapes once and branches.
+3. **Object-to-object** (5E). "Shape B answers Shape A" is a dependency chain, not two
+   columns. It needs evaluation order and cycle detection.
+4. **Reusable sub-patches.** "My kick reaction" as a named, saved unit droppable into any
+   project — which is the rig business model in miniature (§4.7).
+
+### Node catalogue
+
+| Family | Nodes |
+|---|---|
+| **Source** | Stem metric · Rhythm · Generator · Object parameter · Section |
+| **Math** | Add · Subtract · Multiply · Min · Max · Abs · Invert · Clamp · Remap · Mix(a, b, t) |
+| **Shape** | Curve · Quantize · Slew · Sample & Hold · Peak Hold · Threshold · Compare |
+| **Time** | Delay · Time-scale · Beat-sync |
+| **Logic** | If/Else · Section-is · Gate-by |
+| **Utility** | Macro (group) · Scope (inline meter) · Comment |
+| **Output** | Parameter target |
+
+> **Delay is free here, and that is not a small thing.** Because features are timelines
+> sampled by `t` (HC-3), a delay node is `sample(t − d)` — no ring buffer, no state, and
+> still deterministic under scrubbing and out-of-order export. In a live-tap architecture
+> a delay node needs history and immediately breaks export. Same for time-scale and
+> look-ahead.
+
+### What you would actually build with it
+
+| Patch | Graph |
+|---|---|
+| **Sidechain duck** | `atmosphere.brightness − (kick.envelope × 0.8) → bloom` |
+| **Difference** | `drums − sub → explode` — reacts to what is in the drums but *not* the 808 |
+| **Ring mod** | `guns.onset × lfo.saw → spike.amount` |
+| **Cascade** | one envelope, `delay` per clone → a wave travelling across a cloner array |
+| **Stepped motion** | `envelope → quantize(1/8) → rotation` — mechanical instead of fluid |
+| **Random on hit** | `kick.onset → sample&hold(noise) → colour.hue` — a new colour each kick |
+| **Call and response** | `sphereA.scale → delay(0.25) → sphereB.scale` (needs 5E) |
+| **Section-aware** | `if section == drop then drums else lfo → deformer` — the brief's "story/tension" made concrete |
+
+That last row is the one worth noticing: **the node graph is where "musicians show story,
+tension, call and response" stops being philosophy** and becomes a patch you can build.
+
+### Same data, two views
+
+Toggle in the page header: `Patchbay ⟷ Graph`. A patchbay wire *is* a graph — source →
+chain → target — so opening the graph shows the existing patch already laid out, and a
+graph with no processor nodes displays perfectly well as a patchbay. Neither is a mode
+(Principle 2, Niagara's stack/graph duality).
+
+Node positions are the one piece of state only the graph has. Auto-laid-out on first open,
+saved thereafter.
+
+### Why it is deliberately not next
+
+The patchbay covers the large majority of real routing, and every item in Tier 1 of
+[13-PRODUCT-GAP.md](13-PRODUCT-GAP.md) — save/load, undo, timeline, export — costs the
+user more than this does. The graph also gets substantially better *after* the timeline
+exists, because section-conditional nodes need markers to condition on.
+
+Build it when a patch you actually want becomes impossible, not before.
 
 ---
 

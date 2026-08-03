@@ -1,6 +1,6 @@
 import { useFrame } from '@react-three/fiber'
 import { ModulationMatrix } from '@/engine/modulation/ModulationMatrix'
-import { TransportClock } from '@/engine/time/TransportClock'
+import { activeClock } from '@/engine/time/timeAuthority'
 import { useModulationStore } from '@/store/useModulationStore'
 import { isTrackVisuallyActive } from '@/store/useAudioStore'
 import { getGenerator } from '@/store/useGeneratorStore'
@@ -17,7 +17,10 @@ export function ModulationDriver() {
   useFrame(() => {
     const { connections, triggers } = useModulationStore.getState()
     if (connections.length === 0 && triggers.length === 0) return
-    ModulationMatrix.evaluate(TransportClock, connections, triggers, {
+    // The active clock, not the transport directly: preview reads the live playhead and
+    // an offline render installs a FrameClock, and neither this nor anything downstream
+    // needs to know which (HC-2).
+    ModulationMatrix.evaluate(activeClock(), connections, triggers, {
       isTrackActive: isTrackVisuallyActive,
       getGenerator,
     })

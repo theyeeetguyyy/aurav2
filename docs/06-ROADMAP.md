@@ -69,10 +69,12 @@ The step that matters most is **percentile normalisation per metric**, which is 
 | 4E | Inspector — fully descriptor-driven, `ScrubField` with pointer lock | ✅ |
 | 4F | Morph engine — vertex lerp within the procedural family | ⬜ |
 | 4G | Deformers — **15 structurally distinct** (D-38). See [12-DEFORMERS.md](12-DEFORMERS.md) | ✅ |
-| 4H | Cloner + Effectors — linear/radial/grid, Step/Delay/Random | ⬜ **next** |
-| 4I | Post-processing — bloom, tone mapping, chromatic aberration, glitch | ⬜ |
+| 4H | **Cloner + Effectors** — radial/linear/grid layouts, Step/Random/Wave/Time-Delay effectors, GPU instanced (D-47) | ✅ |
+| 4I | **Post-processing** — 14 whole-frame effects in 5 groups, project-global stack, every knob a modulation target (D-42/D-46) | ✅ |
 | 4J | `mesh/imported` — GLTF loading, swap-only | ⬜ |
 | 4K | `sdf` backend — Shader Park / LYGIA raymarch, `smooth-min` morphing | ⬜ |
+| 4L | **Material system** — 7 shading models as bricks, open `MaterialParams` (D-43) | ✅ |
+| 4M | **Environment** — background, fog, three-point lighting, image-based reflections, grid, all routable (D-44) | ✅ |
 
 **4C test:** ✅ passing — `proceduralMesh.test.ts` asserts every procedural brick builds exactly `BASE_VERTEX_COUNT` (642) vertices at default *and* extreme parameters, that all share one morph group, that `baseDirection` stays unit-length, and that no primitive ever claims morph compatibility.
 
@@ -93,6 +95,57 @@ at least one realtime exposed parameter, and `DeformContext` provably has no `ti
 Plus structural assertions: squash conserves volume, quantize lands on the grid, spherify
 converges to one radius, fracture moves cell-mates identically.
 
+**4I notes.** Built on `postprocessing` (pmndrs) rather than three's `EffectComposer`
+examples: mipmap-blur bloom is materially better than `UnrealBloomPass`, and adjacent
+mergeable effects compile into ONE fullscreen pass, so a five-effect colour chain costs
+about what one costs. Fourteen effects across Glow · Distort · Time · Colour · Texture.
+Seven wrap library effects; seven are hand-written — Kaleidoscope, Mirror, Zoom Blur,
+Colour Grade, Palette, Film Grain and Feedback Trails, the last being a real `Pass` with
+ping-pong frame history.
+
+Deliberately **not** exposed: `ScanlineEffect.scrollSpeed` and `GlitchEffect`. Both animate
+from the composer's wall clock, and a value that depends on wall time cannot be exported
+deterministically (HC-2). Where that motion is wanted the parameter is a static offset and
+the user wires a Generator — same movement, authored and sync-able.
+
+**4I test:** ✅ passing — `PostRegistry.test.ts` asserts unique ids, coherent descriptor
+ranges, that every brick exposes at least one drivable parameter, that every brick builds
+a composer node and survives an update with missing parameters, that convolution effects
+declare `standalone`, and that film grain's seed is a pure function of clock time.
+
+**4L test:** ✅ passing — `MaterialRegistry.test.ts` asserts the `material.` prefix
+contract in both directions (descriptors prefixed, stored values not), that every model
+survives an update with missing keys, and that a model swap carries shared values across.
+
+**4M notes.** `RoomEnvironment` + `PMREMGenerator` for image-based lighting — procedural,
+so no asset and no network. Renderer tone mapping is deliberately left at three's default:
+the Colour Grade post brick owns filmic roll-off, and doing it in both places would
+double-apply it.
+
+**4H notes.** Layout and variation are separate questions, so they are separate bricks:
+one cloner decides where the copies are, any number of effectors vary them. Three layouts
+and four effectors cover a space that would otherwise need dozens of presets — a spiral is
+a radial cloner with a Step effector on Y, a staircase is a linear cloner with a Step
+effector on rotation.
+
+One `InstancedMesh`, one draw call, buffers allocated once at `MAX_CLONES = 512`. That
+allocation strategy is what makes **clone count safe to drive at frame rate** — the only
+"how much geometry exists" value that is (contrast D-31): raising it changes the draw
+count, not an allocation.
+
+The **Time Delay effector** is the one nothing else on the market can do. Clone *i* reads
+a stem's feature timeline at `t - i x delay`, so clone 0 is now and clone 7 is half a
+second ago: the ring becomes a physical waveform of the recent past and every hit visibly
+travels outward (14-VISUAL-IDEAS 1.2). Its `lookAhead` reads the *future*, so the array
+braces a moment before the hit lands (1.1). Both are structurally impossible for a
+live-tap architecture, which knows the present and nothing else.
+
+**4H test:** ✅ passing — `cloners.test.ts` asserts count clamping, that a full turn does
+not stack the last clone on the first while a partial arc reaches its end angle, that
+every effector is inert at its defaults, that random scatter is deterministic from its
+seed, that a second cloner is ignored rather than half-applied, and — the load-bearing
+one — that a frame restarts from the layout instead of accumulating.
+
 **4F test:** sphere → torus morphs without self-intersection; a cross-family transition presents as a crossfade and is labelled as such.
 **4K test:** `sdf` and `mesh` objects coexist in one scene so the two looks can be judged side by side.
 
@@ -100,14 +153,15 @@ converges to one radius, fracture moves cell-mates identically.
 
 | | | |
 |---|---|---|
-| 5A | `ModulationMatrix` + `SignalShaper` — Gain→Rise/Fall→Min/Max→Weight, weighted N:1 summing, envelope reset on clock jump | ✅ |
-| 5B | Stacked list UI (the default view — Principle 2), per-connection chain editor, live source meters | ✅ |
-| 5D | Discrete event triggers — generic decaying impulse, evaluated as a pure function of time | ✅ |
+| 5A | `ModulationMatrix` + `SignalShaper` — Gain→Curve→Rise/Fall→Min/Max→Weight, weighted N:1, envelope reset on clock jump | ✅ |
+| 5B | Routing UI, first pass (stacked list) — superseded by 5G | ✅ |
 | 5C | React Flow node graph (advanced toggle), typed connections | ⬜ |
+| 5D | Discrete event triggers — generic decaying impulse, pure function of time | ✅ |
 | 5E | Object-to-object routing + dependency ordering with cycle detection (§4.5) | ⬜ |
 | 5F | Automation lane visualisation | ⬜ |
-| **5H** | **Generators** — LFO/noise as first-class synthetic stems (D-37) | ✅ |
-| **5G** | **Patchbay routing UI** — drag-to-connect, live pulsing wires, wire inspector. Replaced the stacked list. See [11-ROUTING-UX.md](11-ROUTING-UX.md) | ✅ |
+| 5G | **Patchbay** — drag-to-connect, live pulsing wires, wire inspector, resizable columns. See [11-ROUTING-UX.md](11-ROUTING-UX.md) | ✅ |
+| 5H | **Generators** — LFO/noise as first-class synthetic stems (D-37) | ✅ |
+| 5I | **Response curves + real-value display + modulation graph** (D-39/40/41) | ✅ |
 
 **5A/5D notes.** Two design changes from the original spec, both recorded in
 [07-DECISIONS.md](07-DECISIONS.md):
@@ -132,6 +186,12 @@ was invisible on a parameter spanning −500…500.
 **5G test:** ✅ verified in-browser — two drags create two wires, the cursor wire renders
 mid-drag, clicking a wire opens its 6-field chain editor, wires track column scrolling,
 zero console errors.
+
+**5I notes.** The FL-Studio-style piece: every connection now has an editable response
+curve, the routing UI shows the real value span in the parameter's own units, and the
+inspector draws the parameter's actual value over time — computed by running the real
+shaper over the real feature timeline, not illustrated from the settings. Each stem also
+shows its own signal strip, so you can read a stem's character before wiring it.
 
 **5 test:** ⬜ manual — wire drums envelope → sphere `scale.uniform` and a drums onset
 trigger → `emissiveIntensity`. Play; scrub backwards and confirm identical values;

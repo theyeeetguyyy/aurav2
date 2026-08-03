@@ -6,7 +6,13 @@ import { BrickRegistry } from '@/engine/scene/BrickRegistry'
 import { EffectRegistry } from '@/engine/scene/EffectRegistry'
 import { DeformRuntime } from '@/engine/scene/DeformRuntime'
 import { ModulationMatrix, addressKey } from '@/engine/modulation/ModulationMatrix'
+import { CloneRuntime, hasCloner } from '@/engine/scene/cloners/CloneRuntime'
+import { MAX_CLONES } from '@/engine/scene/cloners/types'
+import { MaterialRegistry } from '@/engine/scene/materials/MaterialRegistry'
+import { materialKey } from '@/engine/scene/materials/types'
+import { activeClock } from '@/engine/time/timeAuthority'
 import { readToken } from '@/utils/tokens'
+import type { ParamValue } from '@/types/params'
 import type { SceneObject } from '@/types/visual'
 
 const DEG_TO_RAD = Math.PI / 180
@@ -37,9 +43,39 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
   const select = useSceneStore((s) => s.select)
   const isSelected = useSceneStore((s) => s.selectedId === object.id)
 
+  // The group carries the object's own transform; the mesh below it carries either one
+  // copy or an instanced array of them.
+  const groupRef = useRef<THREE.Group>(null)
   const meshRef = useRef<THREE.Mesh>(null)
-  const materialRef = useRef<THREE.MeshStandardMaterial>(null)
+  const instancedRef = useRef<THREE.InstancedMesh>(null)
   const outlineRef = useRef<THREE.Mesh>(null)
+
+  const cloned = hasCloner(object.effects)
+
+  // One clone runtime per object, allocated at MAX_CLONES so raising the count at frame
+  // rate never allocates.
+  const clone = useRef<CloneRuntime>(null)
+  if (cloned) clone.current ??= new CloneRuntime()
+
+  // One material instance per object, rebuilt only when the shading model changes.
+  // Values are written into it every frame; swapping models is a deliberate edit.
+  const materialBrick = MaterialRegistry.get(object.materialId) ?? MaterialRegistry.get('mat-standard')
+  const material = useMemo(() => materialBrick?.create() ?? null, [materialBrick])
+  useEffect(() => () => material?.dispose(), [material])
+
+  // Address keys for the material's own parameters. Which keys exist depends on the
+  // model, so they are rebuilt when it changes rather than hardcoded.
+  const materialKeys = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const descriptor of materialBrick?.descriptors ?? []) {
+      const key = materialKey(descriptor.key)
+      map[key] = addressKey(object.id, descriptor.key)
+    }
+    return map
+  }, [materialBrick, object.id])
+
+  // Reused every frame — resolving material values must not allocate.
+  const resolvedMaterial = useRef<Record<string, ParamValue>>({})
 
   // One deform runtime per object, owning its private working geometry. Released
   // automatically whenever the stack has nothing that displaces vertices.
@@ -76,16 +112,30 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
       px: k('position.x'), py: k('position.y'), pz: k('position.z'),
       rx: k('rotation.x'), ry: k('rotation.y'), rz: k('rotation.z'),
       sx: k('scale.x'), sy: k('scale.y'), sz: k('scale.z'), su: k('scale.uniform'),
-      roughness: k('material.roughness'),
-      metalness: k('material.metalness'),
-      emissiveIntensity: k('material.emissiveIntensity'),
-      opacity: k('material.opacity'),
     }
   }, [object.id])
 
+  // Resolved effect parameters. Shared by the deform and clone runtimes — both walk the
+  // same stack and want base value plus modulation.
+  const resolveEffectParams = useMemo(
+    () => (effect: (typeof object.effects)[number]) => {
+      const effectKeyMap = effectKeys.get(effect.id)
+      const out: Record<string, ParamValue> = {}
+      for (const key in effect.params) {
+        const raw = effect.params[key]
+        out[key] =
+          typeof raw === 'number' && effectKeyMap
+            ? raw + ModulationMatrix.getOffset(effectKeyMap[key])
+            : raw
+      }
+      return out
+    },
+    [effectKeys],
+  )
+
   useFrame(() => {
-    const mesh = meshRef.current
-    if (!mesh) return
+    const group = groupRef.current
+    if (!group) return
 
     const { position, rotation, scale } = object.transform
     const M = ModulationMatrix
@@ -95,31 +145,24 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
       const resolved = deform.current.resolve(
         geometry,
         object.effects,
-        (effect) => {
-          const keys = effectKeys.get(effect.id)
-          const out: Record<string, number> = {}
-          for (const [key, raw] of Object.entries(effect.params)) {
-            out[key] =
-              typeof raw === 'number' && keys ? raw + M.getOffset(keys[key]) : (raw as number)
-          }
-          return out
-        },
+        (effect) => resolveEffectParams(effect) as Record<string, number>,
       )
-      if (mesh.geometry !== resolved) mesh.geometry = resolved
-      // The selection shell must track the deformed mesh, or the outline floats away
-      // from the shape the moment anything displaces it.
-      const outline = outlineRef.current
-      if (outline && outline.geometry !== resolved) outline.geometry = resolved
+      for (const target of [meshRef.current, instancedRef.current, outlineRef.current]) {
+        if (target && target.geometry !== resolved) target.geometry = resolved
+      }
     }
 
-    mesh.position.set(
+    // ─── The object's own transform lives on the group ───
+    // Clones are placed relative to it, so moving the object moves the whole array and
+    // the cloner never has to know the object's transform exists.
+    group.position.set(
       position[0] + M.getOffset(keys.px),
       position[1] + M.getOffset(keys.py),
       position[2] + M.getOffset(keys.pz),
     )
 
     // Rotation is authored in degrees (descriptor unit 'deg'); Three works in radians.
-    mesh.rotation.set(
+    group.rotation.set(
       (rotation[0] + M.getOffset(keys.rx)) * DEG_TO_RAD,
       (rotation[1] + M.getOffset(keys.ry)) * DEG_TO_RAD,
       (rotation[2] + M.getOffset(keys.rz)) * DEG_TO_RAD,
@@ -129,75 +172,90 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
     // most common routing in the product. It adds to all three axes on top of any
     // per-axis modulation.
     const uniform = M.getOffset(keys.su)
-    mesh.scale.set(
+    group.scale.set(
       Math.max(0.001, scale[0] + uniform + M.getOffset(keys.sx)),
       Math.max(0.001, scale[1] + uniform + M.getOffset(keys.sy)),
       Math.max(0.001, scale[2] + uniform + M.getOffset(keys.sz)),
     )
 
-    const material = materialRef.current
-    if (material) {
-      material.roughness = clamp(object.material.roughness + M.getOffset(keys.roughness), 0, 1)
-      material.metalness = clamp(object.material.metalness + M.getOffset(keys.metalness), 0, 1)
-      material.emissiveIntensity = Math.max(
-        0,
-        object.material.emissiveIntensity + M.getOffset(keys.emissiveIntensity),
-      )
-      const opacity = clamp(object.material.opacity + M.getOffset(keys.opacity), 0, 1)
-      material.opacity = opacity
-      // Toggling `transparent` recompiles the shader, so only touch it on a real change.
-      const needsTransparent = opacity < 1
-      if (material.transparent !== needsTransparent) {
-        material.transparent = needsTransparent
-        material.needsUpdate = true
+    // ─── Cloners: one mesh drawn N times, never N meshes ───
+    const instanced = instancedRef.current
+    if (instanced && clone.current) {
+      clone.current.resolve(object.effects, activeClock().time, resolveEffectParams)
+      clone.current.applyTo(instanced)
+
+      const outline = outlineRef.current
+      if (outline instanceof THREE.InstancedMesh) {
+        // Share the matrix attribute rather than recomputing it: the outline is the same
+        // array of clones, one shell wider.
+        outline.instanceMatrix = instanced.instanceMatrix
+        outline.count = instanced.count
+        outline.boundingSphere = instanced.boundingSphere
       }
+    }
+
+    if (material) {
+      const values = resolvedMaterial.current
+      for (const key in object.material) {
+        const base = object.material[key]
+        values[key] =
+          typeof base === 'number' ? base + M.getOffset(materialKeys[key]) : base
+      }
+      material.update(values)
     }
   })
 
-  if (!object.visible || !geometry) return null
+  if (!object.visible || !geometry || !material) return null
+
+  const onSelect = (e: { stopPropagation: () => void }) => {
+    if (object.locked) return
+    e.stopPropagation()
+    select(object.id)
+  }
+
+  const outlineColour = readToken('--color-aura-accent', '#6366f1')
 
   return (
-    <mesh
-      ref={meshRef}
-      geometry={geometry}
-      castShadow
-      receiveShadow
-      onClick={(e) => {
-        if (object.locked) return
-        e.stopPropagation()
-        select(object.id)
-      }}
-    >
-      <meshStandardMaterial
-        ref={materialRef}
-        color={object.material.color}
-        roughness={object.material.roughness}
-        metalness={object.material.metalness}
-        emissive={object.material.emissive}
-        emissiveIntensity={object.material.emissiveIntensity}
-        opacity={object.material.opacity}
-        transparent={object.material.opacity < 1}
-        wireframe={object.material.wireframe}
-        flatShading={object.material.flatShading}
-        side={THREE.DoubleSide}
-      />
+    <group ref={groupRef}>
+      {cloned ? (
+        <instancedMesh
+          ref={instancedRef}
+          args={[geometry, material.material, MAX_CLONES]}
+          count={0}
+          castShadow
+          receiveShadow
+          onClick={onSelect}
+        />
+      ) : (
+        <mesh
+          ref={meshRef}
+          geometry={geometry}
+          material={material.material}
+          castShadow
+          receiveShadow
+          onClick={onSelect}
+        />
+      )}
 
       {/* Selection outline. Inflated back-face shell — cheap, needs no post-processing
-          pass, and stays correct from any camera angle. Inherits the parent's
-          modulated transform for free. */}
-      {isSelected && (
-        <mesh ref={outlineRef} geometry={geometry} scale={1.015} raycast={() => {}}>
-          <meshBasicMaterial
-            color={readToken('--color-aura-accent', '#6366f1')}
-            side={THREE.BackSide}
-            wireframe
-          />
-        </mesh>
-      )}
-    </mesh>
+          pass, and stays correct from any camera angle. Inherits the group's modulated
+          transform, and for a cloned object the clone matrices too. */}
+      {isSelected &&
+        (cloned ? (
+          <instancedMesh
+            ref={outlineRef as React.Ref<THREE.InstancedMesh>}
+            args={[geometry, undefined, MAX_CLONES]}
+            count={0}
+            scale={1.015}
+            raycast={() => {}}
+          >
+            <meshBasicMaterial color={outlineColour} side={THREE.BackSide} wireframe />
+          </instancedMesh>
+        ) : (
+          <mesh ref={outlineRef} geometry={geometry} scale={1.015} raycast={() => {}}>
+            <meshBasicMaterial color={outlineColour} side={THREE.BackSide} wireframe />
+          </mesh>
+        ))}
+    </group>
   )
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return value < min ? min : value > max ? max : value
 }

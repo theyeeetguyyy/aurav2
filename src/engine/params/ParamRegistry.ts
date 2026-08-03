@@ -3,6 +3,7 @@ import type { ParamAddress, ParamDescriptor, ParamValue } from '@/types/params'
 import type { SceneObject } from '@/types/visual'
 import { BrickRegistry } from '@/engine/scene/BrickRegistry'
 import { EffectRegistry } from '@/engine/scene/EffectRegistry'
+import { MaterialRegistry } from '@/engine/scene/materials/MaterialRegistry'
 
 /** ParamRegistry — resolves parameter addresses to descriptors and values
  *  (docs/03-ARCHITECTURE.md HC-5).
@@ -58,69 +59,24 @@ export const TRANSFORM_DESCRIPTORS: ParamDescriptor[] = [
   axis('scale.uniform', 'Scale', 'Transform', 1, 0.001, 50, 0.01, 'x'),
 ]
 
-export const MATERIAL_DESCRIPTORS: ParamDescriptor[] = [
-  {
-    key: 'material.color',
-    label: 'Colour',
-    type: 'color',
-    min: 0,
-    max: 0,
-    step: 0,
-    defaultValue: '#6366f1',
-    group: 'Material',
-    exposed: false,
-    realtime: false,
-  },
-  axis('material.roughness', 'Roughness', 'Material', 0.35, 0, 1, 0.01),
-  axis('material.metalness', 'Metalness', 'Material', 0.1, 0, 1, 0.01),
-  {
-    key: 'material.emissive',
-    label: 'Emissive',
-    type: 'color',
-    min: 0,
-    max: 0,
-    step: 0,
-    defaultValue: '#000000',
-    group: 'Material',
-    exposed: false,
-    realtime: false,
-  },
-  axis('material.emissiveIntensity', 'Emissive Int.', 'Material', 0, 0, 10, 0.01),
-  axis('material.opacity', 'Opacity', 'Material', 1, 0, 1, 0.01),
-  {
-    key: 'material.wireframe',
-    label: 'Wireframe',
-    type: 'bool',
-    min: 0,
-    max: 1,
-    step: 1,
-    defaultValue: false,
-    group: 'Material',
-    exposed: false,
-    realtime: false,
-  },
-  {
-    key: 'material.flatShading',
-    label: 'Flat Shading',
-    type: 'bool',
-    min: 0,
-    max: 1,
-    step: 1,
-    defaultValue: false,
-    group: 'Material',
-    exposed: false,
-    realtime: false,
-  },
-]
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Resolution
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Every descriptor applicable to an object: universal + brick + effect stack. */
+/** Material descriptors come from the object's material brick, not from a fixed list —
+ *  a Fresnel Rim and a Physical surface expose genuinely different knobs. */
+export function materialDescriptors(object: SceneObject): ParamDescriptor[] {
+  return MaterialRegistry.get(object.materialId)?.descriptors ?? []
+}
+
+/** Every descriptor applicable to an object: universal + material + brick + effect stack. */
 export function describeObject(object: SceneObject): ParamDescriptor[] {
   const brick = BrickRegistry.get(object.brickId)
-  return [...TRANSFORM_DESCRIPTORS, ...MATERIAL_DESCRIPTORS, ...(brick?.descriptors ?? [])]
+  return [
+    ...TRANSFORM_DESCRIPTORS,
+    ...materialDescriptors(object),
+    ...(brick?.descriptors ?? []),
+  ]
 }
 
 /** Descriptors for one effect instance in an object's stack. */
@@ -187,7 +143,7 @@ export function readParam(object: SceneObject, address: ParamAddress): ParamValu
       return index === -1 ? undefined : object.transform[head][index]
     }
     case 'material':
-      return object.material[axisKey as keyof SceneObject['material']]
+      return object.material[axisKey]
     default:
       return object.params[paramKey]
   }

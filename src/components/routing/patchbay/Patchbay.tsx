@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useModulationStore } from '@/store/useModulationStore'
-import { useSceneStore } from '@/store/useSceneStore'
 import { useUIStore } from '@/store/useUIStore'
 import { Splitter } from '@/components/common/Splitter'
 import { refreshAnchors } from './anchors'
-import { resolveDescriptor } from '@/engine/params/ParamRegistry'
-import { parseAddress, type FieldRef, type ParamAddress } from '@/types/params'
+import { describeTarget } from '../targetInfo'
+import {
+  parseAddress,
+  type FieldRef,
+  type ParamAddress,
+  type ParamDescriptor,
+} from '@/types/params'
 import { SourceColumn } from './SourceColumn'
 import { TargetColumn } from './TargetColumn'
 import { WireLayer } from './WireLayer'
@@ -47,8 +51,7 @@ export function Patchbay({ selectedWireId, onSelectWire, bottomLeft }: PatchbayP
   /** Create a connection with defaults that actually do something visible. */
   const createConnection = useCallback(
     (field: FieldRef, address: ParamAddress) => {
-      const object = useSceneStore.getState().objects.find((o) => o.id === address.objectId)
-      const descriptor = object ? resolveDescriptor(object, address) : null
+      const { descriptor } = describeTarget(address)
 
       // Onset sources are percussive, so they default to a discrete fire-once trigger.
       // Everything else defaults to a continuous blend (Principle 4). The source already
@@ -173,7 +176,7 @@ export function Patchbay({ selectedWireId, onSelectWire, bottomLeft }: PatchbayP
  *  value — or a slice of its range when the default is zero — means a new wire is
  *  immediately visible without being absurd. */
 function seedRange(
-  descriptor: ReturnType<typeof resolveDescriptor>,
+  descriptor: ParamDescriptor | null,
 ): { min: number; max: number } | undefined {
   if (!descriptor || (descriptor.type !== 'float' && descriptor.type !== 'int')) return undefined
 

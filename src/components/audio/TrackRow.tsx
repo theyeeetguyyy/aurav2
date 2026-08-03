@@ -9,11 +9,13 @@ import type { Track } from '@/types/audio'
 
 interface TrackRowProps {
   track: Track
+  /** Shared timeline span for the whole rack, so every stem is drawn to one time scale. */
+  projectDuration: number
 }
 
 /** Single track row in the stem rack.
  *  Stem colour, name, solo/mute, volume, waveform with trim handles, delete. */
-export function TrackRow({ track }: TrackRowProps) {
+export function TrackRow({ track, projectDuration }: TrackRowProps) {
   const toggleSolo = useAudioStore((s) => s.toggleSolo)
   const toggleMute = useAudioStore((s) => s.toggleMute)
   const setVolume = useAudioStore((s) => s.setVolume)
@@ -105,13 +107,19 @@ export function TrackRow({ track }: TrackRowProps) {
         title={`Volume: ${Math.round(track.volume * 100)}%`}
       />
 
-      {/* Waveform + Trim Handles */}
-      <div className="flex-1 min-w-0 relative">
+      {/* Waveform + trim handles. `data-stem-lane` is what the rack playhead measures
+          against, so the line stays aligned without anyone hardcoding a control width. */}
+      <div data-stem-lane className="flex-1 min-w-0 relative">
         {track.buffer ? (
           <>
-            <WaveformCanvas buffer={track.buffer} color={track.color} height={32} />
+            <WaveformCanvas
+              buffer={track.buffer}
+              color={track.color}
+              height={32}
+              duration={projectDuration}
+            />
             <TrimHandles
-              duration={track.buffer.duration}
+              duration={projectDuration}
               trimBounds={track.trimBounds}
               onTrimChange={handleTrimChange}
               color={track.color}

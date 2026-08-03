@@ -75,6 +75,7 @@ The step that matters most is **percentile normalisation per metric**, which is 
 | 4K | `sdf` backend — Shader Park / LYGIA raymarch, `smooth-min` morphing | ⬜ |
 | 4L | **Material system** — 7 shading models as bricks, open `MaterialParams` (D-43) | ✅ |
 | 4M | **Environment** — background, fog, three-point lighting, image-based reflections, grid, all routable (D-44) | ✅ |
+| 4N | **Lights as objects** — 5 light bricks, routable intensity, per-light shadows, authoring gizmo layer (D-48, resolves Q2) | ✅ |
 
 **4C test:** ✅ passing — `proceduralMesh.test.ts` asserts every procedural brick builds exactly `BASE_VERTEX_COUNT` (642) vertices at default *and* extreme parameters, that all share one morph group, that `baseDirection` stays unit-length, and that no primitive ever claims morph compatibility.
 
@@ -145,6 +146,12 @@ not stack the last clone on the first while a partial arc reaches its end angle,
 every effector is inert at its defaults, that random scatter is deterministic from its
 seed, that a second cloner is ignored rather than half-applied, and — the load-bearing
 one — that a frame restarts from the layout instead of accumulating.
+
+**4N test:** ✅ passing — `LightRegistry.test.ts` asserts every light exposes `intensity`
+as an exposed realtime target with real headroom above its default, that a shadow toggle
+appears only on lights that can cast one, that aiming lights parent a target down -Z so
+the object's rotation aims the beam, and that a light describes placement plus its own
+knobs with no material and no scale.
 
 **4F test:** sphere → torus morphs without self-intersection; a cross-family transition presents as a crossfade and is labelled as such.
 **4K test:** `sdf` and `mesh` objects coexist in one scene so the two looks can be judged side by side.
@@ -217,9 +224,14 @@ profile for zero React re-renders during playback.
 | 7A | Catmull-Rom spline + draggable 3D waypoint gizmo | ⬜ |
 | 7B | F-curve easing editor with tangent handles | ⬜ |
 | 7C | Constraints — Follow Path, Look-At, Child-Of with blendable influence | ⬜ |
-| 7D | Procedural noise/shake, amplitude as a modulation target | ⬜ |
+| 7D | **Camera behaviours** — Orbit / Sway / Shake / Dolly / Lens as pure functions of time, every amplitude a modulation target, plus Align-to-view (D-50) | ✅ |
 | 7E | Motion trail with speed-indicating dot spacing | ⬜ |
 | 7F | Saveable camera-move presets | ⬜ |
+
+**7D test:** ✅ passing — `behaviours.test.ts` asserts every behaviour is a pure function of
+time when evaluated out of order, exposes at least one drivable parameter, survives
+missing parameters without producing NaN, that shake decorrelates its axes, and that a
+stack accumulates rather than overwriting.
 
 **7 test:** Look-At tracks a moving shape with no roll. Follow Path travels the spline. Easing change is visible in motion. Trail dots bunch on slow sections.
 

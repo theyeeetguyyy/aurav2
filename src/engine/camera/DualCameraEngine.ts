@@ -26,7 +26,19 @@ const BOOST_MULTIPLIER = 3
 export class DualCameraEngine {
   private static instance: DualCameraEngine
 
-  /** Authoritative Scene Camera transform. Written by the camera track, never by controls. */
+  /** The AUTHORED Scene Camera transform — where the user placed it, and later what the
+   *  camera track sets. Never written by controls, and never written by behaviours. */
+  public readonly baseScenePosition = DEFAULT_SCENE_POSITION.clone()
+  public readonly baseSceneQuaternion = new THREE.Quaternion()
+  public baseSceneFov = 45
+
+  /** The RESOLVED Scene Camera transform — authored plus the behaviour stack. This is
+   *  what renders (HC-10).
+   *
+   *  Two transforms rather than one because behaviours are additive and re-evaluated
+   *  every frame: writing orbit straight onto the authored value would accumulate, so the
+   *  camera would drift further every tick and the result would depend on how long
+   *  playback had been running rather than on time (HC-3). */
   public readonly scenePosition = DEFAULT_SCENE_POSITION.clone()
   public readonly sceneQuaternion = new THREE.Quaternion()
   public sceneFov = 45
@@ -50,11 +62,29 @@ export class DualCameraEngine {
   private readonly _euler = new THREE.Euler(0, 0, 0, 'YXZ')
 
   private constructor() {
-    this.sceneQuaternion.setFromRotationMatrix(
+    this.baseSceneQuaternion.setFromRotationMatrix(
       new THREE.Matrix4().lookAt(DEFAULT_SCENE_POSITION, new THREE.Vector3(), this._up),
     )
-    this.previewQuaternion.copy(this.sceneQuaternion)
+    this.sceneQuaternion.copy(this.baseSceneQuaternion)
+    this.previewQuaternion.copy(this.baseSceneQuaternion)
     this.syncAnglesFrom(this.previewQuaternion)
+  }
+
+  /** Collapse the resolved transform onto the authored one. Called when the behaviour
+   *  stack is empty, so a camera with no behaviours sits exactly where it was placed. */
+  public holdScene(): void {
+    this.scenePosition.copy(this.baseScenePosition)
+    this.sceneQuaternion.copy(this.baseSceneQuaternion)
+    this.sceneFov = this.baseSceneFov
+  }
+
+  /** "Align Scene Camera to this view" — the action every 3D tool has and this one did
+   *  not, which meant the camera that actually renders could never be aimed at all. */
+  public alignSceneToPreview(): void {
+    this.baseScenePosition.copy(this.previewPosition)
+    this.baseSceneQuaternion.copy(this.previewQuaternion)
+    this.baseSceneFov = this.previewFov
+    this.holdScene()
   }
 
   public static getInstance(): DualCameraEngine {
@@ -199,10 +229,12 @@ export class DualCameraEngine {
 
   /** Reset the scene camera to its documented default: (0,0,50) facing the origin. */
   public resetSceneCamera(): void {
-    this.scenePosition.copy(DEFAULT_SCENE_POSITION)
-    this.sceneQuaternion.setFromRotationMatrix(
+    this.baseScenePosition.copy(DEFAULT_SCENE_POSITION)
+    this.baseSceneQuaternion.setFromRotationMatrix(
       new THREE.Matrix4().lookAt(DEFAULT_SCENE_POSITION, new THREE.Vector3(), this._up),
     )
+    this.baseSceneFov = 45
+    this.holdScene()
   }
 
   /** Keep yaw/pitch in step with an externally-set orientation (e.g. after Orbit),

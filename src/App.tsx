@@ -4,6 +4,7 @@ import { WorkspaceNavBar } from '@/components/workspace/WorkspaceNavBar'
 import { TransportBar } from '@/components/shell/TransportBar'
 import { MediaStemsPage } from '@/components/pages/MediaStemsPage'
 import { ShapesScenePage } from '@/components/pages/ShapesScenePage'
+import { LookPage } from '@/components/pages/LookPage'
 import { NodeGraphPage } from '@/components/pages/NodeGraphPage'
 import { CameraPage } from '@/components/pages/CameraPage'
 import { DeliverPage } from '@/components/pages/DeliverPage'
@@ -21,6 +22,8 @@ function ActivePage() {
       return <MediaStemsPage />
     case 'scene-shapes':
       return <ShapesScenePage />
+    case 'look':
+      return <LookPage />
     case 'routing':
       return <NodeGraphPage />
     case 'camera':

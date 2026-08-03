@@ -6,6 +6,7 @@ import { DEFAULT_TRANSFORM } from '@/types/visual'
 import { BrickRegistry } from '@/engine/scene/BrickRegistry'
 import { EffectRegistry } from '@/engine/scene/EffectRegistry'
 import { DEFAULT_MATERIAL_ID, MaterialRegistry } from '@/engine/scene/materials/MaterialRegistry'
+import { LightRegistry } from '@/engine/scene/lights/LightRegistry'
 import { axisIndex } from '@/engine/params/ParamRegistry'
 import { useModulationStore } from '@/store/useModulationStore'
 import { generateId } from '@/utils/stemColors'
@@ -25,6 +26,8 @@ interface SceneState {
   objects: SceneObject[]
   selectedId: ID | null
 
+  /** Type is inferred from which registry knows the brick — a caller should not have
+   *  to know that 'light-spot' is a light. */
   addObject: (brickId: string, type?: SceneObjectType) => ID
   removeObject: (id: ID) => void
   duplicateObject: (id: ID) => ID | null
@@ -109,26 +112,36 @@ export const useSceneStore = create<SceneState>((set, get) => ({
   objects: [],
   selectedId: null,
 
-  addObject: (brickId, type = 'shape') => {
-    const brick = BrickRegistry.get(brickId)
+  addObject: (brickId, type) => {
+    const lightBrick = LightRegistry.get(brickId)
+    const geometryBrick = lightBrick ? null : BrickRegistry.get(brickId)
+    const resolvedType: SceneObjectType = type ?? (lightBrick ? 'light' : 'shape')
     const id = generateId()
+
+    // A light lands at eye height and slightly off-axis rather than at the origin: a
+    // light inside the object it is meant to light is the least useful default there is.
+    const position: [number, number, number] = lightBrick
+      ? [12, 14, 12]
+      : [...DEFAULT_TRANSFORM.position]
 
     set((s) => ({
       objects: [
         ...s.objects,
         {
           id,
-          name: uniqueName(s.objects, brick?.label ?? 'Object'),
-          type,
-          backend: brick?.backend ?? 'mesh',
-          meshKind: brick?.meshKind,
+          name: uniqueName(s.objects, lightBrick?.label ?? geometryBrick?.label ?? 'Object'),
+          type: resolvedType,
+          backend: geometryBrick?.backend ?? 'mesh',
+          meshKind: geometryBrick?.meshKind,
           brickId,
           transform: {
-            position: [...DEFAULT_TRANSFORM.position],
+            position,
             rotation: [...DEFAULT_TRANSFORM.rotation],
             scale: [...DEFAULT_TRANSFORM.scale],
           },
-          params: BrickRegistry.defaultParams(brickId),
+          params: lightBrick
+            ? LightRegistry.defaultParams(brickId)
+            : BrickRegistry.defaultParams(brickId),
           materialId: DEFAULT_MATERIAL_ID,
           material: MaterialRegistry.defaultParams(DEFAULT_MATERIAL_ID),
           effects: [],

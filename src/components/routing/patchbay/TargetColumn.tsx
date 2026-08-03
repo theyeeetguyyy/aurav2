@@ -6,7 +6,12 @@ import { useEnvironmentStore } from '@/store/useEnvironmentStore'
 import { allModulationTargets, readParam, resolveDescriptor } from '@/engine/params/ParamRegistry'
 import { PostRegistry } from '@/engine/post/PostRegistry'
 import { ENV_SECTIONS, ENV_STACK_ID } from '@/engine/environment/sections'
-import { connectionRange } from '@/engine/modulation/preview'
+import { CAMERA_STACK_ID, getBehaviour } from '@/engine/camera/behaviours'
+import { useCameraStore } from '@/store/useCameraStore'
+import { connectionRange, reachableRange } from '@/engine/modulation/preview'
+import { TransportClock } from '@/engine/time/TransportClock'
+import { isTrackVisuallyActive } from '@/store/useAudioStore'
+import { getGenerator } from '@/store/useGeneratorStore'
 import { unitSuffix } from '@/utils/units'
 import { formatAddress, type ParamAddress, type ParamDescriptor } from '@/types/params'
 import { registerAnchor, targetAnchorId } from './anchors'
@@ -41,8 +46,49 @@ export function TargetColumn() {
         <ObjectTargets key={object.id} object={object} />
       ))}
       {postEffects.length > 0 && <PostTargets />}
+      <CameraTargets />
       <WorldTargets />
     </div>
+  )
+}
+
+/** Camera behaviour knobs. Shake amplitude on the kick is the single routing that makes
+ *  the whole post chain read, because feedback and zoom blur are effects on motion. */
+function CameraTargets() {
+  const behaviours = useCameraStore((s) => s.behaviours)
+  if (behaviours.length === 0) return null
+
+  return (
+    <section className="border-b border-aura-line pb-1">
+      <header className="px-2 py-1.5 sticky top-0 bg-aura-base z-10">
+        <h3 className="text-[11px] font-medium text-slate-200 truncate">Camera</h3>
+      </header>
+
+      {behaviours.map((behaviour) => {
+        const brick = getBehaviour(behaviour.effectId)
+        if (!brick) return null
+
+        return brick.descriptors
+          .filter((descriptor) => descriptor.exposed && descriptor.realtime)
+          .map((descriptor) => {
+            const raw = behaviour.params[descriptor.key]
+            return (
+              <TargetRow
+                key={`${behaviour.id}/${descriptor.key}`}
+                address={{
+                  objectId: CAMERA_STACK_ID,
+                  effectId: behaviour.id,
+                  paramKey: descriptor.key,
+                }}
+                descriptor={descriptor}
+                base={typeof raw === 'number' ? raw : Number(descriptor.defaultValue)}
+                label={descriptor.label}
+                ownerLabel={behaviour.name}
+              />
+            )
+          })
+      })}
+    </section>
   )
 }
 
@@ -191,11 +237,20 @@ function TargetRow({ address, descriptor, base, label, ownerLabel }: TargetRowPr
   let low = base
   let high = base
   for (const connection of wired) {
+    // The range the signal ACTUALLY reaches, not the range the settings allow. A stem's
+    // envelope rarely spans the full 0–1, so the two answers differ a lot — and only one
+    // of them describes what the viewer will see. Falls back to the declared span while
+    // analysis is still running.
+    const actual =
+      reachableRange(connection, base, TransportClock.duration, {
+        isTrackActive: isTrackVisuallyActive,
+        getGenerator,
+      }) ?? connectionRange(connection, base)
+
     // Multiple wires sum onto one parameter (weighted N:1), so the reachable span is
     // the sum of their extremes rather than the widest single one.
-    const range = connectionRange(connection, base)
-    low += range.low - base
-    high += range.high - base
+    low += actual.low - base
+    high += actual.high - base
   }
 
   const attach = useCallback(

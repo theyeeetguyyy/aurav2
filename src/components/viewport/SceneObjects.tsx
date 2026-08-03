@@ -11,6 +11,7 @@ import { MAX_CLONES } from '@/engine/scene/cloners/types'
 import { MaterialRegistry } from '@/engine/scene/materials/MaterialRegistry'
 import { materialKey } from '@/engine/scene/materials/types'
 import { activeClock } from '@/engine/time/timeAuthority'
+import { SceneLight } from './SceneLight'
 import { readToken } from '@/utils/tokens'
 import type { ParamValue } from '@/types/params'
 import type { SceneObject } from '@/types/visual'
@@ -32,9 +33,13 @@ export function SceneObjects() {
 
   return (
     <>
-      {objects.map((object) => (
-        <SceneObjectMesh key={object.id} object={object} />
-      ))}
+      {objects.map((object) =>
+        object.type === 'light' ? (
+          <SceneLight key={object.id} object={object} />
+        ) : (
+          <SceneObjectMesh key={object.id} object={object} />
+        ),
+      )}
     </>
   )
 }

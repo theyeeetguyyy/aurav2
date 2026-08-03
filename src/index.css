@@ -32,8 +32,8 @@
 
   /* ─── Viewport (read at runtime by Three.js / canvas via utils/tokens.ts) ─── */
   --color-aura-viewport-bg: #09090b;
-  --color-aura-grid-cell: #3f3f46;
-  --color-aura-grid-section: #6366f1;
+  --color-aura-grid-cell: #26262b;
+  --color-aura-grid-section: #3a3a42;
   --color-aura-light-sky: #f8fafc;
   --color-aura-light-ground: #1e1e26;
   --color-aura-light-rim-cool: #06b6d4;

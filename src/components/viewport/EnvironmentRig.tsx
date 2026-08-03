@@ -6,6 +6,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { ENV_SECTIONS, ENV_STACK_ID } from '@/engine/environment/sections'
 import { ModulationMatrix, addressKey } from '@/engine/modulation/ModulationMatrix'
 import { useEnvironmentStore } from '@/store/useEnvironmentStore'
+import { readToken } from '@/utils/tokens'
 import type { ParamValue } from '@/types/params'
 
 /** The world — background, fog, lighting, reflections and the authoring grid
@@ -204,6 +205,7 @@ function Reflections() {
 }
 
 function Lighting() {
+  const enabled = useSectionEnabled('lighting')
   const params = useSectionParams('lighting')
   const resolve = useSectionResolver('lighting')
 
@@ -216,6 +218,7 @@ function Lighting() {
   const KEY_DISTANCE = 60
 
   useFrame(() => {
+    if (!enabled) return
     if (ambientRef.current) ambientRef.current.intensity = Math.max(0, resolve('ambient', 0.6))
 
     const key = keyRef.current
@@ -233,6 +236,10 @@ function Lighting() {
     if (fillRef.current) fillRef.current.intensity = Math.max(0, resolve('fillIntensity', 0.6))
     if (rimRef.current) rimRef.current.intensity = Math.max(0, resolve('rimIntensity', 1.1))
   })
+
+  // Switched off entirely rather than dimmed to zero: a user lighting the scene
+  // themselves should not be paying for four lights that contribute nothing.
+  if (!enabled) return null
 
   return (
     <>
@@ -283,7 +290,18 @@ function AuthoringGrid() {
   const ref = useRef<THREE.Mesh>(null)
 
   useFrame(() => {
-    if (ref.current) ref.current.position.y = resolve('height', -10)
+    const grid = ref.current
+    if (!grid) return
+    grid.position.y = resolve('height', -10)
+
+    // Opacity lives on the shader material drei builds, so it is written here rather than
+    // passed as a prop — a prop would re-render the grid on every frame it is driven.
+    const material = grid.material as THREE.Material | undefined
+    if (material) {
+      const opacity = Math.max(0, Math.min(1, resolve('opacity', 0.6)))
+      material.opacity = opacity
+      material.transparent = true
+    }
   })
 
   if (!enabled) return null
@@ -295,10 +313,10 @@ function AuthoringGrid() {
       args={[300, 300]}
       cellSize={Number(params.cellSize ?? 1)}
       cellThickness={0.6}
-      cellColor={String(params.cellColor ?? '#3f3f46')}
+      cellColor={String(params.cellColor ?? readToken('--color-aura-grid-cell', '#26262b'))}
       sectionSize={Number(params.sectionSize ?? 5)}
       sectionThickness={1.2}
-      sectionColor={String(params.sectionColor ?? '#6366f1')}
+      sectionColor={String(params.sectionColor ?? readToken('--color-aura-grid-section', '#3a3a42'))}
       fadeDistance={Number(params.fadeDistance ?? 250)}
       fadeStrength={1}
       side={THREE.DoubleSide}

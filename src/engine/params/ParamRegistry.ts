@@ -4,6 +4,7 @@ import type { SceneObject } from '@/types/visual'
 import { BrickRegistry } from '@/engine/scene/BrickRegistry'
 import { EffectRegistry } from '@/engine/scene/EffectRegistry'
 import { MaterialRegistry } from '@/engine/scene/materials/MaterialRegistry'
+import { LightRegistry } from '@/engine/scene/lights/LightRegistry'
 
 /** ParamRegistry — resolves parameter addresses to descriptors and values
  *  (docs/03-ARCHITECTURE.md HC-5).
@@ -69,8 +70,17 @@ export function materialDescriptors(object: SceneObject): ParamDescriptor[] {
   return MaterialRegistry.get(object.materialId)?.descriptors ?? []
 }
 
-/** Every descriptor applicable to an object: universal + material + brick + effect stack. */
+/** Every descriptor applicable to an object: universal + material + brick + effect stack.
+ *
+ *  A light is deliberately narrower — it has no surface, so offering it roughness and
+ *  metalness would be offering knobs that do nothing. Scale is dropped for the same
+ *  reason: a point light has no size. */
 export function describeObject(object: SceneObject): ParamDescriptor[] {
+  if (object.type === 'light') {
+    const light = LightRegistry.get(object.brickId)
+    return [...PLACEMENT_DESCRIPTORS, ...(light?.descriptors ?? [])]
+  }
+
   const brick = BrickRegistry.get(object.brickId)
   return [
     ...TRANSFORM_DESCRIPTORS,
@@ -78,6 +88,11 @@ export function describeObject(object: SceneObject): ParamDescriptor[] {
     ...(brick?.descriptors ?? []),
   ]
 }
+
+/** Position and rotation only — what a light actually has. */
+const PLACEMENT_DESCRIPTORS: ParamDescriptor[] = TRANSFORM_DESCRIPTORS.filter(
+  (d) => d.key.startsWith('position.') || d.key.startsWith('rotation.'),
+)
 
 /** Descriptors for one effect instance in an object's stack. */
 export function describeEffect(object: SceneObject, effectId: string): ParamDescriptor[] {

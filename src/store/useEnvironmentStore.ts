@@ -20,7 +20,9 @@ interface EnvironmentState {
 
 export const useEnvironmentStore = create<EnvironmentState>((set) => ({
   params: envDefaults(),
-  disabled: {},
+  // Fog off by default. It is a look, not a baseline — and an unexpected one hides the
+  // scene the moment the camera moves away from the origin.
+  disabled: { fog: true },
 
   setParam: (sectionId, paramKey, value) =>
     set((s) => ({
@@ -33,7 +35,7 @@ export const useEnvironmentStore = create<EnvironmentState>((set) => ({
   setSectionEnabled: (sectionId, enabled) =>
     set((s) => ({ disabled: { ...s.disabled, [sectionId]: !enabled } })),
 
-  reset: () => set({ params: envDefaults(), disabled: {} }),
+  reset: () => set({ params: envDefaults(), disabled: { fog: true } }),
 }))
 
 export function isSectionEnabled(sectionId: string): boolean {

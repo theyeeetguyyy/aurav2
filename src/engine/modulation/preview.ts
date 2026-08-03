@@ -109,6 +109,45 @@ export function connectionRange(
   }
 }
 
+/** The range a connection ACTUALLY reaches, given the signal that actually exists.
+ *
+ *  `connectionRange` above answers a different question: it sweeps the declared 0–1 input
+ *  domain and reports where the parameter *could* go. That is the right answer for a
+ *  generator, whose output really does span 0–1, and the wrong one for a stem — whose
+ *  envelope might only occupy 0.3–0.6 across a whole track. Reporting "0 → 16" for a
+ *  parameter that never leaves 5 → 10 is the single most misleading number in the routing
+ *  UI, because it reads as a promise about the visual.
+ *
+ *  Runs the real shaper over the real feature timeline, same as `previewConnection`.
+ *  Returns null when the source produces nothing at all — no analysis yet, or a silent
+ *  stem — so callers can fall back rather than draw a collapsed range. */
+export function reachableRange(
+  connection: ModulationConnection,
+  baseValue: number,
+  duration: number,
+  ctx: Omit<FieldContext, 'time'>,
+  samples = 300,
+): { low: number; high: number } | null {
+  if (duration <= 0) return null
+
+  const dt = duration / (samples - 1)
+  const shaper = new SignalShaper()
+
+  let low = Infinity
+  let high = -Infinity
+  let sawSignal = false
+
+  for (let i = 0; i < samples; i++) {
+    const input = evaluateField(connection.source, { ...ctx, time: i * dt })
+    if (input > 1e-4) sawSignal = true
+    const value = baseValue + shaper.process(input, connection.chain, dt)
+    if (value < low) low = value
+    if (value > high) high = value
+  }
+
+  return sawSignal ? { low, high } : null
+}
+
 function shapedAt(connection: ModulationConnection, input: number): number {
   const { curve, invert, gain } = connection.chain
   const gained = Math.min(1, Math.max(0, input * gain))

@@ -25,7 +25,7 @@ import { ParamField } from './ParamField'
  *  Parameters render inline through the same `ParamField` the inspector uses, so a post
  *  knob shows its live driven value and its "can be wired" marker exactly like a
  *  deformer knob does. */
-export function PostStack() {
+export function PostStack({ embedded = false }: { embedded?: boolean } = {}) {
   const effects = usePostStore((s) => s.effects)
   const bypassed = usePostStore((s) => s.bypassed)
   const addBrick = usePostStore((s) => s.addBrick)
@@ -35,23 +35,32 @@ export function PostStack() {
   const setParam = usePostStore((s) => s.setParam)
   const setBypassed = usePostStore((s) => s.setBypassed)
 
-  const [open, setOpen] = useState(true)
+  const [collapsedPanel, setCollapsedPanel] = useState(false)
+  const open = embedded || !collapsedPanel
   const [picking, setPicking] = useState(false)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
 
   const activeCount = effects.filter((e) => e.enabled).length
 
   return (
-    <section className="border-t border-aura-line shrink-0 flex flex-col min-h-0 max-h-[35%]">
+    <section
+      className={
+        embedded
+          ? 'flex flex-col min-h-0 h-full'
+          : 'border-t border-aura-line shrink-0 flex flex-col min-h-0 max-h-[35%]'
+      }
+    >
       <header className="flex items-center gap-1 px-2 py-1.5 shrink-0">
         <button
-          onClick={() => setOpen((v) => !v)}
-          className="flex items-center gap-1 flex-1 min-w-0 text-slate-500 hover:text-slate-300 transition-colors"
+          onClick={() => !embedded && setCollapsedPanel((v) => !v)}
+          disabled={embedded}
+          className="flex items-center gap-1 flex-1 min-w-0 text-slate-500 hover:text-slate-300 transition-colors disabled:hover:text-slate-500"
         >
-          {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+          {!embedded &&
+            (open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />)}
           <Sparkles className={`w-3 h-3 ${activeCount > 0 && !bypassed ? 'text-aura-accent' : ''}`} />
           <h2 className="text-[10px] uppercase tracking-wider">
-            Post · {activeCount} active
+            {activeCount} active
           </h2>
         </button>
 
@@ -69,7 +78,7 @@ export function PostStack() {
 
         <button
           onClick={() => {
-            setOpen(true)
+            setCollapsedPanel(false)
             setPicking((v) => !v)
           }}
           className="shrink-0 text-slate-500 hover:text-aura-accent transition-colors"
@@ -110,8 +119,7 @@ export function PostStack() {
 
           {effects.length === 0 && !picking && (
             <p className="text-[10px] text-slate-600 leading-snug py-1 px-1">
-              Nothing applied. The render goes straight to screen. Bloom alone changes the
-              perceived quality more than any other single thing here.
+              No effects. The render goes straight to screen.
             </p>
           )}
 

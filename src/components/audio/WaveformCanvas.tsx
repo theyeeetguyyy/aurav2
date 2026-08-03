@@ -1,12 +1,16 @@
 import { useEffect, useRef } from 'react'
 import { TransportClock } from '@/engine/time/TransportClock'
-import { readToken } from '@/utils/tokens'
 
 interface WaveformCanvasProps {
   buffer: AudioBuffer
   color: string
   height?: number
-  /** Timeline span this waveform represents. Defaults to the buffer's own length. */
+  /** Timeline span this waveform represents. Defaults to the buffer's own length.
+   *
+   *  In the rack this is the PROJECT duration, not the buffer's, so a 30-second stem
+   *  occupies half the width of a 60-second one. Drawing each stem across its own length
+   *  made every row a different time scale — which is what put four playheads at four
+   *  different positions. */
   duration?: number
 }
 
@@ -25,9 +29,10 @@ export function WaveformCanvas({ buffer, color, height = 48, duration }: Wavefor
   const containerRef = useRef<HTMLDivElement>(null)
   const futureRef = useRef<HTMLCanvasElement>(null)
   const pastRef = useRef<HTMLCanvasElement>(null)
-  const playheadRef = useRef<HTMLDivElement>(null)
 
   const span = duration ?? buffer.duration
+  // Fraction of the shared timeline this stem actually occupies.
+  const extent = span > 0 ? Math.min(1, buffer.duration / span) : 1
 
   // ─── Static draw: peaks + both colour layers. Re-runs only on real changes. ───
   useEffect(() => {
@@ -37,7 +42,9 @@ export function WaveformCanvas({ buffer, color, height = 48, duration }: Wavefor
     if (!container || !future || !past) return
 
     const draw = () => {
-      const width = Math.max(1, Math.floor(container.clientWidth))
+      // The canvas covers only this stem's share of the row, so peaks stay on the
+      // shared time scale instead of being stretched to fill it.
+      const width = Math.max(1, Math.floor(container.clientWidth * extent))
       const dpr = window.devicePixelRatio || 1
 
       for (const canvas of [future, past]) {
@@ -82,36 +89,35 @@ export function WaveformCanvas({ buffer, color, height = 48, duration }: Wavefor
     const observer = new ResizeObserver(draw)
     observer.observe(container)
     return () => observer.disconnect()
-  }, [buffer, color, height])
+  }, [buffer, color, height, extent])
 
   // ─── Live progress: imperative, zero React renders. ───
+  //
+  // The playhead itself is NOT drawn here. One line for the whole rack is drawn by the
+  // page, so it reads as a single transport position rather than as one marker per stem.
   useEffect(() => {
-    const container = containerRef.current
     const past = pastRef.current
-    const playhead = playheadRef.current
-    if (!container || !past || !playhead) return
+    if (!past) return
 
     const apply = (time: number) => {
-      const progress = span > 0 ? Math.min(Math.max(time / span, 0), 1) : 0
+      const played = buffer.duration > 0 ? Math.min(Math.max(time / buffer.duration, 0), 1) : 0
       // Reveal the "played" layer left-to-right.
-      past.style.clipPath = `inset(0 ${(1 - progress) * 100}% 0 0)`
-      playhead.style.transform = `translateX(${progress * container.clientWidth}px)`
-      playhead.style.opacity = progress > 0 && progress < 1 ? '1' : '0'
+      past.style.clipPath = `inset(0 ${(1 - played) * 100}% 0 0)`
     }
 
     apply(TransportClock.time)
     return TransportClock.subscribe(apply)
-  }, [span])
+  }, [buffer])
 
   return (
     <div ref={containerRef} className="relative w-full" style={{ height }}>
-      <canvas ref={futureRef} className="absolute inset-0 w-full h-full block" />
-      <canvas ref={pastRef} className="absolute inset-0 w-full h-full block" />
       <div
-        ref={playheadRef}
-        className="absolute top-0 bottom-0 left-0 w-px pointer-events-none opacity-0"
-        style={{ backgroundColor: readToken('--color-aura-playhead', '#f1f5f9') }}
-      />
+        className="absolute inset-y-0 left-0"
+        style={{ width: `${extent * 100}%` }}
+      >
+        <canvas ref={futureRef} className="absolute inset-0 w-full h-full block" />
+        <canvas ref={pastRef} className="absolute inset-0 w-full h-full block" />
+      </div>
     </div>
   )
 }

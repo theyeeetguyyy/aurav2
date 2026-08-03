@@ -11,30 +11,41 @@ import { ParamField } from './ParamField'
  *
  *  Every row is the same `ParamField` used everywhere else, so a light intensity shows
  *  its live driven value the moment something is wired to it. */
-export function WorldPanel() {
+export function WorldPanel({ embedded = false }: { embedded?: boolean } = {}) {
   const params = useEnvironmentStore((s) => s.params)
   const disabled = useEnvironmentStore((s) => s.disabled)
   const setParam = useEnvironmentStore((s) => s.setParam)
   const setSectionEnabled = useEnvironmentStore((s) => s.setSectionEnabled)
 
-  const [open, setOpen] = useState(false)
+  // Embedded on the Look page it owns the panel, so it is always open and never capped.
+  // Elsewhere it is one collapsible block among several.
+  const [collapsedPanel, setCollapsedPanel] = useState(true)
+  const open = embedded || !collapsedPanel
   const [expanded, setExpanded] = useState<Record<string, boolean>>({ lighting: true })
 
   return (
-    <section className="border-t border-aura-line shrink-0 flex flex-col min-h-0 max-h-[35%]">
-      <header className="flex items-center gap-1 px-2 py-1.5 shrink-0">
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className="flex items-center gap-1 flex-1 min-w-0 text-slate-500 hover:text-slate-300 transition-colors"
-        >
-          {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-          <Globe className="w-3 h-3" />
-          <h2 className="text-[10px] uppercase tracking-wider">World</h2>
-        </button>
-      </header>
+    <section
+      className={
+        embedded
+          ? 'flex flex-col min-h-0 h-full'
+          : 'border-t border-aura-line shrink-0 flex flex-col min-h-0 max-h-[35%]'
+      }
+    >
+      {!embedded && (
+        <header className="flex items-center gap-1 px-2 py-1.5 shrink-0">
+          <button
+            onClick={() => setCollapsedPanel((v) => !v)}
+            className="flex items-center gap-1 flex-1 min-w-0 text-slate-500 hover:text-slate-300 transition-colors"
+          >
+            {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+            <Globe className="w-3 h-3" />
+            <h2 className="text-[10px] uppercase tracking-wider">World</h2>
+          </button>
+        </header>
+      )}
 
       {open && (
-        <div className="flex-1 min-h-0 overflow-y-auto px-1.5 pb-1.5 space-y-1">
+        <div className="flex-1 min-h-0 overflow-y-auto px-1.5 py-1.5 space-y-1">
           {ENV_SECTIONS.map((section) => {
             const isOn = disabled[section.id] !== true
             const isExpanded = expanded[section.id] === true

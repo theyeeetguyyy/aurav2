@@ -1,8 +1,19 @@
 import { useState } from 'react'
-import { Eye, EyeOff, Lock, Unlock, Trash2, Copy, ChevronUp, ChevronDown, Box } from 'lucide-react'
+import {
+  Eye,
+  EyeOff,
+  Lock,
+  Unlock,
+  Trash2,
+  Copy,
+  ChevronUp,
+  ChevronDown,
+  Box,
+  Lightbulb,
+} from 'lucide-react'
 import { useSceneStore } from '@/store/useSceneStore'
 import { BrickRegistry } from '@/engine/scene/BrickRegistry'
-import type { GeometryBrick } from '@/engine/scene/backends/types'
+import { LightRegistry } from '@/engine/scene/lights/LightRegistry'
 
 /** Layer stack — the scene outliner (Figma/Blender model).
  *
@@ -114,9 +125,13 @@ export function LayerStack() {
                 </span>
               )}
 
+              {object.type === 'light' && (
+                <Lightbulb className="w-3 h-3 shrink-0 text-aura-state-solo" />
+              )}
+
               {/* Morph-compatible objects get a marker: it is the difference between
                   "these can transform into each other" and "these can only cut". */}
-              {brick?.morphGroup && (
+              {object.type !== 'light' && brick?.morphGroup && (
                 <span
                   className="text-[9px] font-mono text-slate-600 shrink-0"
                   title="Morph-compatible — shares the procedural base topology"
@@ -213,6 +228,13 @@ function ShapeLibrary() {
         bricks={primitive}
         onAdd={addObject}
       />
+      <BrickGroup
+        title="Lights"
+        hint="Intensity and colour are modulation targets — an onset trigger into intensity is a strobe"
+        bricks={LightRegistry.list()}
+        icon={Lightbulb}
+        onAdd={addObject}
+      />
     </div>
   )
 }
@@ -222,11 +244,14 @@ function BrickGroup({
   hint,
   bricks,
   onAdd,
+  icon: Icon = Box,
 }: {
   title: string
   hint: string
-  bricks: GeometryBrick[]
+  /** Anything with an id and a label — geometry bricks and light bricks alike. */
+  bricks: { id: string; label: string }[]
   onAdd: (brickId: string) => void
+  icon?: typeof Box
 }) {
   return (
     <section className="p-2">
@@ -244,7 +269,7 @@ function BrickGroup({
             title={`Add ${brick.label}`}
             className="flex flex-col items-center gap-1 py-1.5 rounded bg-aura-surface hover:bg-aura-elevated border border-aura-line hover:border-aura-accent transition-colors"
           >
-            <Box className="w-3.5 h-3.5 text-slate-400" />
+            <Icon className="w-3.5 h-3.5 text-slate-400" />
             <span className="text-[9px] text-slate-400 truncate max-w-full px-1">
               {brick.label}
             </span>

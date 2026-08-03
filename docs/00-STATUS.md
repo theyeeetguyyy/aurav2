@@ -3,7 +3,7 @@
 **Read this first.** Where the project actually is, what runs today, what does not, and
 what to do next. Everything here is verified against the code, not aspirational.
 
-*Last verified: 2026-08-03 · `npm run check` green (typecheck · lint · 230 tests)*
+*Last verified: 2026-08-03 · `npm run check` green (typecheck · lint · 272 tests)*
 
 > **What is missing and what it costs: [13-PRODUCT-GAP.md](13-PRODUCT-GAP.md).**
 
@@ -103,6 +103,9 @@ Fresnel Rim, Toon, Normal). `MaterialParams` is open, not a fixed struct.
 and angle, procedural image-based reflections, grid. All routable.
 ✅ **4H cloners** — radial/linear/grid layouts + Step/Random/Wave/**Time Delay** effectors,
 GPU instanced, clone count drivable at frame rate.
+✅ **4N lights** — 5 light types as scene objects with routable intensity, per-light
+shadows and an authoring gizmo layer. Strobe-on-hit needed no code: it is an onset
+trigger into intensity (D-48).
 ⬜ 4F morph · 4J GLTF · 4K SDF backend.
 
 ### Phase 5 — Modulation (partial)
@@ -114,9 +117,16 @@ editor, **real value ranges** in the parameter's own units, and a **modulation g
 drawn from the real engine.
 ⬜ 5C node graph (advanced view) · 5E object-to-object routing · 5F automation lanes.
 
+### Phase 7 — Camera (partial)
+✅ **7D camera behaviours** — Orbit / Sway / Handheld Shake / Dolly / Lens on the Scene
+Camera, each a pure function of clock time with every amplitude a modulation target, plus
+Look-At and **Align to this view** (D-50).
+⬜ 7A spline · 7B easing editor · 7C constraints · 7E motion trail · 7F presets — all need
+the Phase 6 time axis.
+
 ### Not started
-**Phase 6** timeline & states · **Phase 7** camera authoring · **Phase 8** export &
-project files · **Phase 9** brick mining from v1.
+**Phase 6** timeline & states · **Phase 8** export & project files · **Phase 9** brick
+mining from v1.
 
 ---
 
@@ -162,11 +172,15 @@ break by accident:
 
 ## Next
 
-**GPU particles** — the `points` backend. The largest remaining jump in visual density,
-and the last of the four element families that changes what a frame can look like.
+**Signal authoring** — the draw-in automation lane. It is the answer to three complaints
+that turn out to be one: the routed range readout looked wrong, a bass stem "barely
+moves", and there is no way to decide what a stem *should* do. Honest numbers
+(`reachableRange`) made the problem visible; only an editor fixes it.
 
-After that: **export** (the product still has no output at all) → **save/load** →
+After that: **GPU particles** (stateless, per D-49) → **export** → **save/load** →
 **undo** → **Phase 6 timeline**.
+
+Full queue, ranked and separated by kind: [15-BUILD-PLAN.md](15-BUILD-PLAN.md).
 
 Full breakdown with test criteria: [06-ROADMAP.md](06-ROADMAP.md).
 

@@ -30,7 +30,7 @@ export function EffectStack({ object }: { object: SceneObject }) {
   return (
     <section>
       <div className="flex items-center justify-between mb-1.5">
-        <h3 className="text-[10px] uppercase tracking-wider text-slate-500">Stack</h3>
+        <h3 className="text-[10px] uppercase tracking-wider text-slate-500">Effects</h3>
         <button
           onClick={() => setPicking((v) => !v)}
           className="text-slate-500 hover:text-aura-accent transition-colors"

@@ -1,10 +1,11 @@
 import { Activity, Power, Trash2 } from 'lucide-react'
-import { useAudioStore } from '@/store/useAudioStore'
+import { useAudioStore, isTrackVisuallyActive } from '@/store/useAudioStore'
 import { useModulationStore } from '@/store/useModulationStore'
-import { useGeneratorStore } from '@/store/useGeneratorStore'
+import { useGeneratorStore, getGenerator } from '@/store/useGeneratorStore'
 import { useTargetInfo } from './targetInfo'
 import { fieldLabel } from '@/engine/modulation/fields'
-import { connectionRange } from '@/engine/modulation/preview'
+import { connectionRange, reachableRange } from '@/engine/modulation/preview'
+import { TransportClock } from '@/engine/time/TransportClock'
 import { CURVE_PRESETS, isLinear } from '@/engine/modulation/curve'
 import { CurveEditor } from './CurveEditor'
 import { ModulationGraph } from './ModulationGraph'
@@ -41,7 +42,12 @@ export function ConnectionInspector({ id, onClear }: { id: string; onClear: () =
     generators.find((g) => g.id === connection.source.sourceId)?.name
 
   const unit = unitSuffix(descriptor)
-  const { low, high } = connectionRange(connection, baseValue)
+  // What the parameter actually does, measured against the real timeline (D7).
+  const { low, high } =
+    reachableRange(connection, baseValue, TransportClock.duration, {
+      isTrackActive: isTrackVisuallyActive,
+      getGenerator,
+    }) ?? connectionRange(connection, baseValue)
   const decimals = descriptor && descriptor.step >= 1 ? 0 : 2
 
   return (

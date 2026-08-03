@@ -1,10 +1,11 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo, useRef } from 'react'
 import { Upload, Music } from 'lucide-react'
 import { useAudioStore } from '@/store/useAudioStore'
 import { MultiTrackRack } from '@/engine/audio/MultiTrackRack'
 import { RealtimeAnalyser } from '@/engine/audio/RealtimeAnalyser'
 import { AudioFeatures } from '@/engine/audio/AudioFeatures'
 import { TrackRow } from '@/components/audio/TrackRow'
+import { RackPlayhead } from '@/components/audio/RackPlayhead'
 import { getNextStemColor, generateId } from '@/utils/stemColors'
 import type { Track } from '@/types/audio'
 
@@ -15,6 +16,14 @@ export function MediaStemsPage() {
   const addTrack = useAudioStore((s) => s.addTrack)
   const [isDragOver, setIsDragOver] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const rackRef = useRef<HTMLDivElement>(null)
+
+  // The longest trimmed stem IS the project. Every waveform is drawn against it, so the
+  // rack is one timeline rather than N independent ones.
+  const projectDuration = useMemo(
+    () => tracks.reduce((max, t) => Math.max(max, t.trimBounds.end), 0),
+    [tracks],
+  )
 
   const importFiles = useCallback(async (files: FileList | File[]) => {
     const audioFiles = Array.from(files).filter((f) =>
@@ -89,10 +98,11 @@ export function MediaStemsPage() {
     <div className="w-full h-full flex flex-col">
       {/* ─── Track Rack ─── */}
       {tracks.length > 0 && (
-        <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+        <div ref={rackRef} className="relative flex-1 overflow-y-auto p-3 space-y-1.5">
           {tracks.map((track) => (
-            <TrackRow key={track.id} track={track} />
+            <TrackRow key={track.id} track={track} projectDuration={projectDuration} />
           ))}
+          <RackPlayhead containerRef={rackRef} duration={projectDuration} />
         </div>
       )}
 

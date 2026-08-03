@@ -21,17 +21,6 @@ dissolved this question — with N objects each independently transformable and 
 "primary/secondary" is just naming. **Revisit only if a real need for a parent/child
 relationship appears.** If it does, the answer is scene-graph parenting, not a shape type.
 
-### Q2 · Lighting module scope for v1
-**Blocks:** Phase 4 (adding a light to the scene).
-`'light'` is in the `SceneObjectType` union and light bricks are catalogued, but nothing
-is implemented and no behaviour is specified. Minimum viable: which light types, does each
-get an audio-routable intensity, is strobe-on-hit a discrete event or a light property, do
-shadows ship in v1 (real GPU cost).
-
-> Now partly answered by construction: a light is just a `SceneObject` with descriptors,
-> so intensity/colour routing comes free from HC-5. What remains genuinely open is scope
-> and shadow cost, not architecture.
-
 ### Q3 · 2D background / overlay layer
 **Blocks:** Phase 4.
 Named repeatedly ("arrows, lines, circles, squares"), never designed. Open: is it a
@@ -103,3 +92,9 @@ asynchronously. Follows from Q10; no independent decision needed yet.
 | Rig marketplace | v2+. Depends on Q10. |
 | Live mic input | v2+. Retained as the sole justification for keeping live Meyda analysis (HC-3). |
 | Millumin-style cue triggering | v2+. Depends on Q8. |
+
+## Resolved
+
+| Question | Resolved by | Where |
+|---|---|---|
+| **Q2 · Lighting module scope** | 2026-08-04 | D-48 in [07-DECISIONS.md](07-DECISIONS.md); encoded in [04-ENGINE-SPECS.md](04-ENGINE-SPECS.md) §4.3 |

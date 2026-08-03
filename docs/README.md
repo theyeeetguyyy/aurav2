@@ -28,6 +28,8 @@ reference.
 | 12 | [Deformer Catalogue](12-DEFORMERS.md) | The fifteen deformers, why each is structurally distinct, and the no-built-in-motion rule. |
 | 13 | [Product Gap](13-PRODUCT-GAP.md) | **What is done, what is missing, and what actually blocks being a product.** |
 | 14 | [Visual Idea Bank](14-VISUAL-IDEAS.md) | Researched + original element ideas, ranked. What only AURA can do. |
+| 15 | [Build Plan](15-BUILD-PLAN.md) | **The current queue.** Defects, structure, craft and features, separated and ranked. |
+| 16 | [Library Assessment](16-LIBRARIES.md) | Before building anything substantial. What to buy, what to reject, and why. |
 | — | [Codebase Map](CODEBASE_MAP.md) | Finding where something lives. File-by-file registry. |
 | — | [Audit 2026-07-27](AUDIT-2026-07-27.md) | Historical record of the full-codebase audit that produced this doc set. |
 

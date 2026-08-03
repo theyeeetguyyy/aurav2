@@ -111,16 +111,22 @@ export const ENV_SECTIONS: EnvSection[] = [
         { value: 'linear', label: 'Linear' },
       ]),
       colour('color', 'Colour', '#05050a'),
-      knob('density', 'Density', 0, 0.06, 0.008, { step: 0.0002 }),
-      knob('near', 'Near', 0, 500, 20, { unit: 'm' }),
-      knob('far', 'Far', 1, 1000, 220, { unit: 'm' }),
+      // 0.008 reaches ~92% opacity at 200m, which is why flying away used to turn the
+      // whole scene into flat background colour. The default is now a haze you can see
+      // through, and the ceiling is low enough that dragging the slider to the end
+      // reads as "very foggy" rather than as "the renderer broke".
+      knob('density', 'Density', 0, 0.02, 0.0035, { step: 0.0001 }),
+      knob('near', 'Near', 0, 500, 40, { unit: 'm' }),
+      knob('far', 'Far', 1, 2000, 600, { unit: 'm' }),
     ],
   },
   {
     id: 'lighting',
-    label: 'Lighting',
-    hint: 'Three-point rig. Every intensity and the key light angle can be driven.',
-    toggleable: false,
+    label: 'Default Rig',
+    // Switchable, because the moment a user adds their own lights this rig is competing
+    // with them. It is a sensible starting point, not a fixture.
+    hint: 'Built-in three-point rig. Switch it off once you are lighting the scene yourself.',
+    toggleable: true,
     descriptors: [
       knob('ambient', 'Ambient', 0, 3, 0.6),
       knob('keyIntensity', 'Key', 0, 10, 2.2, { curve: 'exp' }),
@@ -146,15 +152,19 @@ export const ENV_SECTIONS: EnvSection[] = [
   {
     id: 'grid',
     label: 'Grid',
-    hint: 'Floor reference. Authoring furniture — switch it off before rendering.',
+    hint: 'Floor reference. Authoring furniture — switch it off with the power button.',
     toggleable: true,
     descriptors: [
       knob('height', 'Height', -200, 200, -10, { unit: 'm', realtime: true }),
       knob('cellSize', 'Cell', 0.1, 20, 1, { unit: 'm', realtime: false }),
       knob('sectionSize', 'Section', 1, 100, 5, { unit: 'm', realtime: false }),
       knob('fadeDistance', 'Fade', 10, 1000, 250, { unit: 'm', realtime: false }),
-      colour('cellColor', 'Cell Colour', '#3f3f46'),
-      colour('sectionColor', 'Section Colour', '#6366f1'),
+      // These mirror --color-aura-grid-cell / --color-aura-grid-section in index.css,
+      // which is the token home (05-DESIGN-SYSTEM §3). Engine code cannot read CSS, so
+      // the renderer falls back to the tokens and these are the initial authored values.
+      colour('cellColor', 'Cell Colour', '#26262b'),
+      colour('sectionColor', 'Section Colour', '#3a3a42'),
+      knob('opacity', 'Opacity', 0, 1, 0.6),
     ],
   },
 ]

@@ -4,6 +4,7 @@ import { create } from 'zustand'
 export type WorkspacePage =
   | 'media-stems'
   | 'scene-shapes'
+  | 'look'
   | 'routing'
   | 'camera'
   | 'deliver'

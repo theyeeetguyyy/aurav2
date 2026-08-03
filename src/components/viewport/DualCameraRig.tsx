@@ -4,6 +4,7 @@ import { OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import { DualCameraEngine } from '@/engine/camera/DualCameraEngine'
 import { useCameraStore } from '@/store/useCameraStore'
+import { GIZMO_LAYER } from './SceneLight'
 
 /** DualCameraRig — two real cameras, one output (docs/03-ARCHITECTURE.md HC-10).
  *
@@ -35,6 +36,15 @@ export function DualCameraRig() {
   useEffect(() => {
     if (previewCam) engine.restorePreview(previewCam)
   }, [previewCam, engine])
+
+  // Authoring gizmos — light positions, and anything else with no geometry of its own —
+  // live on their own layer. Both cameras show it while authoring so a light can be seen
+  // and clicked from either view; the exporter disables it on the Scene Camera so none of
+  // it reaches the rendered video.
+  useEffect(() => {
+    sceneCamRef.current?.layers.enable(GIZMO_LAYER)
+    previewCam?.layers.enable(GIZMO_LAYER)
+  }, [previewCam])
 
   // Bind whichever camera is active as R3F's render camera, and keep aspect correct.
   // Done explicitly rather than via drei's `makeDefault` on two components, whose

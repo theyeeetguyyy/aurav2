@@ -1,6 +1,7 @@
 import { useSceneStore, useSelectedObject } from '@/store/useSceneStore'
 import { BrickRegistry } from '@/engine/scene/BrickRegistry'
 import { MaterialRegistry } from '@/engine/scene/materials/MaterialRegistry'
+import { LightRegistry } from '@/engine/scene/lights/LightRegistry'
 import { describeObject, groupsOf, readParam } from '@/engine/params/ParamRegistry'
 import { ParamField } from './ParamField'
 import { EffectStack } from './EffectStack'
@@ -54,7 +55,7 @@ export function Inspector() {
           </section>
         ))}
 
-        <EffectStack object={object} />
+        {object.type !== 'light' && <EffectStack object={object} />}
       </div>
     </div>
   )
@@ -66,6 +67,22 @@ function ObjectHeader({ object }: { object: SceneObject }) {
   const brick = BrickRegistry.get(object.brickId)
   const material = MaterialRegistry.get(object.materialId)
   const morphTargets = BrickRegistry.morphTargets(object.brickId)
+
+  if (object.type === 'light') {
+    const light = LightRegistry.get(object.brickId)
+    return (
+      <header className="px-3 py-2 border-b border-aura-line shrink-0 space-y-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-[11px] font-medium text-slate-200 truncate">{object.name}</span>
+          <span className="text-[10px] text-slate-500 font-mono shrink-0">light</span>
+        </div>
+        <p className="text-[10px] text-slate-600 leading-snug">{light?.hint}</p>
+        <p className="text-[10px] text-slate-600 leading-snug">
+          Wire an onset to Intensity in Routing and this becomes a strobe.
+        </p>
+      </header>
+    )
+  }
 
   return (
     <header className="px-3 py-2 border-b border-aura-line shrink-0 space-y-1.5">

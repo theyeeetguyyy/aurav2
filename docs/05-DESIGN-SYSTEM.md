@@ -10,20 +10,22 @@
 | **Flat, opaque surfaces. No glassmorphism.** | Blender, Resolve, Ableton and TouchDesigner all use opaque crisp surfaces. Background blur burns GPU budget the viewport needs and hurts legibility of dense numeric data. Flat opaque reads as an instrument panel, not a SaaS dashboard. **`backdrop-blur` is banned outright.** |
 | **Node category ≠ stem identity** | Node headers and handles are coloured by *category* so wiring validity is readable at a glance. Stem identity appears as a secondary badge dot inside the node. Conflating them makes both unreadable. |
 | **Tokens are enforced** | All colours and fonts are registered in `index.css` via Tailwind v4 `@theme`. Arbitrary values (`bg-[#121215]`) in components are forbidden — including inside `style={{}}`. |
-| **Persistent transport, page-local timeline** | A slim transport strip lives in the shell across all five tabs so you always know where you are in the piece. The full NLE timeline stays in Deliver. |
+| **Persistent transport, page-local timeline** | A slim transport strip lives in the shell across every tab so you always know where you are in the piece. The full NLE timeline stays in Deliver. |
+| **One page, one job** | A page's docks serve a single question. When Scene & Shapes' left dock accumulated the layer stack, the shape library, world settings *and* the post chain, each got a sliver and the fixed-size library overflowed onto the rows beneath. Look was split out for that reason, and it is the standing rule: a new concern gets a home, not a corner of an existing one. |
 | **Tabular figures, pointer-lock scrubbing** | `tabular-nums` on every live readout stops digit jitter. `requestPointerLock()` on scrub gives infinite travel without hitting screen edges. |
 
 ## 2. Layout
 
-Fixed shell: 260px left dock · centre · 320px right dock, consistent across all five tabs.
+Fixed shell: 260px left dock · centre · 320px right dock, consistent across every tab.
 
-| Tab | Left dock | Centre | Right dock |
-|---|---|---|---|
-| **1 · Media & Stems** | Import / file browser | Stem rack, full width | Track detail: trim, BPM, onsets |
-| **2 · Scene & Shapes** | Layer stack + brick library | 3D viewport | Transform / material / effect stack |
-| **3 · Routing** | Available Fields (drag to wire) | Stacked list ⟷ node graph | Connection signal chain |
-| **4 · Camera** | Keyframe / waypoint list | 3D viewport + spline gizmo | Constraint stack, influence sliders |
-| **5 · Deliver** | Section markers | NLE timeline, full width | Export settings |
+| Tab | Left dock | Centre | Right dock | State |
+|---|---|---|---|---|
+| **1 · Media & Stems** | Import / file browser | Stem rack, full width | Track detail: trim, BPM, onsets | rack only — docks unbuilt |
+| **2 · Scene & Shapes** | Layer stack + brick library | 3D viewport | Transform / material / effect stack | built |
+| **3 · Look** | World: background, fog, lighting rig, reflections, grid | 3D viewport | Post chain | built |
+| **4 · Routing** | Available Fields (drag to wire) | Patchbay ⟷ node graph | Connection signal chain | patchbay built, graph unbuilt |
+| **5 · Camera** | Keyframe / waypoint list | 3D viewport + spline gizmo | Constraint stack, influence sliders | viewport only |
+| **6 · Deliver** | Section markers | NLE timeline, full width | Export settings | unbuilt |
 
 - **Splitters** — 1px, `border-aura-line`, hover indicator. Drag to resize (200–480px), double-click to collapse.
 - **Immersive view (`H`)** — hides left/right/bottom docks for a full-bleed viewport. Restores the *previous* dock state on exit, not a default state.

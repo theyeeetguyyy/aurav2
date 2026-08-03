@@ -5,6 +5,8 @@ import { useEnvironmentStore } from '@/store/useEnvironmentStore'
 import { readParam, resolveDescriptor } from '@/engine/params/ParamRegistry'
 import { PostRegistry } from '@/engine/post/PostRegistry'
 import { ENV_STACK_ID, getEnvSection } from '@/engine/environment/sections'
+import { CAMERA_STACK_ID, getBehaviour } from '@/engine/camera/behaviours'
+import { useCameraStore } from '@/store/useCameraStore'
 import { POST_STACK_ID } from '@/types/visual'
 import type { ParamAddress, ParamDescriptor } from '@/types/params'
 
@@ -54,6 +56,22 @@ export function describeTarget(address: ParamAddress): TargetInfo {
     }
   }
 
+  if (address.objectId === CAMERA_STACK_ID) {
+    const behaviour = useCameraStore.getState().behaviours.find((b) => b.id === address.effectId)
+    if (!behaviour) return UNKNOWN
+
+    const descriptor =
+      getBehaviour(behaviour.effectId)?.descriptors.find((d) => d.key === address.paramKey) ?? null
+    const raw = behaviour.params[address.paramKey]
+
+    return {
+      descriptor,
+      base: typeof raw === 'number' ? raw : descriptor ? Number(descriptor.defaultValue) : 0,
+      ownerLabel: behaviour.name,
+      groupLabel: 'Camera',
+    }
+  }
+
   if (address.objectId === ENV_STACK_ID) {
     const section = getEnvSection(address.effectId ?? '')
     if (!section) return UNKNOWN
@@ -87,12 +105,13 @@ export function useTargetInfo(address: ParamAddress | null): TargetInfo {
   const objects = useSceneStore((s) => s.objects)
   const postEffects = usePostStore((s) => s.effects)
   const envParams = useEnvironmentStore((s) => s.params)
+  const behaviours = useCameraStore((s) => s.behaviours)
 
   return useMemo(
     () => (address ? describeTarget(address) : UNKNOWN),
     // These are the real inputs — describeTarget reads them via getState(), so they must
     // stay in the dependency list to trigger recomputation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [address, objects, postEffects, envParams],
+    [address, objects, postEffects, envParams, behaviours],
   )
 }

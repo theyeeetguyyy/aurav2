@@ -4,6 +4,7 @@ import { DualCameraRig } from './DualCameraRig'
 import { EnvironmentRig } from './EnvironmentRig'
 import { SceneObjects } from './SceneObjects'
 import { ModulationDriver } from './ModulationDriver'
+import { CameraRigDriver } from './CameraRigDriver'
 import { PostChain } from './PostChain'
 import { ViewportHUD } from './ViewportHUD'
 import {
@@ -111,6 +112,8 @@ export function PersistentViewport() {
       >
         {/* Before SceneObjects, so the matrix is evaluated before it is read. */}
         <ModulationDriver />
+        {/* Before DualCameraRig: it resolves the Scene Camera transform the rig copies. */}
+        <CameraRigDriver />
         <DualCameraRig />
         {/* Owns scene.background now — a routable gradient, not a fixed token colour. */}
         <EnvironmentRig />

@@ -117,7 +117,7 @@ frame 12 and still produce exactly what was previewed.
 | `SignalShaper.ts` | One connection's chain: Gain → Rise/Fall → Min/Max → Weight. The only stateful part of modulation; reset on clock jumps. |
 | `fields.ts` | `evaluateField()` + the source catalogue. Every field is a **pure function of time**. Takes a `FieldContext` rather than importing a store — the engine boundary is absolute. |
 | `curve.ts` | Response curves — points + per-segment exponential tension, presets, `evaluateCurve()` (D-39) |
-| `preview.ts` | Runs the real shaper over the real timeline to produce the drawn curve and the reachable value range (D-41) |
+| `preview.ts` | Runs the real shaper over the real timeline for the drawn curve (D-41), and `reachableRange()` — the span the parameter ACTUALLY reaches given the signal that exists, as opposed to the span the settings allow |
 | `ModulationMatrix.ts` | Per-frame evaluation into `Map<addressKey, offset>`. Weighted N:1 summing. Connections passed in, not read from a store, so the exporter can drive it with its own state. |
 
 ### `engine/scene/`
@@ -163,6 +163,14 @@ frame 12 and still produce exactly what was previewed.
 | `materials.ts` | Seven models: Standard, Physical, Unlit, Gradient, Fresnel Rim, Toon, Normal. The unlit family matters more than it looks — bloom and feedback key off bright flat colour |
 | `MaterialRegistry.ts` | Catalogue + `migrateParams()`, which carries shared values across a model swap |
 
+### `engine/scene/lights/` — light objects (4N)
+
+| File | Role |
+|---|---|
+| `types.ts` | `LightBrick` / `LightHandle`. `intensityParam()` deliberately ships headroom and an exp curve — a trigger that can only add 0.2 is a nudge, not a flash |
+| `lights.ts` | Point, Spot, Sun, Area, Ambient. Aiming lights parent a target down -Z so the object's rotation aims the beam |
+| `LightRegistry.ts` | The catalogue. Fifth registry, same contract as the other four |
+
 ### `engine/params/`
 
 | File | Role |
@@ -173,7 +181,8 @@ frame 12 and still produce exactly what was previewed.
 
 | File | Role |
 |---|---|
-| `DualCameraEngine.ts` | Authoritative transforms for both cameras. Fly movement, mouse-look, reference-counted input attach with text-field guards and key-release-on-blur. |
+| `behaviours.ts` | Orbit / Sway / Shake / Dolly / Lens. Pure functions of clock time, summed into a `CameraRig` (D-50) |
+| `DualCameraEngine.ts` | Authoritative transforms for both cameras. Separates the **authored** `baseScene*` from the **resolved** `scene*` — behaviours are additive, so writing onto the authored value would accumulate. Owns `alignSceneToPreview()`. Fly movement, mouse-look, reference-counted input attach with text-field guards and key-release-on-blur. |
 
 ### Not yet created
 
@@ -241,7 +250,9 @@ frame 12 and still produce exactly what was previewed.
 | `viewport/DualCameraRig.tsx` | **Two real cameras**, explicit active-camera binding, mutually exclusive Fly/Orbit (HC-10) |
 | `viewport/EnvironmentRig.tsx` | The world: gradient background, fog, three-point rig, `RoomEnvironment` reflections, authoring grid. Replaced the hardcoded `DefaultScene`. Values applied in `useFrame`, never as props (HC-1) |
 | `viewport/PostChain.tsx` | The composer. Mounted only while something is enabled — a `useFrame` at priority ≥ 1 takes the render loop from R3F, so unmounting is what hands it back. Rebuilt on stack SHAPE change only |
-| `viewport/SceneObjects.tsx` | Renders the layer stack. Object transform lives on a `<group>`; below it either one `<mesh>` or an `<instancedMesh>` when the stack has a cloner. Geometry from `BrickRegistry` (cached, never disposed here). **Applies modulation imperatively in `useFrame`** — never through props or state (HC-1) |
+| `viewport/CameraRigDriver.tsx` | Resolves the Scene Camera from its behaviour stack. Mounted before `DualCameraRig`, which copies the result onto the real camera |
+| `viewport/SceneLight.tsx` | Renders one light object, plus its authoring gizmo on `GIZMO_LAYER` — both cameras show that layer, the exporter disables it on the Scene Camera |
+| `viewport/SceneObjects.tsx` | Dispatches on object type — lights to `SceneLight`, everything else to a mesh. Renders the layer stack. Object transform lives on a `<group>`; below it either one `<mesh>` or an `<instancedMesh>` when the stack has a cloner. Geometry from `BrickRegistry` (cached, never disposed here). **Applies modulation imperatively in `useFrame`** — never through props or state (HC-1) |
 | `viewport/ModulationDriver.tsx` | Evaluates the matrix once per frame, before anything reads it. Reads stores with `getState()`, never a hook |
 | `viewport/ViewportHUD.tsx` | Reticles, camera + control-mode switchers. Flat, no blur |
 
@@ -250,8 +261,9 @@ frame 12 and still produce exactly what was previewed.
 | File | Role |
 |---|---|
 | `audio/TrackRow.tsx` | Stem row: colour, name, solo, mute, volume, waveform, delete |
-| `audio/WaveformCanvas.tsx` | Two static canvas layers + clip-path progress. **Never repaints during playback** |
+| `audio/WaveformCanvas.tsx` | Two static canvas layers + clip-path progress. **Never repaints during playback**. Drawn against the PROJECT duration, so every stem shares one time scale |
 | `audio/TrimHandles.tsx` | Draggable trim in/out with pointer capture |
+| `audio/RackPlayhead.tsx` | ONE playhead for the whole rack, measured off a real lane element rather than a hardcoded control width |
 
 ### Pages
 
@@ -259,9 +271,10 @@ frame 12 and still produce exactly what was previewed.
 |---|---|---|
 | `pages/MediaStemsPage.tsx` | 1 · Media & Stems | built |
 | `pages/ShapesScenePage.tsx` | 2 · Scene & Shapes | built — layer stack ∣ viewport ∣ inspector |
-| `pages/NodeGraphPage.tsx` | 3 · Routing | placeholder — Phase 5 |
-| `pages/CameraPage.tsx` | 4 · Camera | viewport only — Phase 7 |
-| `pages/DeliverPage.tsx` | 5 · Deliver | placeholder — Phase 6 & 8 |
+| `pages/LookPage.tsx` | 3 · Look | built — world & lighting ∣ viewport ∣ post chain |
+| `pages/NodeGraphPage.tsx` | 4 · Routing | built — patchbay |
+| `pages/CameraPage.tsx` | 5 · Camera | viewport only — Phase 7 |
+| `pages/DeliverPage.tsx` | 6 · Deliver | placeholder — Phase 6 & 8 |
 
 ## `src/hooks/` · `src/utils/`
 

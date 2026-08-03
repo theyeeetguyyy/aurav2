@@ -149,6 +149,30 @@ can assign per-clone values. Step offsets a parameter sequentially across clones
 adds springy staggered propagation. **Effector parameters are ordinary modulation targets**
 (HC-5) — that is what makes "guns drives a cascading rotation offset" free.
 
+### Lights (D-48)
+
+A light is a `SceneObject` with `type: 'light'` whose `brickId` names a `LightBrick`.
+
+| Brick | Shadows | Distinct because |
+|---|---|---|
+| **Point** | yes | Falls off in every direction — shapes a single object |
+| **Spot** | yes | A beam with a cone; aims along the object's rotation |
+| **Sun** | yes | Parallel rays; position sets direction only |
+| **Area** | no | A soft panel — the most flattering light, and visible in reflections |
+| **Ambient** | no | Unshaped fill; lifts blacks, creates no form |
+
+Descriptors follow HC-5, so `intensity` is a modulation target on every light and
+`position`/`rotation` come from the shared transform. Consequently:
+
+- **Strobe is an onset trigger into `intensity`** (D-30) — no strobe type exists.
+- A light describes **placement + its own knobs only**: no material, no scale, no effect
+  stack. Offering roughness on a light is offering a control that does nothing.
+- Shadows are **per light and off by default** — one depth pass per casting light, per
+  frame. The Sun additionally exposes `shadowRadius`, because a directional shadow is an
+  orthographic box and geometry outside it silently has none.
+- Lights render an **authoring gizmo on `GIZMO_LAYER`**, displayed by both cameras while
+  authoring and disabled on the Scene Camera by the exporter.
+
 **Morph rules.** `morphTargets()` on each backend is authoritative. The UI must never
 offer a morph the backend cannot perform; cross-family transitions present as a
 crossfade, and are labelled as such.

@@ -262,6 +262,70 @@ frame, and this needs `count` values at `count` different moments. It also needs
 a stem, which no static `enum` descriptor can express — hence the `stem` `ParamType`,
 whose options are whatever the user has imported.
 
+**D-48 · A light is a SceneObject; strobe is a wire, not a light type.** *(resolves Q2)*
+Five light bricks — Point, Spot, Sun, Area, Ambient — registered in a `LightRegistry`
+alongside the other four registries. A light is an ordinary `SceneObject` with
+`type: 'light'`: same layer stack, same transform, same addressing. Position and rotation
+come from the transform; intensity and colour become modulation targets the moment they
+are declared as descriptors (HC-5).
+
+*Why five:* none of them is reachable by configuring another. Point is a bulb, Spot a
+beam, Sun parallel rays from infinity, Area a soft panel, Ambient unshaped fill.
+
+**Strobe-on-hit is deliberately NOT a light type.** It is an onset trigger into
+`intensity` (D-30, Principle 4). Enumerating "strobe light" as a kind would repeat exactly
+the mistake the closed `TargetParam` union made — a fixed action where a generic mechanism
+already covers it, and covers "flash the rim on the snare" too. This is the architecture
+paying out: the lighting module needed no trigger code at all.
+
+Shadows are opt-in per light, because each shadow-casting light costs a depth pass per
+frame. Ambient and area lights do not offer the toggle at all — a test asserts that a
+light only advertises a control it can honour.
+
+Lights have no geometry, so they get an **authoring gizmo on a dedicated Three layer**
+(`GIZMO_LAYER`). Both cameras display that layer while authoring; the exporter disables it
+on the Scene Camera. A visibility flag would have been simpler and wrong — the viewport
+IS the render, so anything drawn unconditionally ends up in the video.
+
+The built-in three-point rig becomes **switchable** rather than a fixture. Once a user
+lights the scene themselves it is competing with them.
+
+*Not built:* volumetric shafts and lasers. Those are a *visible cone* — geometry plus a
+light, not a light type — and belong with the mesh bricks (10-ELEMENTS §F).
+
+**D-49 · Particles must be stateless; general-purpose particle libraries are rejected.**
+`three.quarks`, `three-nebula` and every comparable library integrate state frame by
+frame: `position += velocity * dt`. That is an accumulator, and under HC-3 the exporter
+renders frame 5000 before frame 12 while scrubbing backwards must reproduce exactly. A
+simulated particle system can do neither; the same project would export differently on
+every run.
+
+AURA's particle system will therefore be **stateless**: each particle's position is a pure
+function of `(seed, birthTime, t)` — curl-noise advection integrated over a fixed step
+count from birth, closed-form strange attractors, surface scatter from a deterministic
+hash. Achievable, but it has to be designed in rather than discovered at Phase 8, and it
+rules out the obvious dependencies. Full assessment in [16-LIBRARIES.md](16-LIBRARIES.md).
+
+**D-50 · Camera behaviours are the timeline-independent half of Phase 7.**
+Orbit, Sway, Handheld Shake, Dolly and Lens, stacked on the Scene Camera and evaluated as
+pure functions of clock time. Every amplitude is a modulation target, so "shake rises with
+the drop" is a wire (Principle 1: raw data plus a declarative behaviour layer).
+
+*Why now, ahead of keyframes:* the research already flagged that camera keyframes need a
+time axis Phase 6 has not built. Constraints and procedural motion do not. And this is
+what the rest of the product was waiting on — feedback trails, zoom blur and kaleidoscope
+are all effects on *movement*, and the only camera that renders had never moved. Preview
+flying looked alive while the actual output was static, which is exactly what an export
+would have shown.
+
+`DualCameraEngine` now separates the **authored** transform (`baseScene*`) from the
+**resolved** one (`scene*`). Behaviours are additive and re-evaluated every frame, so
+writing orbit onto the authored value would accumulate and the camera would drift further
+every tick — depending on uptime rather than on time.
+
+Also adds **Align to this view**, which puts the Scene Camera where the Preview Camera is.
+Its absence meant the camera that actually renders could not be aimed at all.
+
 **D-36 · Deformers cannot animate themselves.**
 `DeformContext` has no `time`. A deformer is a pure function of its parameters; all
 motion arrives through modulation. `Noise Wave` and `Wave` lost their `speed` parameter

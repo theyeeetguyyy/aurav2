@@ -1,15 +1,17 @@
-import { Activity, Power, Trash2 } from 'lucide-react'
+import { Activity, Maximize2, Power, Trash2 } from 'lucide-react'
 import { useAudioStore, isTrackVisuallyActive } from '@/store/useAudioStore'
 import { useModulationStore } from '@/store/useModulationStore'
 import { useGeneratorStore, getGenerator } from '@/store/useGeneratorStore'
+import { getLane } from '@/store/useAutomationStore'
 import { useTargetInfo } from './targetInfo'
 import { fieldLabel } from '@/engine/modulation/fields'
-import { connectionRange, reachableRange } from '@/engine/modulation/preview'
+import { connectionRange, measureField, reachableRange } from '@/engine/modulation/preview'
 import { TransportClock } from '@/engine/time/TransportClock'
 import { CURVE_PRESETS, isLinear } from '@/engine/modulation/curve'
 import { CurveEditor } from './CurveEditor'
 import { ModulationGraph } from './ModulationGraph'
 import { ChainEditor } from './ChainEditor'
+import { ScrubField } from '@/components/common/ScrubField'
 import { unitSuffix } from '@/utils/units'
 
 /** Everything about one connection, in the order you think about it:
@@ -18,6 +20,23 @@ import { unitSuffix } from '@/utils/units'
  *
  *  The graph comes first deliberately. "From 1.00 to 2.50" and a drawn curve answer
  *  "what will this actually do" far faster than six sliders do. */
+/** The input window is in the SOURCE's normalised domain, so both ends are plain 0–1
+ *  regardless of what the connection targets. */
+function windowParam(key: string, label: string) {
+  return {
+    key,
+    label,
+    type: 'float' as const,
+    min: 0,
+    max: 1,
+    step: 0.005,
+    defaultValue: key === 'inputMax' ? 1 : 0,
+    group: 'Chain',
+    exposed: false,
+    realtime: false,
+  }
+}
+
 export function ConnectionInspector({ id, onClear }: { id: string; onClear: () => void }) {
   const connection = useModulationStore((s) => s.connections.find((c) => c.id === id))
   const disconnect = useModulationStore((s) => s.disconnect)
@@ -47,6 +66,7 @@ export function ConnectionInspector({ id, onClear }: { id: string; onClear: () =
     reachableRange(connection, baseValue, TransportClock.duration, {
       isTrackActive: isTrackVisuallyActive,
       getGenerator,
+      getLane,
     }) ?? connectionRange(connection, baseValue)
   const decimals = descriptor && descriptor.step >= 1 ? 0 : 2
 
@@ -97,6 +117,48 @@ export function ConnectionInspector({ id, onClear }: { id: string; onClear: () =
       </header>
 
       <div className="flex-1 min-h-0 overflow-y-auto">
+        <section className="p-2 border-b border-aura-line">
+          <div className="flex items-center justify-between mb-1.5">
+            <h3 className="text-[10px] uppercase tracking-wider text-slate-500">Input window</h3>
+            <button
+              onClick={() => {
+                const measured = measureField(connection.source, TransportClock.duration, {
+                  isTrackActive: isTrackVisuallyActive,
+                  getGenerator,
+                  getLane,
+                })
+                if (measured) {
+                  updateChain(id, { inputMin: measured.low, inputMax: measured.high })
+                }
+              }}
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-aura-surface border border-aura-line text-[10px] text-slate-400 hover:text-slate-100 hover:border-aura-accent transition-colors"
+              title="Measure what this source actually does and map that onto the full range"
+            >
+              <Maximize2 className="w-3 h-3" />
+              Normalise
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-1">
+            <ScrubField
+              descriptor={windowParam('inputMin', 'From')}
+              value={connection.chain.inputMin ?? 0}
+              onChange={(v) => updateChain(id, { inputMin: v })}
+            />
+            <ScrubField
+              descriptor={windowParam('inputMax', 'To')}
+              value={connection.chain.inputMax ?? 1}
+              onChange={(v) => updateChain(id, { inputMax: v })}
+            />
+          </div>
+
+          <p className="text-[10px] text-slate-600 leading-snug mt-1">
+            Which part of the source's range to use. A stem whose envelope only lives
+            between 0.3 and 0.6 moves a parameter through a third of its range — Normalise
+            measures that and stretches it to fill.
+          </p>
+        </section>
+
         <section className="p-2 border-b border-aura-line">
           <h3 className="text-[10px] uppercase tracking-wider text-slate-500 mb-1.5">
             Output over time

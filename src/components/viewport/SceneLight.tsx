@@ -31,7 +31,7 @@ export function SceneLight({ object }: { object: SceneObject }) {
   const isSelected = useSceneStore((s) => s.selectedId === object.id)
 
   const groupRef = useRef<THREE.Group>(null)
-  const gizmoRef = useRef<THREE.Object3D>(null)
+  const gizmoRef = useRef<THREE.Mesh>(null)
 
   const brick = LightRegistry.get(object.brickId)
   const handle = useMemo(() => brick?.create() ?? null, [brick])
@@ -73,13 +73,19 @@ export function SceneLight({ object }: { object: SceneObject }) {
     }
     handle.update(values)
 
-    // The gizmo takes the light's own colour and brightens with it, so a strobe is
-    // visible in the outliner's worth of space it occupies rather than being a guess.
-    const gizmo = gizmoRef.current
-    const material = (gizmo as THREE.Mesh | null)?.material as THREE.MeshBasicMaterial | undefined
+    // Gizmo colour is owned here, not by the JSX. Setting it in both places meant the
+    // selection highlight was overwritten by the light's own colour on the very next
+    // frame, so selecting a light looked like it had done nothing.
+    const material = gizmoRef.current?.material as THREE.MeshBasicMaterial | undefined
     if (material) {
-      const colour = values.color
-      if (typeof colour === 'string') material.color.set(colour)
+      if (isSelected) {
+        material.color.set(readToken('--color-aura-accent', '#6366f1'))
+      } else {
+        const colour = values.color
+        material.color.set(
+          typeof colour === 'string' ? colour : readToken('--color-aura-state-solo', '#eab308'),
+        )
+      }
     }
   })
 
@@ -87,8 +93,10 @@ export function SceneLight({ object }: { object: SceneObject }) {
 
   return (
     <group ref={groupRef}>
+      {/* The light only. Aiming lights parent their own target inside `create()`, and
+          mounting it again here would re-parent it to this group — the beam would then
+          aim at a fixed point instead of along the object's rotation. */}
       <primitive object={handle.light} />
-      {handle.target && <primitive object={handle.target} />}
 
       {/* Authoring gizmo. On GIZMO_LAYER so it never reaches the render. */}
       <mesh
@@ -101,14 +109,7 @@ export function SceneLight({ object }: { object: SceneObject }) {
         }}
       >
         <octahedronGeometry args={[isSelected ? 1.1 : 0.8, 0]} />
-        <meshBasicMaterial
-          wireframe
-          color={
-            isSelected
-              ? readToken('--color-aura-accent', '#6366f1')
-              : readToken('--color-aura-state-solo', '#eab308')
-          }
-        />
+        <meshBasicMaterial wireframe />
       </mesh>
     </group>
   )

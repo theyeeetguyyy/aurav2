@@ -1,4 +1,5 @@
 import type { ModulationConnection } from '@/types/modulation'
+import type { FieldRef } from '@/types/params'
 import { SignalShaper } from './SignalShaper'
 import { evaluateField, type FieldContext } from './fields'
 import { evaluateCurve } from './curve'
@@ -148,9 +149,48 @@ export function reachableRange(
   return sawSignal ? { low, high } : null
 }
 
+/** Measure what a Field's raw output actually does across the project.
+ *
+ *  Robust percentiles rather than min/max: one clipped transient would otherwise define
+ *  the top of the range and squash everything else back into the bottom — which is the
+ *  exact failure the offline analyser already avoids for the same reason (§4.1).
+ *
+ *  Returns null when the source produces nothing, so callers can say "no signal yet"
+ *  instead of normalising to a flat line. */
+export function measureField(
+  field: FieldRef,
+  duration: number,
+  ctx: Omit<FieldContext, 'time'>,
+  samples = 600,
+): { low: number; high: number } | null {
+  if (duration <= 0) return null
+
+  const values: number[] = []
+  const dt = duration / (samples - 1)
+  let sawSignal = false
+
+  for (let i = 0; i < samples; i++) {
+    const value = evaluateField(field, { ...ctx, time: i * dt })
+    if (value > 1e-4) sawSignal = true
+    values.push(value)
+  }
+  if (!sawSignal) return null
+
+  values.sort((a, b) => a - b)
+  const low = values[Math.floor(values.length * 0.02)]
+  const high = values[Math.min(values.length - 1, Math.floor(values.length * 0.98))]
+
+  // A window narrower than this is not a signal, it is a constant — normalising to it
+  // would amplify noise into the whole range.
+  if (high - low < 1e-3) return null
+  return { low, high }
+}
+
 function shapedAt(connection: ModulationConnection, input: number): number {
-  const { curve, invert, gain } = connection.chain
-  const gained = Math.min(1, Math.max(0, input * gain))
+  const { curve, invert, gain, inputMin = 0, inputMax = 1 } = connection.chain
+  const window = inputMax - inputMin
+  const scaled = Math.abs(window) < 1e-6 ? 0 : Math.min(1, Math.max(0, (input - inputMin) / window))
+  const gained = Math.min(1, Math.max(0, scaled * gain))
   const curved = curve ? evaluateCurve(curve, gained) : gained
   return invert ? 1 - curved : curved
 }

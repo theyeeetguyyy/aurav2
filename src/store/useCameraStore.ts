@@ -3,7 +3,8 @@ import type { CameraKeyframe, SplineWaypoint, CameraConstraint, CameraMode, Came
 import type { ID } from '@/types/audio'
 import type { ParamValue } from '@/types/params'
 import type { EffectInstance } from '@/types/visual'
-import { behaviourDefaults, getBehaviour } from '@/engine/camera/behaviours'
+import { CAMERA_STACK_ID, behaviourDefaults, getBehaviour } from '@/engine/camera/behaviours'
+import { useModulationStore } from '@/store/useModulationStore'
 import { generateId } from '@/utils/stemColors'
 
 interface CameraState {
@@ -50,6 +51,7 @@ interface CameraState {
 
   setLookAt: (objectId: ID | null) => void
   setLookAtEnabled: (enabled: boolean) => void
+  clear: () => void
 }
 
 export const useCameraStore = create<CameraState>((set) => ({
@@ -101,8 +103,12 @@ export const useCameraStore = create<CameraState>((set) => ({
     return id
   },
 
-  removeBehaviour: (id) =>
-    set((s) => ({ behaviours: s.behaviours.filter((b) => b.id !== id) })),
+  removeBehaviour: (id) => {
+    // A behaviour's parameters are modulation targets, so removing it must drop the
+    // wires pointing at them — exactly as removing a deformer does.
+    useModulationStore.getState().releaseEffect(CAMERA_STACK_ID, id)
+    set((s) => ({ behaviours: s.behaviours.filter((b) => b.id !== id) }))
+  },
 
   reorderBehaviour: (id, delta) =>
     set((s) => {
@@ -130,6 +136,9 @@ export const useCameraStore = create<CameraState>((set) => ({
 
   setLookAt: (objectId) => set({ lookAtId: objectId }),
   setLookAtEnabled: (enabled) => set({ lookAtEnabled: enabled }),
+
+  clear: () =>
+    set({ behaviours: [], keyframes: [], waypoints: [], constraints: [], lookAtId: null }),
 
   addConstraint: (c) => set((s) => ({ constraints: [...s.constraints, c] })),
   removeConstraint: (id) =>

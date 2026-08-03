@@ -1,6 +1,7 @@
 import type { FieldRef } from '@/types/params'
 import { AudioFeatures } from '@/engine/audio/AudioFeatures'
 import type { FeatureKey } from '@/engine/audio/featureTypes'
+import { sampleLane, type LaneData } from '@/engine/automation/lane'
 
 /** Field evaluation — every signal in AURA reduced to one call (Principle 12).
  *
@@ -25,6 +26,8 @@ export interface FieldContext {
   isTrackActive(trackId: string): boolean
   /** Generator lookup. Passed in, never imported — the engine boundary is absolute. */
   getGenerator?(id: string): GeneratorConfig | null
+  /** Automation lane lookup. Same rule. */
+  getLane?(id: string): LaneData | null
 }
 
 /** The shape field evaluation needs from a Generator. Structural, so `engine/` does not
@@ -46,6 +49,11 @@ export function evaluateField(field: FieldRef, ctx: FieldContext): number {
       return evaluateGenerative(field, ctx)
     case 'rhythm':
       return evaluateRhythm(field, ctx.time)
+    case 'automation': {
+      // A drawn curve is already f(t) — no shaping, no state, nothing to get wrong.
+      const lane = field.sourceId ? (ctx.getLane?.(field.sourceId) ?? null) : null
+      return lane ? sampleLane(lane, ctx.time) : 0
+    }
     case 'narrative':
     case 'object':
       // Phase 6C (section-aware narrative) and Phase 5E (object-to-object routing).
@@ -196,7 +204,21 @@ export const GENERATOR_FIELD: FieldOption = {
   needsSource: true,
 }
 
-export const ALL_FIELDS: FieldOption[] = [...AUDIO_FIELDS, ...RHYTHM_FIELDS, GENERATOR_FIELD]
+/** Same shape as the generator field: lanes are user-created, so the catalogue exposes
+ *  the kind and the instance supplies the identity. */
+export const AUTOMATION_FIELD: FieldOption = {
+  kind: 'automation',
+  key: 'out',
+  label: 'Drawn',
+  needsSource: true,
+}
+
+export const ALL_FIELDS: FieldOption[] = [
+  ...AUDIO_FIELDS,
+  ...RHYTHM_FIELDS,
+  GENERATOR_FIELD,
+  AUTOMATION_FIELD,
+]
 
 export function fieldLabel(field: FieldRef): string {
   return ALL_FIELDS.find((f) => f.kind === field.kind && f.key === field.key)?.label ?? field.key

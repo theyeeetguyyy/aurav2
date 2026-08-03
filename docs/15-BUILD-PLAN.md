@@ -40,9 +40,9 @@ span 0.3–0.6. Three fixes, in order of how much they help:
    Immediately honest, and it makes the *second* problem visible rather than hiding it.
 2. ⬜ **Auto-gain / normalise on a connection** — "make this stem use the whole range",
    computed from its own distribution.
-3. ⬜ **The automation-lane editor** (§4.1) — the real answer, because *which* part of the
-   range matters is a creative decision, not a computable one. Honest numbers tell you the
-   parameter only moves 5 → 10; only an editor lets you say it should move 0 → 100.
+3. ✅ **The automation-lane editor** (§4.1) — built. Honest numbers tell you the parameter
+   only moves 5 → 10; the window stretches what is there; the lane lets you say what it
+   should do instead. All three shipped, and none substitutes for the others.
 
 ---
 
@@ -110,10 +110,10 @@ tools are gain and a response curve.
 
 | Item | Why |
 |---|---|
-| **Automation lane editor** — draw a curve over the timeline, per stem or per connection | The FL/Ableton gesture. Turns "the stem doesn't move enough" from a limitation into an edit |
-| **Signal normalise / auto-gain** | One click to make a stem use the full range |
-| **Reachable-range readout** | Honest numbers (D7) |
-| **Range + curve preview against the real waveform**, in the stems page | Judge the shape before wiring it |
+| ✅ **Automation lane editor** — draw over the timeline, on the stems page | Built (D-51). The FL gesture; painting replaces rather than overlays |
+| ✅ **Signal normalise / input window** | Built (D-51). `Normalise` measures the source's p2/p98 and stretches it to fill |
+| ✅ **Reachable-range readout** | Built. `reachableRange()` measures the real signal |
+| ⬜ **Curve preview against the waveform** in the stems page | The lane editor shows the curve; the waveform behind it is still to come |
 
 ### 4.2 Routing overhaul
 

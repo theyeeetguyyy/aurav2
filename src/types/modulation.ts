@@ -28,7 +28,19 @@ export interface ModulationConnection {
  *  Raw audio mapped straight onto a parameter looks jittery and amateurish. Rise/Fall
  *  is the single most-missed feature by people prototyping this kind of tool. */
 export interface SignalChain {
-  /** Input amplification before shaping. */
+  /** Input window, in the SOURCE's normalised 0–1 domain. The incoming signal is
+   *  rescaled from [inputMin, inputMax] onto 0–1 before anything else runs.
+   *
+   *  This is the answer to "the stem barely moves". Percentile normalisation makes each
+   *  stem use the full 0–1 range across the WHOLE FILE, but within any given bar its
+   *  envelope may only occupy 0.3–0.6 — so the parameter only ever travels a third of
+   *  the range the settings promise. Gain cannot fix that: it scales, so it pushes the
+   *  top into clipping long before it lifts the bottom off the floor.
+   *
+   *  `Normalise` measures the source's real distribution and writes these two numbers. */
+  inputMin: number
+  inputMax: number
+  /** Input amplification, after the input window. */
   gain: number
   /** Attack smoothing, milliseconds. 0 = instant. */
   rise: number
@@ -48,6 +60,8 @@ export interface SignalChain {
 }
 
 export const DEFAULT_SIGNAL_CHAIN: SignalChain = {
+  inputMin: 0,
+  inputMax: 1,
   gain: 1,
   rise: 10,
   fall: 120,

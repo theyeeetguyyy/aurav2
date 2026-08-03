@@ -4,6 +4,7 @@ import { activeClock } from '@/engine/time/timeAuthority'
 import { useModulationStore } from '@/store/useModulationStore'
 import { isTrackVisuallyActive } from '@/store/useAudioStore'
 import { getGenerator } from '@/store/useGeneratorStore'
+import { getLane } from '@/store/useAutomationStore'
 
 /** Evaluates the modulation matrix once per frame, before anything reads it.
  *
@@ -23,6 +24,7 @@ export function ModulationDriver() {
     ModulationMatrix.evaluate(activeClock(), connections, triggers, {
       isTrackActive: isTrackVisuallyActive,
       getGenerator,
+      getLane,
     })
   })
 

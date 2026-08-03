@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { Plus, Trash2, Waves } from 'lucide-react'
+import { Plus, Trash2, Waves, PenLine } from 'lucide-react'
 import { useAudioStore } from '@/store/useAudioStore'
 import { useGeneratorStore } from '@/store/useGeneratorStore'
 import { GENERATOR_TYPES, type GeneratorType } from '@/types/generator'
 import { AudioFeatures } from '@/engine/audio/AudioFeatures'
 import { TransportClock } from '@/engine/time/TransportClock'
-import { AUDIO_FIELDS, GENERATOR_FIELD, RHYTHM_FIELDS } from '@/engine/modulation/fields'
+import {
+  AUDIO_FIELDS,
+  AUTOMATION_FIELD,
+  GENERATOR_FIELD,
+  RHYTHM_FIELDS,
+} from '@/engine/modulation/fields'
+import { useAutomationStore } from '@/store/useAutomationStore'
 import type { FeatureKey } from '@/engine/audio/featureTypes'
 import type { FieldRef } from '@/types/params'
 import { StemSignalStrip } from './StemSignalStrip'
@@ -60,6 +66,7 @@ export function SourceColumn({ onDragStart }: SourceColumnProps) {
         </Group>
       ))}
 
+      <AutomationSection onDragStart={onDragStart} />
       <GeneratorSection onDragStart={onDragStart} />
     </div>
   )
@@ -159,6 +166,33 @@ function SourceDot({ label, field, color, onDragStart, meterKey, trackId }: Sour
         style={{ backgroundColor: color }}
       />
     </div>
+  )
+}
+
+/** Drawn lanes. A hand-authored curve is a source like any other, which is what lets it
+ *  sum with a stem through the same weighted N:1 rather than replacing it. Drawing itself
+ *  happens on the stems page, against the waveform. */
+function AutomationSection({ onDragStart }: SourceColumnProps) {
+  const lanes = useAutomationStore((s) => s.lanes)
+  if (lanes.length === 0) return null
+
+  return (
+    <Group>
+      <header className="flex items-center gap-1.5 px-2 py-1.5 sticky top-0 bg-aura-base z-10">
+        <PenLine className="w-3 h-3 text-aura-node-parameter shrink-0" />
+        <h3 className="flex-1 text-[10px] uppercase tracking-wider text-slate-500">Drawn</h3>
+      </header>
+
+      {lanes.map((lane) => (
+        <SourceDot
+          key={lane.id}
+          label={lane.name}
+          field={{ kind: 'automation', key: AUTOMATION_FIELD.key, sourceId: lane.id }}
+          color={lane.color}
+          onDragStart={onDragStart}
+        />
+      ))}
+    </Group>
   )
 }
 

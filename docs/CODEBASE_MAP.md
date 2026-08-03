@@ -85,6 +85,7 @@ frame 12 and still produce exactly what was previewed.
 | `useGeneratorStore.ts` | Synthetic stems — LFOs and noise (D-37). Own store, not folded into `useAudioStore`, which would mean a dozen permanently-null fields |
 | `useSceneStore.ts` | **the SceneObject layer stack** — array order *is* layer order; param writes by address | exports `useSelectedObject()` |
 | `usePostStore.ts` | The project-global post chain. Array order is evaluation order; owns the master bypass (D-42) |
+| `useAutomationStore.ts` | Drawn lanes. Exports `getLane()` for the field context — passed into the engine, never imported by it |
 | `useEnvironmentStore.ts` | Background, fog, lighting, reflections, grid — one flat record per section (D-44) |
 
 > No store may hold an `AudioBuffer`, a `THREE.Object3D`, a GPU handle, or a DOM node.
@@ -171,6 +172,12 @@ frame 12 and still produce exactly what was previewed.
 | `lights.ts` | Point, Spot, Sun, Area, Ambient. Aiming lights parent a target down -Z so the object's rotation aims the beam |
 | `LightRegistry.ts` | The catalogue. Fifth registry, same contract as the other four |
 
+### `engine/automation/` — hand-drawn signals (5F)
+
+| File | Role |
+|---|---|
+| `lane.ts` | `sampleLane()` plus the edit primitives. Holds end values outside the drawn range (Blender NLA's `hold`) — a lane drawn over the chorus must not mute the parameter everywhere else |
+
 ### `engine/params/`
 
 | File | Role |
@@ -237,6 +244,9 @@ frame 12 and still produce exactly what was previewed.
 | `routing/ModulationGraph.tsx` | The parameter's real value over time, plus a ghost of the raw signal. Canvas, imperative |
 | `routing/patchbay/StemSignalStrip.tsx` | Each stem's own signal over time — the shape everything wired from it inherits |
 | `routing/ChainEditor.tsx` | Per-connection signal chain, presented in evaluation order |
+| `automation/LaneEditor.tsx` | The draw surface. Canvas, sampled per pixel so the drawn line matches what the engine reads; painting replaces what is under the stroke rather than overlaying it |
+| `automation/AutomationPanel.tsx` | Lane list + editor, mounted under the stem rack on the same timeline |
+| `camera/CameraRigPanel.tsx` | Scene Camera behaviour stack, Look-At target, Align-to-view |
 | `routing/targetInfo.ts` | Resolves any target address — SceneObject, post chain or world — to descriptor, base value and labels. Lives here rather than in `ParamRegistry` because it reads stores, and `engine/` may not |
 
 ### Viewport

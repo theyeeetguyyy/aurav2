@@ -6,6 +6,7 @@ import { RealtimeAnalyser } from '@/engine/audio/RealtimeAnalyser'
 import { AudioFeatures } from '@/engine/audio/AudioFeatures'
 import { TrackRow } from '@/components/audio/TrackRow'
 import { RackPlayhead } from '@/components/audio/RackPlayhead'
+import { AutomationPanel } from '@/components/automation/AutomationPanel'
 import { getNextStemColor, generateId } from '@/utils/stemColors'
 import type { Track } from '@/types/audio'
 
@@ -140,6 +141,10 @@ export function MediaStemsPage() {
           </div>
         </div>
       )}
+
+      {/* Lanes share the rack's timeline, so a drawn curve lines up with the waveform
+          it is drawn against. */}
+      {tracks.length > 0 && <AutomationPanel duration={projectDuration} />}
 
       {/* ─── Add More Button (when tracks exist) ─── */}
       {tracks.length > 0 && (

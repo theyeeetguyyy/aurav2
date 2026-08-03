@@ -12,6 +12,7 @@ import { connectionRange, reachableRange } from '@/engine/modulation/preview'
 import { TransportClock } from '@/engine/time/TransportClock'
 import { isTrackVisuallyActive } from '@/store/useAudioStore'
 import { getGenerator } from '@/store/useGeneratorStore'
+import { getLane } from '@/store/useAutomationStore'
 import { unitSuffix } from '@/utils/units'
 import { formatAddress, type ParamAddress, type ParamDescriptor } from '@/types/params'
 import { registerAnchor, targetAnchorId } from './anchors'
@@ -245,6 +246,7 @@ function TargetRow({ address, descriptor, base, label, ownerLabel }: TargetRowPr
       reachableRange(connection, base, TransportClock.duration, {
         isTrackActive: isTrackVisuallyActive,
         getGenerator,
+        getLane,
       }) ?? connectionRange(connection, base)
 
     // Multiple wires sum onto one parameter (weighted N:1), so the reachable span is

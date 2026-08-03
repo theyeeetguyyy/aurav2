@@ -38,7 +38,7 @@ class ModulationMatrixImpl {
     clock: Clock,
     connections: readonly ModulationConnection[],
     triggers: readonly EventTrigger[],
-    host: Pick<FieldContext, 'isTrackActive' | 'getGenerator'>,
+    host: Pick<FieldContext, 'isTrackActive' | 'getGenerator' | 'getLane'>,
   ): void {
     const time = clock.time
     let dt = time - this.lastTime

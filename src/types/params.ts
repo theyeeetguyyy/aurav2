@@ -92,6 +92,7 @@ export type FieldKind =
   | 'rhythm' //     beat/bar phase, derived from the beat grid
   | 'narrative' //  section intensity, buildup, drop decay — carries memory over bars
   | 'generative' // LFOs and noise — pure functions of clock.time
+  | 'automation' // a hand-drawn curve over project time
   | 'object' //     another object's evaluated parameter (call and response)
 
 export interface FieldRef {

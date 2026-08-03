@@ -3,7 +3,7 @@
 **Read this first.** Where the project actually is, what runs today, what does not, and
 what to do next. Everything here is verified against the code, not aspirational.
 
-*Last verified: 2026-08-03 · `npm run check` green (typecheck · lint · 272 tests)*
+*Last verified: 2026-08-03 · `npm run check` green (typecheck · lint · 285 tests)*
 
 > **What is missing and what it costs: [13-PRODUCT-GAP.md](13-PRODUCT-GAP.md).**
 
@@ -115,7 +115,9 @@ field evaluation (audio, rhythm, generative) · discrete triggers as decaying im
 **Generators** — LFO/noise as first-class synthetic stems · **response curves** with an
 editor, **real value ranges** in the parameter's own units, and a **modulation graph**
 drawn from the real engine.
-⬜ 5C node graph (advanced view) · 5E object-to-object routing · 5F automation lanes.
+✅ **5F automation lanes** — hand-drawn curves as first-class Fields, drawn on the stems
+page against the waveform, plus the signal-chain **input window** and **Normalise** (D-51).
+⬜ 5C node graph (advanced view) · 5E object-to-object routing.
 
 ### Phase 7 — Camera (partial)
 ✅ **7D camera behaviours** — Orbit / Sway / Handheld Shake / Dolly / Lens on the Scene
@@ -172,13 +174,14 @@ break by accident:
 
 ## Next
 
-**Signal authoring** — the draw-in automation lane. It is the answer to three complaints
-that turn out to be one: the routed range readout looked wrong, a bass stem "barely
-moves", and there is no way to decide what a stem *should* do. Honest numbers
-(`reachableRange`) made the problem visible; only an editor fixes it.
+**GPU particles** — the `points` backend, and it must be **stateless** (D-49): every
+particle a pure function of `(seed, birthTime, t)`, because a simulated system cannot be
+exported. Largest remaining jump in visual density.
 
-After that: **GPU particles** (stateless, per D-49) → **export** → **save/load** →
-**undo** → **Phase 6 timeline**.
+After that: **export** → **save/load** → **undo** → **Phase 6 timeline**.
+
+Full queue: [15-BUILD-PLAN.md](15-BUILD-PLAN.md). Library assessments first:
+[16-LIBRARIES.md](16-LIBRARIES.md).
 
 Full queue, ranked and separated by kind: [15-BUILD-PLAN.md](15-BUILD-PLAN.md).
 

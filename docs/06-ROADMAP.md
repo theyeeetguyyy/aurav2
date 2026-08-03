@@ -165,7 +165,7 @@ knobs with no material and no scale.
 | 5C | React Flow node graph (advanced toggle), typed connections | ⬜ |
 | 5D | Discrete event triggers — generic decaying impulse, pure function of time | ✅ |
 | 5E | Object-to-object routing + dependency ordering with cycle detection (§4.5) | ⬜ |
-| 5F | Automation lane visualisation | ⬜ |
+| 5F | **Automation lanes** — hand-drawn curves as Fields, plus the signal-chain input window and Normalise (D-51) | ✅ |
 | 5G | **Patchbay** — drag-to-connect, live pulsing wires, wire inspector, resizable columns. See [11-ROUTING-UX.md](11-ROUTING-UX.md) | ✅ |
 | 5H | **Generators** — LFO/noise as first-class synthetic stems (D-37) | ✅ |
 | 5I | **Response curves + real-value display + modulation graph** (D-39/40/41) | ✅ |
@@ -199,6 +199,12 @@ curve, the routing UI shows the real value span in the parameter's own units, an
 inspector draws the parameter's actual value over time — computed by running the real
 shaper over the real feature timeline, not illustrated from the settings. Each stem also
 shows its own signal strip, so you can read a stem's character before wiring it.
+
+**5F test:** ✅ passing — `lane.test.ts` asserts a lane holds its end values outside the
+drawn range rather than falling to zero, that all three interpolation modes behave, that
+sampling is a pure function of time, that freehand writes stay sorted and collapse
+near-coincident points, and that the input window stretches a narrow range onto the full
+one, clamps outside it, is inert at its defaults and never divides by zero.
 
 **5 test:** ⬜ manual — wire drums envelope → sphere `scale.uniform` and a drums onset
 trigger → `emissiveIntensity`. Play; scrub backwards and confirm identical values;

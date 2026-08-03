@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useModulationStore } from '@/store/useModulationStore'
 import type { ID } from '@/types/audio'
 import type { Generator, GeneratorType } from '@/types/generator'
 import { DEFAULT_GENERATOR, GENERATOR_TYPES } from '@/types/generator'
@@ -49,8 +50,13 @@ export const useGeneratorStore = create<GeneratorState>((set, get) => ({
     return id
   },
 
-  removeGenerator: (id) =>
-    set((s) => ({ generators: s.generators.filter((g) => g.id !== id) })),
+  removeGenerator: (id) => {
+    // Wires sourced from this generator have to go with it, or the matrix keeps
+    // evaluating a source that no longer exists — invisible, but still burning a shaper
+    // and an envelope every frame.
+    useModulationStore.getState().releaseObject(id)
+    set((s) => ({ generators: s.generators.filter((g) => g.id !== id) }))
+  },
 
   updateGenerator: (id, patch) =>
     set((s) => ({

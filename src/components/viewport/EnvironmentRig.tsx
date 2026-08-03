@@ -246,8 +246,8 @@ function Lighting() {
       <hemisphereLight
         ref={ambientRef}
         args={[
-          String(params.keyColor ?? '#ffffff'),
-          String(params.fillColor ?? '#06b6d4'),
+          String(params.keyColor ?? readToken('--color-aura-light-sky', '#f8fafc')),
+          String(params.fillColor ?? readToken('--color-aura-light-ground', '#1e1e26')),
           0.6,
         ]}
       />
@@ -268,7 +268,7 @@ function Lighting() {
 
       <directionalLight
         ref={fillRef}
-        color={String(params.fillColor ?? '#06b6d4')}
+        color={String(params.fillColor ?? readToken('--color-aura-light-rim-cool', '#06b6d4'))}
         position={[-40, 15, -25]}
       />
 
@@ -276,7 +276,7 @@ function Lighting() {
           what stops a dark scene reading as a blob. */}
       <directionalLight
         ref={rimRef}
-        color={String(params.rimColor ?? '#6366f1')}
+        color={String(params.rimColor ?? readToken('--color-aura-light-rim-accent', '#6366f1'))}
         position={[0, 35, -55]}
       />
     </>

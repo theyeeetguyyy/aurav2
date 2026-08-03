@@ -326,6 +326,29 @@ every tick — depending on uptime rather than on time.
 Also adds **Align to this view**, which puts the Scene Camera where the Preview Camera is.
 Its absence meant the camera that actually renders could not be aimed at all.
 
+**D-51 · Automation lanes are Fields, and the signal chain gains an input window.**
+Two halves of one problem — "this stem barely moves", and "the routed range says 0→16 but
+the visual does something else".
+
+*Lanes.* A hand-drawn curve over project time is a `FieldKind: 'automation'`, sourced by
+lane id. It appears in the patchbay beside stems and generators, wires to anything, and
+sums with a stem through the same weighted N:1. It satisfies HC-3 trivially — a lookup by
+`t` is already a pure function of time. Drawing happens on the **stems page**, under the
+rack and on the same timeline, because a curve is drawn *against* what you are hearing and
+the reference you need is the waveform directly above it.
+
+*Input window.* `SignalChain` gains `inputMin`/`inputMax`, applied before gain, rescaling
+the useful part of a source's range onto the full 0–1 the rest of the chain assumes.
+Percentile normalisation makes each stem use all of 0–1 *across the whole file*, but
+within any bar its envelope may only occupy 0.3–0.6 — so a parameter travels a third of
+the range the settings promise. **Gain cannot fix this**: it multiplies, so raising it
+clips the peaks long before it lifts the floor. `Normalise` measures the source's real
+p2/p98 (`measureField`) and writes the two numbers.
+
+*Why both:* honest numbers made the problem visible (`reachableRange`), the window fixes
+the common case in one click, and the lane is the escape hatch for when the music simply
+does not do what the visual needs. None of the three substitutes for the others.
+
 **D-36 · Deformers cannot animate themselves.**
 `DeformContext` has no `time`. A deformer is a pure function of its parameters; all
 motion arrives through modulation. `Noise Wave` and `Wave` lost their `speed` parameter

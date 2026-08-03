@@ -19,9 +19,18 @@ export class SignalShaper {
 
   /** Process one frame. `dt` is seconds since the previous evaluation. */
   process(input: number, chain: SignalChain, dt: number): number {
+    // 0 — Input window. Rescales the part of the source's range that actually carries
+    //     information onto the full 0–1 the rest of the chain assumes. Gain cannot do
+    //     this: it multiplies, so raising it clips the peaks before it lifts the floor.
+    const inputMin = chain.inputMin ?? 0
+    const inputMax = chain.inputMax ?? 1
+    const window = inputMax - inputMin
+    const scaled =
+      Math.abs(window) < 1e-6 ? 0 : clamp01((input - inputMin) / window)
+
     // 1 — Gain, then clamp: the follower operates on a normalised signal, so a gain
     //     above 1 means "reach full range sooner", not "exceed full range".
-    const gained = clamp01(input * chain.gain)
+    const gained = clamp01(scaled * chain.gain)
 
     // 2 — Response curve. Shapes *how* the signal reacts before any smoothing, so a
     //     gate curve genuinely gates rather than gating a smoothed average.

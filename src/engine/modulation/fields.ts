@@ -50,9 +50,21 @@ export function evaluateField(field: FieldRef, ctx: FieldContext): number {
     case 'rhythm':
       return evaluateRhythm(field, ctx.time)
     case 'automation': {
-      // A drawn curve is already f(t) — no shaping, no state, nothing to get wrong.
       const lane = field.sourceId ? (ctx.getLane?.(field.sourceId) ?? null) : null
-      return lane ? sampleLane(lane, ctx.time) : 0
+      if (!lane) return 0
+
+      // Unedited, a stem lane IS its feature timeline — exact, and with no separate curve
+      // to keep in sync. Editing snapshots it into points and this branch stops applying.
+      if (lane.mode === 'analysis' && lane.source) {
+        if (!ctx.isTrackActive(lane.source.trackId)) return 0
+        return AudioFeatures.sample(lane.source.trackId, lane.source.metric as FeatureKey, ctx.time)
+      }
+
+      // An edited curve is already f(t) — no shaping, no state, nothing to get wrong.
+      // Solo still gates it: the curve came from that stem, so isolating the stem must
+      // isolate what it drives (HC-11).
+      if (lane.source && !ctx.isTrackActive(lane.source.trackId)) return 0
+      return sampleLane(lane, ctx.time)
     }
     case 'narrative':
     case 'object':

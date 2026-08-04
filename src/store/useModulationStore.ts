@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { recordChange } from '@/store/historyHook'
 import type { ID } from '@/types/audio'
 import type { EventTrigger, ModulationConnection, SignalChain } from '@/types/modulation'
 import { DEFAULT_EVENT_TRIGGER, DEFAULT_SIGNAL_CHAIN } from '@/types/modulation'
@@ -42,6 +43,7 @@ export const useModulationStore = create<ModulationState>((set, get) => ({
   triggers: [],
 
   connect: (source, target, chain) => {
+    recordChange('Connect', ['modulation'])
     const id = generateId()
     set((s) => ({
       connections: [
@@ -53,25 +55,32 @@ export const useModulationStore = create<ModulationState>((set, get) => ({
   },
 
   disconnect: (id) => {
+    recordChange('Disconnect', ['modulation'])
     // Drop the follower too, or a later connection reusing this id inherits its
     // envelope state and the first frame after reconnecting is wrong.
     ModulationMatrix.releaseConnection(id)
     set((s) => ({ connections: s.connections.filter((c) => c.id !== id) }))
   },
 
-  updateConnection: (id, patch) =>
+  updateConnection: (id, patch) => {
+    recordChange('Update connection', ['modulation'])
     set((s) => ({
       connections: s.connections.map((c) => (c.id === id ? { ...c, ...patch } : c)),
-    })),
+    }))
+  },
 
-  updateChain: (id, patch) =>
+  updateChain: (id, patch) => {
+    // One key per connection: dragging a chain slider is one undo step.
+    recordChange('Edit signal chain', ['modulation'], `chain:${id}`)
     set((s) => ({
       connections: s.connections.map((c) =>
         c.id === id ? { ...c, chain: { ...c.chain, ...patch } } : c,
       ),
-    })),
+    }))
+  },
 
   addTrigger: (source, target) => {
+    recordChange('Add trigger', ['modulation'])
     const id = generateId()
     set((s) => ({
       triggers: [...s.triggers, { id, source, target, ...DEFAULT_EVENT_TRIGGER }],
@@ -79,10 +88,15 @@ export const useModulationStore = create<ModulationState>((set, get) => ({
     return id
   },
 
-  removeTrigger: (id) => set((s) => ({ triggers: s.triggers.filter((t) => t.id !== id) })),
+  removeTrigger: (id) => {
+    recordChange('Remove trigger', ['modulation'])
+    set((s) => ({ triggers: s.triggers.filter((t) => t.id !== id) }))
+  },
 
-  updateTrigger: (id, patch) =>
-    set((s) => ({ triggers: s.triggers.map((t) => (t.id === id ? { ...t, ...patch } : t)) })),
+  updateTrigger: (id, patch) => {
+    recordChange('Update trigger', ['modulation'], `trigger:${id}`)
+    set((s) => ({ triggers: s.triggers.map((t) => (t.id === id ? { ...t, ...patch } : t)) }))
+  },
 
   connectionsFor: (address) => {
     const key = formatAddress(address)

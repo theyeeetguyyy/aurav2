@@ -137,6 +137,20 @@ export class MultiTrackRack {
     this.refreshDuration()
   }
 
+  /** Drop every registered track, keeping the AudioContext alive.
+   *
+   *  `dispose()` closes the context, which is right when the app is going away and wrong
+   *  when a project is being replaced: the next project would have no context to decode
+   *  into. Loading a project without this left the previous stems' node chains in place,
+   *  and they carried on playing under the new one. */
+  public unregisterAll(): void {
+    for (const trackId of [...this._trackNodes.keys()]) this.unregisterTrack(trackId)
+    this.isRunning = false
+    this.stopClockSync()
+    TransportClock.setTime(0)
+    TransportClock.setPlaying(false)
+  }
+
   /** Start synchronised playback of every track from the current playhead. */
   public play(): void {
     const ctx = this.getContext()

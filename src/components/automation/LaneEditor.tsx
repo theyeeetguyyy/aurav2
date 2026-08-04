@@ -17,12 +17,16 @@ export function LaneEditor({
   duration,
   color,
   onChange,
+  ghost,
   height = 120,
 }: {
   lane: LaneData
   duration: number
   color: string
   onChange: (points: AutomationPoint[]) => void
+  /** The signal this curve started from, drawn faintly behind it. Shows an edit as a
+   *  departure from what the analyser heard rather than as an unanchored shape. */
+  ghost?: (t: number) => number
   height?: number
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -63,6 +67,18 @@ export function LaneEditor({
     const span = Math.max(1e-6, duration)
     const live = stroke.current ? { ...lane, points: stroke.current.points } : lane
 
+    if (ghost) {
+      ctx.beginPath()
+      for (let x = 0; x < width; x++) {
+        const y = height - Math.min(1, Math.max(0, ghost((x / width) * span))) * height
+        if (x === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+      }
+      ctx.strokeStyle = `${color}55`
+      ctx.lineWidth = 1
+      ctx.stroke()
+    }
+
     // Sample per pixel rather than joining the points: the drawn line then matches the
     // value the engine will actually read, including the interpolation mode.
     ctx.beginPath()
@@ -91,7 +107,7 @@ export function LaneEditor({
       ctx.arc(x, y, 2, 0, Math.PI * 2)
       ctx.fill()
     }
-  }, [lane, duration, color, height])
+  }, [lane, duration, color, height, ghost])
 
   useEffect(() => {
     draw()

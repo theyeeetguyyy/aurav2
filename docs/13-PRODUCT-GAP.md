@@ -3,118 +3,122 @@
 > *"currently the thing we have made is good, but is too basic, so we need to make it a
 > proper product, right now its near mvp unfinished"*
 >
-> Agreed. This is the honest accounting of what exists, what is missing, and — more
-> usefully — **which missing things actually block being a product** versus which are
-> merely unbuilt.
+> The honest accounting of what exists, what is missing, and — more usefully — **which
+> missing things actually block being a product** versus which are merely unbuilt.
+>
+> Phase status lives in [06-ROADMAP.md](06-ROADMAP.md); the working queue lives in
+> [15-BUILD-PLAN.md](15-BUILD-PLAN.md). This is the *why it matters* view.
 
-*As of 2026-08-03 · 36 of 67 sub-phases complete · 230 tests.*
+*As of 2026-08-04 · 45 of 68 sub-phases · 324 tests.*
 
 ---
 
 ## The one-sentence version
 
-**The modulation engine is genuinely good. Everything around it is a prototype.**
+**Everything that makes a frame is built. Nothing that makes a film is.**
 
-You can wire audio to visuals with real depth — weighted N:1, envelope shaping, response
-curves, 15 deformers, deterministic sampling. But you cannot **save**, you cannot
-**undo**, you cannot **sequence**, and you cannot **export**. Those four are the
-difference between a toy and a tool, and none of them is hard.
+You can build a scene, light it, treat it, drive it from your stems, save it, undo it,
+and **get an MP4 out**. What is missing is **sequencing** — the timeline, states and cuts
+that turn one continuous scene into a piece with structure.
 
----
-
-## Done — by phase
-
-| Phase | State | What works |
-|---|---|---|
-| **1 · Shell** | ✅ complete | 5-tab workspace, resizable docks, true dual camera, remappable modifier-aware shortcuts |
-| **2 · Audio** | ✅ complete | Multi-stem decode + sync, trim, solo with visual isolation, offline MIR worker, 13 feature timelines, onsets, BPM, beat grid |
-| **3 · Foundations** | 🟡 4 of 6 | Time authority ✅ · parameter registry ✅ · scene store ✅ · persistent renderer ✅ · **platform adapter ⬜** · **undo ⬜** |
-| **4 · Scene** | 🟡 10 of 13 | Layer stack ✅ · brick registry ✅ · 7 procedural + 10 primitive shapes ✅ · inspector ✅ · **15 deformers ✅** · **14 post effects ✅** · **7 materials ✅** · **environment ✅** · **cloners ✅** · morph ⬜ · GLTF ⬜ · SDF ⬜ |
-| **5 · Modulation** | 🟡 6 of 8 | Signal chain ✅ · matrix ✅ · patchbay ✅ · triggers ✅ · generators ✅ · **response curves ✅** · node graph ⬜ · object-to-object ⬜ · automation lanes ⬜ |
-| **6 · Timeline** | ⬜ none | — |
-| **7 · Camera** | ⬜ none | Dual camera exists; no spline, keyframes, constraints or easing |
-| **8 · Export** | ⬜ none | — |
-| **9 · Polish** | ⬜ none | — |
+And none of it has been run in a browser yet.
 
 ---
 
-## The gap, ranked by what it costs the user
+## Built
+
+| Area | State |
+|---|---|
+| **Shell & workspace** | 6 pages, docked layout, dual camera, remappable shortcuts, **save/open/relink**, **undo/redo** |
+| **Audio** | Multi-stem decode + sync, trim, solo-isolates-visuals, offline MIR worker, 13 feature timelines, onsets, BPM, beat grid |
+| **Modulation** | Weighted N:1, Gain→Curve→Rise/Fall→Range→Weight, input window + Normalise, response curves, discrete triggers, generators, **a per-stem editable modulation curve** |
+| **Routing UI** | Patchbay with drag-to-connect, live wires, honest reachable-range readouts, per-connection graph drawn from the real engine |
+| **Geometry** | 7 procedural (any↔any morph-ready) + 10 primitive shapes, **15 deformers**, **3 cloners × 4 effectors** including the time-delay one |
+| **Look** | **14 post effects**, **7 materials**, **environment** (gradient sky, fog, IBL reflections, grid), **5 light types** as scene objects |
+| **Camera** | **5 behaviours** (Orbit/Sway/Shake/Dolly/Lens), Look-At, Align-to-view |
+| **Export** | **MP4 out** — H.264 + AAC, deterministic frame stepping, 16:9 / 9:16 / 1:1, cancellable |
+
+---
+
+## Missing, ranked by what it costs
 
 ### Tier 1 — these make it not-a-product
 
-| # | Missing | What it costs | Phase | Size |
+| # | Missing | Cost | Phase | Size |
 |---|---|---|---|---|
-| 1 | **Save / load** | Every refresh destroys everything. Nobody can build anything real. | 8E | small |
-| 2 | **Export** | The product's entire output does not exist. You cannot get a video out. | 8A–8C | medium |
-| 3 | **Undo** | Every mistake is permanent. Discourages experimenting, which is the whole activity. | 3F | small |
+| 1 | **Export** | The product's entire output does not exist. You cannot get a video out. | 8A–8C | medium |
+| ~~2~~ | ~~**Save / load**~~ | **Built** (D-52, D-56). Stems referenced, analysis cached, and the audio itself comes back — file handles persist in IndexedDB. | 8E ✅ | — |
+| ~~3~~ | ~~**Undo**~~ | **Built** (D-53). Ctrl+Z / Ctrl+Y, drag coalescing. | 3F ✅ | — |
 | 4 | **Timeline & states** | One static scene for the whole song. No cuts, no build, no drop. The brief's core structural idea. | 6A–6F | large |
 
-Those four are the entire distance between "impressive demo" and "tool someone finishes a
-video with". Three of the four are small or medium.
+Nothing above is blocked by anything else. `activeClock()` already unblocks export
+(D-45) and the state data model is specified (HC-7, HC-8).
 
-### Tier 2 — these make it feel thin
+### Tier 2 — visual ceiling
 
-| # | Missing | What it costs | Phase |
-|---|---|---|---|
-| ~~5~~ | ~~**Post-processing**~~ | **Built.** 14 effects, all modulatable. Materials and environment landed with it — the three causes of "looks untreated" are closed. | 4I · 4L · 4M ✅ |
-| ~~6~~ | ~~**Cloners + effectors**~~ | **Built.** 3 layouts x 4 effectors, instanced, plus the time-delay one nothing else can do. | 4H ✅ |
-| 7 | **Camera authoring** | The "flying cinematographer" — a headline differentiator — does not exist yet. | 7A–7F |
-| 8 | **Particles** | A whole visual language absent. | 10-ELEMENTS C |
-| 9 | **Data elements** (spectrum bars, waveform) | Nothing instantly reads as "music visualiser". | 10-ELEMENTS B |
+| Missing | Why it matters | Where |
+|---|---|---|
+| **GPU particles** | Largest remaining jump in visual density. Must be **stateless** (D-49) | 10-ELEMENTS C |
+| **Morph engine** | "Transform between any to any" is in the brief, and the shared-topology work is already done | 4F |
+| **More deformers** | FFT/spectrum, curl noise, cull/dissolve, voronoi shatter, taper, spline, jelly | 14-VISUAL-IDEAS §2 |
+| **Data elements** | Spectrum bars, waveform, Lissajous — what makes a video read instantly as *music* | 10-ELEMENTS B |
+| **Extruded 3D text** | The audience's clearest unmet need — beat name, producer tag, channel logo | 10-ELEMENTS A |
+| **Tunnels / SDF fields** | Also solves "the camera needs somewhere to go" | 4K |
+| **GLTF import** | Bring your own mesh | 4J |
+| **Trails / ribbons** | Doubles perceived density cheaply | 10-ELEMENTS A |
 
-### Tier 3 — real, but survivable
+### Tier 3 — depth, not breadth
 
-Morph engine · GLTF import · SDF backend · lighting · 2D overlays · node graph ·
-object-to-object routing · automation lanes · section markers · rig presets · batch export.
+Node graph (5C) · object-to-object routing (5E) · camera spline, keyframes, easing,
+constraints, motion trail and presets (7A/7B/7C/7E/7F) · batch export (8D) · portable
+rigs (8F) · autosave (8G) · v1 brick mining (9A) · recipe library (9B).
 
----
+### Tier 4 — quality of life
 
-## What is actually strong
-
-Worth being explicit about, because it is where the leverage is:
-
-- **The modulation engine.** Weighted N:1, Gain→Curve→Rise/Fall→Min/Max→Weight, response
-  curves with a real editor, discrete triggers as pure functions of time, generators as
-  synthetic stems. This is deeper than NeuralFrames and more approachable than
-  TouchDesigner, which is exactly the stated white space.
-- **Determinism.** Features are timelines, not live taps (HC-3). Preview and export will
-  be identical, automation lanes are drawable ahead of playback, and scrubbing backwards
-  reproduces exactly. Most tools in this space cannot claim any of that.
-- **The parameter system.** Addressed, not enumerated. A new brick becomes modulatable
-  the moment it declares descriptors — no switch statement anywhere knows about it.
-- **The architecture holds.** 32 sub-phases in, the hard constraints have not needed
-  revising, and nothing audio-rate has leaked into React.
+- **Stems page as a real editor** — bars/beats ruler, move in time, split, fades, zoom
+- **Object parenting / linking**, groups, multi-select
+- **UI craft pass** — controls are small and undifferentiated, density is uniform
 
 ---
 
-## Recommended order
+## Eleven open questions
 
-Ranked by **cost of delay**, not by phase number.
+Still genuinely undecided, in [08-OPEN-QUESTIONS.md](08-OPEN-QUESTIONS.md). The ones that
+block work rather than merely sit there:
 
-1. **8E save/load** — small, and every hour spent authoring before it exists is thrown away.
-2. **3F undo** — small, and it gets harder every phase.
-3. **4I post-processing** — three shaders, largest visual-quality jump available.
-4. **4H cloners** — multiplies everything already built.
-5. **Phase 6 timeline** — large, but it is the brief's core structural idea and nothing
-   else substitutes for it.
-6. **Phase 8 export** — after the timeline, since exporting one static scene is not
-   worth much.
-7. **Phase 7 camera** — the differentiator, but it needs the timeline underneath it first.
-
-Everything after that is elements ([10-ELEMENTS.md](10-ELEMENTS.md)) — particles, data
-elements, text, tunnels — which is where the *ceiling* rises rather than the floor.
+- **Q3 · 2D overlay layer** — named repeatedly in the brief, never designed. Blocks
+  lower-thirds, channel branding, safe-area guides for vertical export.
+- **Q4b · "Field" means two things** — a control signal *and* a spatial falloff mask.
+  Costs nothing today, costs a rename later.
+- **Q9 · Export presets** — cheap, but needs deciding before the export dialog exists.
+- **Q10 · Rig portability** — a rig referencing object IDs from its birth project is
+  worthless. Must be solved *before* the first rig is exported.
 
 ---
 
 ## Honest risks
 
-- **UI is functional, not designed.** Acknowledged and deferred by decision. Worth a
-  dedicated pass once the feature set stops moving — doing it earlier means doing it twice.
-- **The post chain has not been profiled.** Merged effects keep the pass count low, but
-  Feedback Trails owns two full-resolution half-float targets and the composer runs 4×
-  MSAA. Nothing here is measured yet; that is Phase 9C.
+- **Nothing has been visually verified.** No browser has been driven in this workspace.
+  The post-processing GLSL has never compiled on a GPU, and the instanced cloner path has
+  never rendered. Both are covered by structural tests; neither is covered by a pixel.
 - **No performance work has been done.** 60fps has never been measured under load. The
-  audit is Phase 9C and everything before it is guesswork.
-- **Nothing is persisted at all** — not projects, not preferences beyond keybindings.
-- **Deformers are CPU-side.** Fine at 642 vertices; cloners (4H) multiply that by N and
-  the decision (D-33) will need revisiting then, exactly as its "revisit when" note says.
+  post chain runs 4× MSAA and Feedback Trails owns two full-resolution half-float
+  targets. Deformers and cloners are CPU-side, and a cloner multiplies the vertex work by
+  N. The audit is 9C and everything before it is guesswork.
+- **Autosave does not exist.** Save is manual, so a crash still costs the session. 8G.
+- **The UI is functional, not designed.** Acknowledged and deferred by decision; the
+  feature set is now large enough that the pass is worth scheduling.
+
+---
+
+## Recommended order
+
+By cost of delay, not by phase number.
+
+1. ~~8E save/load~~ — ✅ built.
+2. ~~3F undo~~ — ✅ built.
+3. ~~Phase 8 export~~ — ✅ built.
+4. **Phase 6 timeline** — large, the brief's core idea, and nothing substitutes for it.
+5. **Particles** — the visual ceiling.
+6. **Phase 7 camera authoring** — needs the timeline underneath it.
+7. **Craft pass** — once the feature set stops moving.

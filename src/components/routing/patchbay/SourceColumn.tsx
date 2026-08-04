@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Plus, Trash2, Waves, PenLine } from 'lucide-react'
 import { useAudioStore } from '@/store/useAudioStore'
 import { useGeneratorStore } from '@/store/useGeneratorStore'
@@ -43,6 +43,11 @@ export function SourceColumn({ onDragStart }: SourceColumnProps) {
           <StemHeader trackId={track.id} name={track.name} color={track.color} />
           {/* The stem's own signal — the shape everything wired from it inherits. */}
           <StemSignalStrip trackId={track.id} color={track.color} />
+
+          {/* This stem's editable curve, first: it is the one most routings should use,
+              because it is the only source you can reshape when the analysis is wrong. */}
+          <StemLaneDot track={track} onDragStart={onDragStart} />
+
           {AUDIO_FIELDS.map((option) => (
             <SourceDot
               key={option.key}
@@ -169,11 +174,37 @@ function SourceDot({ label, field, color, onDragStart, meterKey, trackId }: Sour
   )
 }
 
-/** Drawn lanes. A hand-authored curve is a source like any other, which is what lets it
- *  sum with a stem through the same weighted N:1 rather than replacing it. Drawing itself
- *  happens on the stems page, against the waveform. */
+/** The stem's own automation curve, shown inside its group. */
+function StemLaneDot({
+  track,
+  onDragStart,
+}: {
+  track: { id: string; color: string }
+  onDragStart: SourceColumnProps['onDragStart']
+}) {
+  const lane = useAutomationStore((s) => s.lanes.find((l) => l.source?.trackId === track.id))
+  if (!lane) return null
+
+  return (
+    <SourceDot
+      label={`Automation${lane.mode === 'edited' ? ' · edited' : ''}`}
+      field={{ kind: 'automation', key: AUTOMATION_FIELD.key, sourceId: lane.id }}
+      color={track.color}
+      onDragStart={onDragStart}
+    />
+  )
+}
+
+/** Detached lanes only. A stem's own curve appears inside that stem's group instead,
+ *  because that is where it belongs — it is that stem's signal, not a separate one. */
 function AutomationSection({ onDragStart }: SourceColumnProps) {
-  const lanes = useAutomationStore((s) => s.lanes)
+  // Select the raw array and narrow it OUTSIDE the selector. A selector that returns
+  // `.filter(...)` allocates a new array on every call, so Zustand's equality check can
+  // never pass — React re-renders, the selector runs again, and the component loops
+  // until "Maximum update depth exceeded". The console names it: "the result of
+  // getSnapshot should be cached".
+  const allLanes = useAutomationStore((s) => s.lanes)
+  const lanes = useMemo(() => allLanes.filter((l) => !l.source), [allLanes])
   if (lanes.length === 0) return null
 
   return (

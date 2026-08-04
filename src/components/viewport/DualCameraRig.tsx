@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import { DualCameraEngine } from '@/engine/camera/DualCameraEngine'
 import { useCameraStore } from '@/store/useCameraStore'
 import { GIZMO_LAYER } from './SceneLight'
+import { SCENE_CAMERA_NAME } from './ExportBridge'
 
 /** DualCameraRig — two real cameras, one output (docs/03-ARCHITECTURE.md HC-10).
  *
@@ -87,7 +88,13 @@ export function DualCameraRig() {
 
   return (
     <>
-      <perspectiveCamera ref={sceneCamRef} fov={45} near={0.1} far={2000} />
+      <perspectiveCamera
+        ref={sceneCamRef}
+        name={SCENE_CAMERA_NAME}
+        fov={45}
+        near={0.1}
+        far={2000}
+      />
       <perspectiveCamera ref={setPreviewCam} fov={50} near={0.1} far={2000} />
 
       {isPreview && controlMode === 'orbit' && previewCam && (

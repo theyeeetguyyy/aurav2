@@ -6,6 +6,7 @@ import { SceneObjects } from './SceneObjects'
 import { ModulationDriver } from './ModulationDriver'
 import { CameraRigDriver } from './CameraRigDriver'
 import { PostChain } from './PostChain'
+import { ExportBridge } from './ExportBridge'
 import { ViewportHUD } from './ViewportHUD'
 import {
   getViewportSlot,
@@ -121,6 +122,8 @@ export function PersistentViewport() {
         {/* Last in the tree: it takes over the render loop, so everything that writes to
             the scene must have run first. */}
         <PostChain />
+        {/* Last: it publishes the finished render path to the exporter. */}
+        <ExportBridge />
       </Canvas>
 
       {visible && !options.compact && <ViewportHUD />}

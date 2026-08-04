@@ -326,6 +326,33 @@ every tick — depending on uptime rather than on time.
 Also adds **Align to this view**, which puts the Scene Camera where the Preview Camera is.
 Its absence meant the camera that actually renders could not be aimed at all.
 
+**D-55 · Automation belongs to a stem, not to a track of its own.** *(revises D-51)*
+The first version put drawn curves on a shared panel under the rack. Wrong, and the reason
+is worth keeping: **a detached lane has no time reference.** You are drawing to a beat you
+cannot see, so "make it swell here" has no *here*.
+
+Every imported stem now owns one lane, drawn directly under that stem's waveform on that
+stem's timeline. You can see where the kick lands, so you know what moment you are
+editing. It starts as the curve the analyser derived; drawing takes ownership; **Reset**
+gives it back.
+
+*A lane in `analysis` mode holds no points at all.* It defers to the feature timeline,
+which is exact and costs nothing — no decimation error, no second copy to keep in sync,
+and a stem with a hundred lanes' worth of data allocates none of it. The first edit
+snapshots the curve into ~320 points and the mode flips to `edited`. One-way, so "what is
+this showing me" always has a simple answer.
+
+*Decimation is peak-preserving.* A 200 Hz timeline is 48 000 values over four minutes,
+which is not a curve anyone can drag. But a kick is one or two samples wide at that rate,
+so averaging into buckets would flatten exactly the transients the curve exists to
+capture. Each output point takes the peak of its bucket instead.
+
+*Solo still gates it.* The curve came from that stem, so isolating the stem isolates what
+its curve drives (HC-11) — in both modes.
+
+Detached lanes survive, for "I want a shape the music does not contain". They are the
+exception now rather than the path, and they live in their own section.
+
 **D-51 · Automation lanes are Fields, and the signal chain gains an input window.**
 Two halves of one problem — "this stem barely moves", and "the routed range says 0→16 but
 the visual does something else".
@@ -348,6 +375,131 @@ p2/p98 (`measureField`) and writes the two numbers.
 *Why both:* honest numbers made the problem visible (`reachableRange`), the window fixes
 the common case in one click, and the lane is the escape hatch for when the music simply
 does not do what the visual needs. None of the three substitutes for the others.
+
+**D-52 · Save/load ships with the platform adapter, and feature timelines are cached.**
+*(delivers 3E and 8E together)*
+
+The adapter exists to serve file I/O, and this is the first file I/O — building one
+without the other would have meant writing the picker twice. `PlatformAdapter` is
+installed once in `main.tsx`; **nothing outside `engine/platform/` may touch a file
+picker, a download anchor or a Tauri API**, and the stem importer was moved onto it as
+part of this (it had been a hidden `<input type="file">`).
+
+*Stems are referenced, never embedded* — a project carrying its audio stops being a
+document you can email. *Feature timelines ARE embedded*, base64-encoded: they are
+derived, but re-deriving them means re-analysing every stem on every open, and analysis is
+deterministic so the cache is the same answer rather than an approximation. Base64 of the
+raw `Float32Array` is about a tenth the size of a JSON number array and lossless — which
+matters, because a lossy cache would mean a reopened project modulates differently from
+the one that was saved, breaking HC-3's guarantee.
+
+*The browser cannot relink by path.* `canRelinkByPath` is false and the UI says so: a
+reopened project has every wire, shape and drawn curve intact and no audio, with a
+**Relink** action that matches re-picked files by name. Pretending the load succeeded
+would be worse than admitting it half did.
+
+*Format rules.* A file from a newer version is **refused**, not partially read — silently
+dropping what a newer version added and then saving over the original is how work actually
+disappears. A file from an older version has its missing collections filled: a project
+saved before lanes existed is not corrupt, it predates them.
+
+`useUIStore` is deliberately absent from the file. Dock sizes and the active page are not
+project state.
+
+**D-53 · Undo is the command pattern over *slice snapshots*, not store snapshots.**
+
+The engine's `CommandHistory` holds `{label, undo, redo}` closures and knows nothing about
+state — which is what makes it testable without a single store. The bridge above it
+(`src/project/history.ts`) captures a **slice snapshot**: only the parts of the project an
+action declares it touches, so adding an object does not snapshot the automation lanes.
+
+*This does not contradict the rejection of `zundo`.* That decision rejected snapshotting
+**stores**, because stores hold `AudioBuffer`s and GPU handles. No slice here contains
+either: stems, decoded audio and feature timelines are deliberately absent. An undo cannot
+unload your audio, and a keystroke does not cost a megabyte of cached analysis.
+
+*Stores record ahead of mutating.* `recordChange(label, slices, coalesceKey)` is called at
+the top of an action, because the state about to be replaced is the natural thing to
+capture. The redo side is captured lazily on the first undo — the only moment it is known,
+and free until then. Stores reach the recorder through `store/historyHook.ts`, which holds
+a callback and nothing else; without that indirection the bridge and the stores would
+import each other and the module graph would cycle.
+
+*Coalescing is the feature that makes it usable.* A scrub drag emits a change per pixel.
+Entries sharing a key inside 600 ms merge, keeping the **oldest undo** (before the drag)
+and the **newest redo** (where it ended). Without it, one drag would cost two hundred
+presses of Ctrl+Z.
+
+*Re-entrancy is guarded.* Restoring a snapshot writes to stores, and those writes call
+`recordChange`. `CommandHistory.push` ignores anything pushed while applying, or an undo
+would push its own inverse and the stack would never drain.
+
+View state is deliberately not undoable: selection, active camera, dock sizes, the post
+master bypass. Ctrl+Z should reach the last thing you *changed*, not the last thing you
+looked at. Loading a project clears the history — undoing into a document that no longer
+exists is worse than having no undo.
+
+**D-54 · Export renders through the LIVE renderer; only encoding is separate.**
+§4.6 specified a worker with `OffscreenCanvas`. Overruled, for one reason: the scene is
+built by React components, so a worker renderer would be a **second scene-construction
+codepath** — and two codepaths is exactly how "what you preview is what renders" stops
+being true. The exporter drives the same renderer the viewport does, through a
+`FrameSource` the viewport publishes.
+
+Encoding is not the cost that buys. `VideoEncoder` is hardware-backed and already runs off
+the main thread inside the browser; what stays on it is a queue push per frame and a muxer
+write per chunk. What is gained is `encodeQueueSize` being directly readable, which keeps
+backpressure a four-line loop instead of a message protocol — and without backpressure a
+fast GPU queues thousands of full-resolution `VideoFrame`s and the tab runs out of memory
+before the render ends.
+
+Two details that are easy to get wrong and fatal when wrong:
+
+- The `VideoFrame` is constructed **in the same task as the draw**. A WebGL drawing buffer
+  is cleared at compositing time, which happens when the task yields — reading it later
+  captures black.
+- `flush()` before `finalize()`, always. Skipping it produces a file that looks complete
+  and will not play.
+
+The Scene Camera is forced for the duration (HC-10) whatever the user is looking through,
+and the gizmo layer is disabled on it so authoring furniture never reaches the file.
+
+This is also the **first thing that exercises HC-2 and HC-3**. Every "pure function of
+time" note in this codebase is a promise that gets called in here.
+
+**D-56 · Stems are remembered by handle, not by path.** *(corrects D-52)*
+D-52 recorded `canRelinkByPath: false` and treated a reopened project with no audio as an
+honest limitation of the host. That was too pessimistic. A browser cannot store a *path*,
+but `showOpenFilePicker` returns a `FileSystemFileHandle`, which is structured-cloneable
+and therefore survives in **IndexedDB** across sessions.
+
+So a saved project reopens with its own audio. Better than a path, in fact: a handle
+survives the file being renamed or moved.
+
+Only the permission needs re-granting, and that has one rule worth stating because getting
+it wrong is invisible: **requesting permission needs a user gesture.** A project load is
+not one. So the restore runs in two passes — a silent pass on load that recovers whatever
+is still granted, and a **Restore** button that asks for the rest in a single click for
+every stem at once.
+
+*Drag-and-drop carries no handle.* Files dropped onto the rack come from a `DataTransfer`,
+which yields `File` and nothing reopenable. Those still need re-picking, and the Restore
+button falls through to the file dialog for them. Picking through the button is the path
+that remembers — the tooltip says so rather than leaving it to be discovered.
+
+Handles are forgotten when a stem is deleted, or storage accumulates entries for files no
+project references any more.
+
+**D-57 · Light intensity defaults are scaled to scene distance.**
+Three has been physically correct since r165 — `useLegacyLights` is gone, point and spot
+intensity is candela, and with `decay: 2` it falls off as 1/d².
+
+A light spawns at (12, 14, 12), which is 22 units from the origin, so d² is 484. The
+original default of 60 arrived at the object as **0.12** and read as "lights do not work".
+Defaults are now `desired_brightness × d²` at the distance lights actually sit — large
+numbers, but derived rather than guessed, and named as `SPAWN_DISTANCE_SQUARED` so the
+relationship survives the next edit. Directional and ambient lights are distance-
+independent and keep small numbers.
 
 **D-36 · Deformers cannot animate themselves.**
 `DeformContext` has no `time`. A deformer is a pure function of its parameters; all

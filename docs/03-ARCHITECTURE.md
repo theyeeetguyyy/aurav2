@@ -319,7 +319,18 @@ src/
 └── bricks/         Brick implementations + their param descriptors
 ```
 
-**The `engine/` boundary is absolute.** No file under `engine/` may import React, a
-store, or a component. Engine modules are driven by explicit calls and read state passed
-into them. This is what makes offline rendering, testing, and a future non-React host
-possible.
+**The `engine/` boundary.** No file under `engine/` may import React or a component, and
+none may import a store — engine modules are driven by explicit calls and read state
+passed into them (`FieldContext` is the pattern). This is what makes offline rendering,
+testing, and a future non-React host possible.
+
+> **One known violation, recorded rather than hidden:** `engine/audio/MultiTrackRack.ts`
+> imports `useAudioStore` to read trim bounds and solo state during scheduling. It
+> predates the rule and is load-bearing. The fix is the same shape as `FieldContext` —
+> pass a track snapshot into `play()` and `applySoloMuteState()` instead of reading a
+> store — and it is tracked in [15-BUILD-PLAN.md](15-BUILD-PLAN.md) §2b. Until then, the
+> doc that says "absolute" would be lying, so it does not.
+
+Code that needs both the engine and the stores lives in `src/project/` — the project
+bridge is the worked example: `engine/project/` owns the *format* and knows nothing about
+where values come from; the bridge owns the *wiring* and knows nothing about encoding.

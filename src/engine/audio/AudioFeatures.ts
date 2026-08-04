@@ -146,6 +146,16 @@ class AudioFeaturesImpl {
     return false
   }
 
+  /** Install already-computed features, e.g. from a project file's cache.
+   *
+   *  Analysis is deterministic, so a cached result is not an approximation of what the
+   *  worker would produce — it is the same answer, and re-deriving it on every open is
+   *  seconds of work for no difference. */
+  adopt(trackId: ID, features: TrackFeatures): void {
+    this.features.set(trackId, features)
+    this.emit(trackId, 'done')
+  }
+
   get(trackId: ID): TrackFeatures | null {
     return this.features.get(trackId) ?? null
   }

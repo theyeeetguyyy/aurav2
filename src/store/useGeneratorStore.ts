@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { recordChange } from '@/store/historyHook'
 import { useModulationStore } from '@/store/useModulationStore'
 import type { ID } from '@/types/audio'
 import type { Generator, GeneratorType } from '@/types/generator'
@@ -31,6 +32,7 @@ export const useGeneratorStore = create<GeneratorState>((set, get) => ({
   generators: [],
 
   addGenerator: (type = 'lfo-sine') => {
+    recordChange('Add generator', ['generators'])
     const id = generateId()
     const index = get().generators.length
     const label = GENERATOR_TYPES.find((t) => t.value === type)?.label ?? 'LFO'
@@ -51,6 +53,7 @@ export const useGeneratorStore = create<GeneratorState>((set, get) => ({
   },
 
   removeGenerator: (id) => {
+    recordChange('Remove generator', ['generators', 'modulation'])
     // Wires sourced from this generator have to go with it, or the matrix keeps
     // evaluating a source that no longer exists — invisible, but still burning a shaper
     // and an envelope every frame.
@@ -58,10 +61,12 @@ export const useGeneratorStore = create<GeneratorState>((set, get) => ({
     set((s) => ({ generators: s.generators.filter((g) => g.id !== id) }))
   },
 
-  updateGenerator: (id, patch) =>
+  updateGenerator: (id, patch) => {
+    recordChange('Update generator', ['generators'], `gen:${id}`)
     set((s) => ({
       generators: s.generators.map((g) => (g.id === id ? { ...g, ...patch } : g)),
-    })),
+    }))
+  },
 
   clear: () => set({ generators: [] }),
 }))

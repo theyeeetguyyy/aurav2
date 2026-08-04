@@ -20,6 +20,17 @@ import {
 
 const DEG = Math.PI / 180
 
+/** Three has been physically correct since r165 — `useLegacyLights` is gone, point and
+ *  spot intensity is candela, and with `decay: 2` it falls off as 1/d².
+ *
+ *  That interacts badly with scene scale. A light spawns at (12, 14, 12), which is 22
+ *  units from the origin, so d² is 484: an intensity of 60 arrives at the object as 0.12
+ *  and reads as "the light does not work". Defaults below are therefore in the thousands
+ *  — not arbitrary, but `desired_brightness × d²` at the distance lights actually sit.
+ *
+ *  Directional and ambient lights are unaffected by distance and keep small numbers. */
+const SPAWN_DISTANCE_SQUARED = 484
+
 /** Shadow map size. 1024 is the point where a shadow stops looking like stairs at typical
  *  scene scale; 2048 doubles the cost for a difference nobody sees at 1080p. */
 const SHADOW_MAP = 1024
@@ -43,7 +54,8 @@ export const pointLight: LightBrick = {
   hint: 'A bulb. Falls off in every direction — the workhorse for shaping a single object.',
   castsShadows: true,
   descriptors: [
-    intensityParam(60, 400),
+    // ~2× nominal brightness at the spawn distance. See SPAWN_DISTANCE_SQUARED.
+    intensityParam(SPAWN_DISTANCE_SQUARED * 2, SPAWN_DISTANCE_SQUARED * 40),
     lightColour('#ffffff'),
     // Distance 0 means "never cut off", which is what you want until you are lighting a
     // room and need one lamp to stop before it reaches the next.
@@ -52,12 +64,12 @@ export const pointLight: LightBrick = {
     shadowToggle(),
   ],
   create(): LightHandle {
-    const light = new THREE.PointLight(0xffffff, 60)
+    const light = new THREE.PointLight(0xffffff, SPAWN_DISTANCE_SQUARED * 2)
     return {
       light,
       target: null,
       update(params) {
-        light.intensity = Math.max(0, num(params, 'intensity', 60))
+        light.intensity = Math.max(0, num(params, 'intensity', SPAWN_DISTANCE_SQUARED * 2))
         light.color.set(str(params, 'color', '#ffffff'))
         light.distance = Math.max(0, num(params, 'distance', 0))
         light.decay = Math.max(0, num(params, 'decay', 2))
@@ -74,7 +86,7 @@ export const spotLight: LightBrick = {
   hint: 'A beam with a cone. Aims along the object rotation; the only light that reads as theatrical.',
   castsShadows: true,
   descriptors: [
-    intensityParam(120, 800),
+    intensityParam(SPAWN_DISTANCE_SQUARED * 4, SPAWN_DISTANCE_SQUARED * 60),
     lightColour('#ffffff'),
     lightParam('angle', 'Cone Angle', 1, 89, 30, { unit: 'deg' }),
     // Penumbra is the difference between a hard theatrical edge and a soft wash, and it
@@ -85,7 +97,7 @@ export const spotLight: LightBrick = {
     shadowToggle(),
   ],
   create(): LightHandle {
-    const light = new THREE.SpotLight(0xffffff, 120)
+    const light = new THREE.SpotLight(0xffffff, SPAWN_DISTANCE_SQUARED * 4)
     // A spot aims at its target, not along its own rotation. Parenting the target to the
     // light one unit down -Z makes the object's rotation aim the beam, which is what a
     // user expects from a transform.
@@ -98,7 +110,7 @@ export const spotLight: LightBrick = {
       light,
       target,
       update(params) {
-        light.intensity = Math.max(0, num(params, 'intensity', 120))
+        light.intensity = Math.max(0, num(params, 'intensity', SPAWN_DISTANCE_SQUARED * 4))
         light.color.set(str(params, 'color', '#ffffff'))
         light.angle = Math.min(89, Math.max(1, num(params, 'angle', 30))) * DEG
         light.penumbra = Math.min(1, Math.max(0, num(params, 'penumbra', 0.4)))
@@ -162,7 +174,7 @@ export const areaLight: LightBrick = {
   hint: 'A soft glowing panel. The most flattering light there is, and it shows in reflections.',
   castsShadows: false,
   descriptors: [
-    intensityParam(15, 200),
+    intensityParam(40, 600),
     lightColour('#ffffff'),
     lightParam('width', 'Width', 0.1, 100, 12, { unit: 'm' }),
     lightParam('height', 'Height', 0.1, 100, 6, { unit: 'm' }),
@@ -171,13 +183,13 @@ export const areaLight: LightBrick = {
     // RectAreaLight needs its BRDF lookup tables initialised once before first use, or it
     // renders black with no error.
     RectAreaLightUniformsLib.init()
-    const light = new THREE.RectAreaLight(0xffffff, 15, 12, 6)
+    const light = new THREE.RectAreaLight(0xffffff, 40, 12, 6)
 
     return {
       light,
       target: null,
       update(params) {
-        light.intensity = Math.max(0, num(params, 'intensity', 15))
+        light.intensity = Math.max(0, num(params, 'intensity', 40))
         light.color.set(str(params, 'color', '#ffffff'))
         light.width = Math.max(0.1, num(params, 'width', 12))
         light.height = Math.max(0.1, num(params, 'height', 6))

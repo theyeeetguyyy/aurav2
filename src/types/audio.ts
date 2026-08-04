@@ -20,6 +20,9 @@ export interface Track {
   trimBounds: TrimBounds
   /** Pre-computed analysis data from essentia.js */
   analysis: AnalysisData | null
+  /** Opaque key for reopening this stem's file in a later session. Absent when the host
+   *  cannot persist handles, or when the file arrived by drag-and-drop. */
+  handleKey?: string
 }
 
 export interface TrimBounds {

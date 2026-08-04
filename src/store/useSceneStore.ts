@@ -1,6 +1,7 @@
 import { create } from 'zustand'
+import { recordChange } from '@/store/historyHook'
 import type { ID } from '@/types/audio'
-import type { ParamAddress, ParamValue } from '@/types/params'
+import { formatAddress, type ParamAddress, type ParamValue } from '@/types/params'
 import type { EffectInstance, MaterialParams, SceneObject, SceneObjectType } from '@/types/visual'
 import { DEFAULT_TRANSFORM } from '@/types/visual'
 import { BrickRegistry } from '@/engine/scene/BrickRegistry'
@@ -113,6 +114,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
   selectedId: null,
 
   addObject: (brickId, type) => {
+    recordChange('Add object', ['scene'])
     const lightBrick = LightRegistry.get(brickId)
     const geometryBrick = lightBrick ? null : BrickRegistry.get(brickId)
     const resolvedType: SceneObjectType = type ?? (lightBrick ? 'light' : 'shape')
@@ -156,6 +158,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
   },
 
   removeObject: (id) => {
+    recordChange('Delete object', ['scene', 'modulation'])
     // Drop any routing that targeted this object, or the matrix keeps evaluating
     // connections pointing at something that no longer exists.
     useModulationStore.getState().releaseObject(id)
@@ -166,6 +169,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
   },
 
   duplicateObject: (id) => {
+    recordChange('Duplicate object', ['scene'])
     const source = get().objects.find((o) => o.id === id)
     if (!source) return null
 
@@ -195,12 +199,15 @@ export const useSceneStore = create<SceneState>((set, get) => ({
     return newId
   },
 
-  renameObject: (id, name) =>
+  renameObject: (id, name) => {
+    recordChange('Rename object', ['scene'])
     set((s) => ({
       objects: s.objects.map((o) => (o.id === id ? { ...o, name: name.trim() || o.name } : o)),
-    })),
+    }))
+  },
 
-  reorderObject: (id, toIndex) =>
+  reorderObject: (id, toIndex) => {
+    recordChange('Reorder object', ['scene'])
     set((s) => {
       const from = s.objects.findIndex((o) => o.id === id)
       if (from === -1) return s
@@ -211,17 +218,23 @@ export const useSceneStore = create<SceneState>((set, get) => ({
       const [moved] = objects.splice(from, 1)
       objects.splice(clamped, 0, moved)
       return { objects }
-    }),
+    })
+  },
 
-  setVisible: (id, visible) =>
-    set((s) => ({ objects: s.objects.map((o) => (o.id === id ? { ...o, visible } : o)) })),
+  setVisible: (id, visible) => {
+    recordChange(visible ? 'Show object' : 'Hide object', ['scene'])
+    set((s) => ({ objects: s.objects.map((o) => (o.id === id ? { ...o, visible } : o)) }))
+  },
 
-  setLocked: (id, locked) =>
-    set((s) => ({ objects: s.objects.map((o) => (o.id === id ? { ...o, locked } : o)) })),
+  setLocked: (id, locked) => {
+    recordChange(locked ? 'Lock object' : 'Unlock object', ['scene'])
+    set((s) => ({ objects: s.objects.map((o) => (o.id === id ? { ...o, locked } : o)) }))
+  },
 
   select: (id) => set({ selectedId: id }),
 
-  setBrick: (id, brickId) =>
+  setBrick: (id, brickId) => {
+    recordChange('Change shape', ['scene'])
     set((s) => ({
       objects: s.objects.map((o) => {
         if (o.id !== id) return o
@@ -241,21 +254,28 @@ export const useSceneStore = create<SceneState>((set, get) => ({
           params,
         }
       }),
-    })),
+    }))
+  },
 
-  setMaterialBrick: (id, materialId) =>
+  setMaterialBrick: (id, materialId) => {
+    recordChange('Change material', ['scene'])
     set((s) => ({
       objects: s.objects.map((o) =>
         o.id === id
           ? { ...o, materialId, material: MaterialRegistry.migrateParams(materialId, o.material) }
           : o,
       ),
-    })),
+    }))
+  },
 
-  setParam: (address, value) =>
+  setParam: (address, value) => {
+    // Coalesced by address: a scrub drag emits a change per pixel, and without this one
+    // drag would cost two hundred presses of Ctrl+Z.
+    recordChange('Edit parameter', ['scene'], `scene:${formatAddress(address)}`)
     set((s) => ({
       objects: s.objects.map((o) => (o.id === address.objectId ? writeParam(o, address, value) : o)),
-    })),
+    }))
+  },
 
   setMaterial: (id, patch) =>
     set((s) => ({
@@ -271,6 +291,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
 
   /** Add an effect by brick id, with its registered defaults. The path the UI uses. */
   addEffectBrick: (id, effectId) => {
+    recordChange('Add effect', ['scene'])
     const brick = EffectRegistry.get(effectId)
     if (!brick) return null
 
@@ -298,7 +319,8 @@ export const useSceneStore = create<SceneState>((set, get) => ({
     return instanceId
   },
 
-  reorderEffect: (id, effectId, delta) =>
+  reorderEffect: (id, effectId, delta) => {
+    recordChange('Reorder effect', ['scene'])
     set((s) => ({
       objects: s.objects.map((o) => {
         if (o.id !== id) return o
@@ -311,9 +333,11 @@ export const useSceneStore = create<SceneState>((set, get) => ({
         effects.splice(to, 0, moved)
         return { ...o, effects }
       }),
-    })),
+    }))
+  },
 
   removeEffect: (id, effectId) => {
+    recordChange('Remove effect', ['scene', 'modulation'])
     // Deleting a deformer must also delete the wires pointing at its parameters.
     // Otherwise the matrix keeps evaluating connections whose target no longer exists —
     // invisible in the patchbay, but still burning a shaper and an envelope every frame.
@@ -325,7 +349,8 @@ export const useSceneStore = create<SceneState>((set, get) => ({
     }))
   },
 
-  updateEffect: (id, effectId, patch) =>
+  updateEffect: (id, effectId, patch) => {
+    recordChange('Update effect', ['scene'])
     set((s) => ({
       objects: s.objects.map((o) =>
         o.id === id
@@ -335,7 +360,8 @@ export const useSceneStore = create<SceneState>((set, get) => ({
             }
           : o,
       ),
-    })),
+    }))
+  },
 
   clear: () => set({ objects: [], selectedId: null }),
 }))

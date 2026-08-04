@@ -3,7 +3,7 @@
 **Read this first.** Where the project actually is, what runs today, what does not, and
 what to do next. Everything here is verified against the code, not aspirational.
 
-*Last verified: 2026-08-03 · `npm run check` green (typecheck · lint · 285 tests)*
+*Last verified: 2026-08-03 · `npm run check` green (typecheck · lint · 324 tests)*
 
 > **What is missing and what it costs: [13-PRODUCT-GAP.md](13-PRODUCT-GAP.md).**
 
@@ -85,7 +85,8 @@ Not done: feature timelines are not serialised, so reopening a project re-analys
 `FieldRef` registry · `useSceneStore` layer stack · **persistent single-Canvas viewport**
 (HC-9) — pages expose a `ViewportSlot` and one renderer follows it, which is also how the
 Routing page gets a live scene monitor for free.
-⬜ **3E platform adapter** · **3F command history (undo)**.
+✅ **3E platform adapter** — all file I/O behind one interface (D-52).
+✅ **3F undo/redo** — command history over slice snapshots, drag coalescing, Ctrl+Z/Ctrl+Y (D-53).
 
 ### Phase 4 — Scene objects & backends (partial)
 ✅ Layer stack outliner · `BrickRegistry` with geometry caching · **7 procedural shapes on
@@ -115,8 +116,10 @@ field evaluation (audio, rhythm, generative) · discrete triggers as decaying im
 **Generators** — LFO/noise as first-class synthetic stems · **response curves** with an
 editor, **real value ranges** in the parameter's own units, and a **modulation graph**
 drawn from the real engine.
-✅ **5F automation lanes** — hand-drawn curves as first-class Fields, drawn on the stems
-page against the waveform, plus the signal-chain **input window** and **Normalise** (D-51).
+✅ **5F automation** — **every stem owns an editable modulation curve**, drawn under its
+own waveform so the time reference is the waveform itself (D-55). Starts from the
+analysis, reshape it, reset it. Plus the signal-chain **input window** and **Normalise**
+(D-51).
 ⬜ 5C node graph (advanced view) · 5E object-to-object routing.
 
 ### Phase 7 — Camera (partial)
@@ -136,11 +139,11 @@ mining from v1.
 
 | # | Gap | Where | Consequence |
 |---|---|---|---|
-| 1 | **No undo** | Phase 3F | `ScrubField` already emits `onCommit` on drag end, so drags will coalesce into one step when it lands |
+| ~~1~~ | ~~No undo~~ | ✅ 3F | Ctrl+Z / Ctrl+Y, or the top-bar buttons. A slider drag is one step |
 | 2 | **Camera page is viewport only** | `CameraPage.tsx` | No spline, keyframes, or constraints yet |
-| 3 | **Deliver page is a placeholder** | `DeliverPage.tsx` | No timeline, no export |
+| 3 | **Deliver has export but no timeline** | `DeliverPage.tsx` | Export MP4 works; sequencing is Phase 6 |
 | 4 | **Geometry params are not modulation targets** | `realtime: false` | Intentional (D-31) — wiring a kick to `radius` would re-tessellate 60×/sec. `scale.uniform` covers the common case; deformers (4G) are the real answer |
-| 5 | **No project save/load** | Phase 8E | Everything is lost on refresh |
+| 5 | ~~No project save/load~~ | ✅ 8E | Save/Open/Relink in the top bar. Stems are referenced, so a reopened project needs its audio re-picked — analysis is cached, so it does not re-run |
 | 6 | **Root is not a git repo** | — | `aurav2/` and `legacy/aura-v1/` have separate histories; nothing spans the workspace |
 
 ---
@@ -174,11 +177,15 @@ break by accident:
 
 ## Next
 
-**GPU particles** — the `points` backend, and it must be **stateless** (D-49): every
-particle a pure function of `(seed, birthTime, t)`, because a simulated system cannot be
-exported. Largest remaining jump in visual density.
+**Run it.** Nothing in this workspace has been driven in a browser. Fifteen modules,
+315 structural tests, zero pixels. Before more is built on top, the render path needs one
+real run — the smoke test is [15-BUILD-PLAN.md](15-BUILD-PLAN.md) §0.
 
-After that: **export** → **save/load** → **undo** → **Phase 6 timeline**.
+Then **Phase 6 — timeline & states**: the brief's core structural idea and the last
+Tier-1 blocker. Everything it needs is specified — states reference rather than copy
+(HC-7), routing is global with per-state activation (HC-8), and the beat grid exists.
+
+After that: **GPU particles** (stateless, D-49) → the craft pass on the UI.
 
 Full queue: [15-BUILD-PLAN.md](15-BUILD-PLAN.md). Library assessments first:
 [16-LIBRARIES.md](16-LIBRARIES.md).

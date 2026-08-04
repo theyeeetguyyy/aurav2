@@ -1,9 +1,11 @@
 import { useState, useCallback, useMemo, useRef } from 'react'
 import { Upload, Music } from 'lucide-react'
 import { useAudioStore } from '@/store/useAudioStore'
+import { useAutomationStore } from '@/store/useAutomationStore'
 import { MultiTrackRack } from '@/engine/audio/MultiTrackRack'
 import { RealtimeAnalyser } from '@/engine/audio/RealtimeAnalyser'
 import { AudioFeatures } from '@/engine/audio/AudioFeatures'
+import { platform, type PickedAudio } from '@/engine/platform/PlatformAdapter'
 import { TrackRow } from '@/components/audio/TrackRow'
 import { RackPlayhead } from '@/components/audio/RackPlayhead'
 import { AutomationPanel } from '@/components/automation/AutomationPanel'
@@ -15,6 +17,7 @@ import type { Track } from '@/types/audio'
 export function MediaStemsPage() {
   const tracks = useAudioStore((s) => s.tracks)
   const addTrack = useAudioStore((s) => s.addTrack)
+  const ensureStemLane = useAutomationStore((s) => s.ensureStemLane)
   const [isDragOver, setIsDragOver] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const rackRef = useRef<HTMLDivElement>(null)
@@ -26,9 +29,10 @@ export function MediaStemsPage() {
     [tracks],
   )
 
-  const importFiles = useCallback(async (files: FileList | File[]) => {
-    const audioFiles = Array.from(files).filter((f) =>
-      f.type.startsWith('audio/') || /\.(mp3|wav|ogg|flac|aac|m4a)$/i.test(f.name)
+  const importFiles = useCallback(async (picked: PickedAudio[]) => {
+    const audioFiles = picked.filter(
+      ({ file }) =>
+        file.type.startsWith('audio/') || /\.(mp3|wav|ogg|flac|aac|m4a)$/i.test(file.name),
     )
 
     if (audioFiles.length === 0) return
@@ -36,7 +40,7 @@ export function MediaStemsPage() {
     setIsLoading(true)
     const rack = MultiTrackRack.getInstance()
 
-    for (const file of audioFiles) {
+    for (const { file, handleKey } of audioFiles) {
       try {
         const buffer = await rack.decodeFile(file)
         const trackId = generateId()
@@ -53,10 +57,15 @@ export function MediaStemsPage() {
           mute: false,
           trimBounds: { start: 0, end: buffer.duration },
           analysis: null,
+          // Lets a reopened project find this exact file again without re-picking.
+          handleKey,
         }
 
         rack.registerTrack(trackId, buffer)
         addTrack(track)
+        // The stem's modulation curve exists from the moment it is imported, in
+        // `analysis` mode — no points, deferring to the feature timeline.
+        ensureStemLane(trackId, name, track.color)
         // Register the live tap after the track exists in the store, so the pre-fader
         // node chain is fully built.
         RealtimeAnalyser.register(trackId)
@@ -72,12 +81,14 @@ export function MediaStemsPage() {
 
     rack.refreshDuration()
     setIsLoading(false)
-  }, [addTrack])
+  }, [addTrack, ensureStemLane])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setIsDragOver(false)
-    importFiles(e.dataTransfer.files)
+    // Dropped files carry no handle, so a project built from a drop needs a manual
+    // relink on reopen. Picking through the button is the path that remembers.
+    importFiles(Array.from(e.dataTransfer.files).map((file) => ({ file })))
   }, [importFiles])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -89,10 +100,11 @@ export function MediaStemsPage() {
     setIsDragOver(false)
   }, [])
 
-  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      importFiles(e.target.files)
-    }
+  // Through the adapter, not a hidden <input>: nothing outside engine/platform may touch
+  // a file picker, or a second host becomes impossible to add later (03-ARCHITECTURE §1).
+  const openPicker = useCallback(async () => {
+    const files = await platform().pickAudioFiles()
+    if (files.length > 0) await importFiles(files)
   }, [importFiles])
 
   return (
@@ -119,7 +131,7 @@ export function MediaStemsPage() {
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          onClick={() => document.getElementById('file-input')?.click()}
+          onClick={openPicker}
         >
           <div className="text-center">
             {isLoading ? (
@@ -142,8 +154,8 @@ export function MediaStemsPage() {
         </div>
       )}
 
-      {/* Lanes share the rack's timeline, so a drawn curve lines up with the waveform
-          it is drawn against. */}
+      {/* Detached lanes — for a shape the music does not contain. A stem's own curve
+          lives under its row, where its waveform gives it a time reference. */}
       {tracks.length > 0 && <AutomationPanel duration={projectDuration} />}
 
       {/* ─── Add More Button (when tracks exist) ─── */}
@@ -158,22 +170,13 @@ export function MediaStemsPage() {
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          onClick={() => document.getElementById('file-input')?.click()}
+          onClick={openPicker}
         >
           <Music className="w-3.5 h-3.5" />
           <span>Add more stems</span>
         </div>
       )}
 
-      {/* Hidden file input */}
-      <input
-        id="file-input"
-        type="file"
-        accept="audio/*"
-        multiple
-        className="hidden"
-        onChange={handleFileInput}
-      />
     </div>
   )
 }

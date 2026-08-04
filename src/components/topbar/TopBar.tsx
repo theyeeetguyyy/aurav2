@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Circle, Settings } from 'lucide-react'
 import { useProjectStore } from '@/store/useProjectStore'
 import { ShortcutSettingsModal } from '@/components/common/ShortcutSettingsModal'
+import { ProjectActions } from '@/components/project/ProjectActions'
+import { UndoButtons } from '@/components/project/UndoButtons'
 
 export function TopBar() {
   const projectName = useProjectStore((s) => s.project.name)
@@ -26,6 +28,8 @@ export function TopBar() {
 
         {/* Right: Actions */}
         <div className="flex items-center gap-3">
+          <UndoButtons />
+          <ProjectActions />
           <button
             id="btn-record"
             className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider text-aura-hot hover:bg-aura-surface transition-colors duration-150"

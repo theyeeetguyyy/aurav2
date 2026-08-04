@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { recordChange } from '@/store/historyHook'
 import type { ParamValue } from '@/types/params'
 import { envDefaults } from '@/engine/environment/sections'
 
@@ -24,16 +25,20 @@ export const useEnvironmentStore = create<EnvironmentState>((set) => ({
   // scene the moment the camera moves away from the origin.
   disabled: { fog: true },
 
-  setParam: (sectionId, paramKey, value) =>
+  setParam: (sectionId, paramKey, value) => {
+    recordChange('Edit world', ['environment'], `env:${sectionId}:${paramKey}`)
     set((s) => ({
       params: {
         ...s.params,
         [sectionId]: { ...s.params[sectionId], [paramKey]: value },
       },
-    })),
+    }))
+  },
 
-  setSectionEnabled: (sectionId, enabled) =>
-    set((s) => ({ disabled: { ...s.disabled, [sectionId]: !enabled } })),
+  setSectionEnabled: (sectionId, enabled) => {
+    recordChange(enabled ? 'Enable world section' : 'Disable world section', ['environment'])
+    set((s) => ({ disabled: { ...s.disabled, [sectionId]: !enabled } }))
+  },
 
   reset: () => set({ params: envDefaults(), disabled: { fog: true } }),
 }))

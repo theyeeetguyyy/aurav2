@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { recordChange } from '@/store/historyHook'
 import type { CameraKeyframe, SplineWaypoint, CameraConstraint, CameraMode, CameraControlMode } from '@/types/camera'
 import type { ID } from '@/types/audio'
 import type { ParamValue } from '@/types/params'
@@ -84,6 +85,7 @@ export const useCameraStore = create<CameraState>((set) => ({
     })),
 
   addBehaviour: (brickId) => {
+    recordChange('Add camera behaviour', ['camera'])
     const brick = getBehaviour(brickId)
     if (!brick) return null
     const id = generateId()
@@ -104,13 +106,15 @@ export const useCameraStore = create<CameraState>((set) => ({
   },
 
   removeBehaviour: (id) => {
+    recordChange('Remove camera behaviour', ['camera', 'modulation'])
     // A behaviour's parameters are modulation targets, so removing it must drop the
     // wires pointing at them — exactly as removing a deformer does.
     useModulationStore.getState().releaseEffect(CAMERA_STACK_ID, id)
     set((s) => ({ behaviours: s.behaviours.filter((b) => b.id !== id) }))
   },
 
-  reorderBehaviour: (id, delta) =>
+  reorderBehaviour: (id, delta) => {
+    recordChange('Reorder behaviour', ['camera'])
     set((s) => {
       const from = s.behaviours.findIndex((b) => b.id === id)
       if (from === -1) return s
@@ -120,22 +124,33 @@ export const useCameraStore = create<CameraState>((set) => ({
       const [moved] = behaviours.splice(from, 1)
       behaviours.splice(to, 0, moved)
       return { behaviours }
-    }),
+    })
+  },
 
-  setBehaviourEnabled: (id, enabled) =>
+  setBehaviourEnabled: (id, enabled) => {
+    recordChange(enabled ? 'Enable behaviour' : 'Disable behaviour', ['camera'])
     set((s) => ({
       behaviours: s.behaviours.map((b) => (b.id === id ? { ...b, enabled } : b)),
-    })),
+    }))
+  },
 
-  setBehaviourParam: (id, paramKey, value) =>
+  setBehaviourParam: (id, paramKey, value) => {
+    recordChange('Edit camera behaviour', ['camera'], `cam:${id}:${paramKey}`)
     set((s) => ({
       behaviours: s.behaviours.map((b) =>
         b.id === id ? { ...b, params: { ...b.params, [paramKey]: value } } : b,
       ),
-    })),
+    }))
+  },
 
-  setLookAt: (objectId) => set({ lookAtId: objectId }),
-  setLookAtEnabled: (enabled) => set({ lookAtEnabled: enabled }),
+  setLookAt: (objectId) => {
+    recordChange('Change look-at target', ['camera'])
+    set({ lookAtId: objectId })
+  },
+  setLookAtEnabled: (enabled) => {
+    recordChange(enabled ? 'Enable aiming' : 'Disable aiming', ['camera'])
+    set({ lookAtEnabled: enabled })
+  },
 
   clear: () =>
     set({ behaviours: [], keyframes: [], waypoints: [], constraints: [], lookAtId: null }),

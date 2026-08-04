@@ -1,10 +1,14 @@
-import { Volume2, VolumeX, Headphones, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { Volume2, VolumeX, Headphones, Trash2, ChevronDown, ChevronRight, Activity } from 'lucide-react'
 import { useAudioStore } from '@/store/useAudioStore'
 import { WaveformCanvas } from './WaveformCanvas'
 import { TrimHandles } from './TrimHandles'
 import { MultiTrackRack } from '@/engine/audio/MultiTrackRack'
 import { RealtimeAnalyser } from '@/engine/audio/RealtimeAnalyser'
 import { AudioFeatures } from '@/engine/audio/AudioFeatures'
+import { platform } from '@/engine/platform/PlatformAdapter'
+import { useAutomationStore } from '@/store/useAutomationStore'
+import { StemAutomation } from '@/components/automation/StemAutomation'
 import type { Track } from '@/types/audio'
 
 interface TrackRowProps {
@@ -16,6 +20,9 @@ interface TrackRowProps {
 /** Single track row in the stem rack.
  *  Stem colour, name, solo/mute, volume, waveform with trim handles, delete. */
 export function TrackRow({ track, projectDuration }: TrackRowProps) {
+  const [showAutomation, setShowAutomation] = useState(false)
+  const removeLanesForTrack = useAutomationStore((s) => s.removeLanesForTrack)
+  const lane = useAutomationStore((s) => s.lanes.find((l) => l.source?.trackId === track.id))
   const toggleSolo = useAudioStore((s) => s.toggleSolo)
   const toggleMute = useAudioStore((s) => s.toggleMute)
   const setVolume = useAudioStore((s) => s.setVolume)
@@ -48,6 +55,11 @@ export function TrackRow({ track, projectDuration }: TrackRowProps) {
   }
 
   const handleDelete = () => {
+    // The stem's automation lane goes with it, and the wires drawn from that lane.
+    removeLanesForTrack(track.id)
+    // And its remembered file handle, or storage accumulates entries for files nothing
+    // references any more.
+    if (track.handleKey) void platform().forgetAudioFile(track.handleKey)
     RealtimeAnalyser.unregister(track.id)
     AudioFeatures.release(track.id)
     MultiTrackRack.getInstance().unregisterTrack(track.id)
@@ -55,7 +67,8 @@ export function TrackRow({ track, projectDuration }: TrackRowProps) {
   }
 
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5 bg-aura-surface border border-aura-line rounded group hover:border-aura-elevated transition-colors">
+    <div className="bg-aura-surface border border-aura-line rounded group hover:border-aura-elevated transition-colors">
+      <div className="flex items-center gap-2 px-3 py-1.5">
       {/* Stem color indicator */}
       <div
         className="w-1 h-8 rounded-full shrink-0"
@@ -131,6 +144,24 @@ export function TrackRow({ track, projectDuration }: TrackRowProps) {
         )}
       </div>
 
+      {/* Automation toggle. The curve belongs to this stem, so it lives on this row. */}
+      <button
+        onClick={() => setShowAutomation((v) => !v)}
+        className={`shrink-0 flex items-center gap-0.5 transition-colors ${
+          showAutomation || lane?.mode === 'edited'
+            ? 'text-aura-accent'
+            : 'text-slate-600 hover:text-slate-300'
+        }`}
+        title="Show this stem's modulation curve"
+      >
+        {showAutomation ? (
+          <ChevronDown className="w-3 h-3" />
+        ) : (
+          <ChevronRight className="w-3 h-3" />
+        )}
+        <Activity className="w-3 h-3" />
+      </button>
+
       {/* Delete button */}
       <button
         onClick={handleDelete}
@@ -139,6 +170,15 @@ export function TrackRow({ track, projectDuration }: TrackRowProps) {
       >
         <Trash2 className="w-3.5 h-3.5" />
       </button>
+      </div>
+
+      {/* Aligned with the lane above by the same left padding, so the curve sits under
+          the waveform it came from rather than merely near it. */}
+      {showAutomation && (
+        <div className="border-t border-aura-line pl-[196px] pr-3 pt-1">
+          <StemAutomation track={track} duration={projectDuration} />
+        </div>
+      )}
     </div>
   )
 }

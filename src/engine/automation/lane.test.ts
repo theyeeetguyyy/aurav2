@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clearRange, flatLane, rampLane, sampleLane, writePoint } from './lane'
+import { clearRange, decimate, flatLane, rampLane, sampleLane, writePoint } from './lane'
 import type { AutomationPoint, LaneData, LaneInterpolation } from './lane'
 import { SignalShaper } from '@/engine/modulation/SignalShaper'
 import { DEFAULT_SIGNAL_CHAIN } from '@/types/modulation'
@@ -8,7 +8,7 @@ describe('automation lanes', () => {
   const lane = (
     points: AutomationPoint[],
     interpolation: LaneInterpolation = 'linear',
-  ): LaneData => ({ points, interpolation })
+  ): LaneData => ({ points, interpolation, mode: 'edited' })
 
   it('holds its end values outside the drawn range', () => {
     // Falling to zero outside the stroke would mean a lane drawn over the chorus
@@ -92,6 +92,30 @@ describe('automation lanes', () => {
       { t: 9, v: 0 },
     ]
     expect(clearRange(points, 8, 2).map((p) => p.t)).toEqual([1, 9])
+  })
+
+  it('decimates a signal peak-preserving', () => {
+    // A kick is one or two samples wide at 200 Hz. Averaging into buckets would flatten
+    // exactly the transients the curve exists to capture, so decimation keeps the peak.
+    const spike = (t: number) => (Math.abs(t - 5) < 0.01 ? 1 : 0)
+    const points = decimate(spike, 10, 64)
+
+    expect(points).toHaveLength(64)
+    expect(points[0].t).toBe(0)
+    expect(points[63].t).toBeCloseTo(10, 6)
+    expect(Math.max(...points.map((p) => p.v))).toBe(1)
+  })
+
+  it('refuses to decimate a zero-length project', () => {
+    expect(decimate(() => 1, 0)).toEqual([])
+  })
+
+  it('clamps decimated values into 0-1', () => {
+    const points = decimate((t) => (t < 5 ? 4 : -3), 10, 16)
+    for (const point of points) {
+      expect(point.v).toBeGreaterThanOrEqual(0)
+      expect(point.v).toBeLessThanOrEqual(1)
+    }
   })
 
   it('survives an empty lane', () => {

@@ -17,6 +17,36 @@ owners:
 
 ---
 
+## 0 · Blocking everything: nothing has been run
+
+**No browser has been driven in this workspace.** Fifteen modules built, verified by 315
+structural tests, a typechecker and a linter — and by zero pixels.
+
+Specifically unverified: every post-processing shader (GLSL fails at runtime, not at build
+time), the instanced cloner render path, the light gizmo layer, the automation lane's
+pointer handling, and the entire export loop (WebCodecs, frame-capture timing, muxing).
+
+A short smoke test surfaces almost all of it. Until it runs, every further module is built
+on an assumption.
+
+**Smoke test, in order — each step fails loudly if the one before it broke:**
+
+1. `npm run dev`. Console clean on load?
+2. Scene & Shapes → add a Sphere. It renders?
+3. Look → Post → add **Bloom**. *This is the big one: a GLSL failure shows here.*
+4. Add **Kaleidoscope**, then **Feedback Trails** — the two hand-written passes.
+5. Inspector → material → **Fresnel Rim**, then **Gradient**. Two more custom shaders.
+6. Scene → Effects → **Radial Cloner**. Select and deselect twice — clones must survive.
+7. Library → Lights → **Spot**. A gizmo appears and is clickable?
+8. Camera → *Align to this view* → add **Orbit**. The Scene Camera moves?
+9. Media & Stems → drop stems → expand a stem's **Automation** row and reshape its curve.
+10. Routing → wire the lane, and a kick onset → the Spot's Intensity.
+11. Top bar → **Save**, reload, **Open** — audio should come back on its own, or in one click on **Restore**.
+12. Ctrl+Z a few times.
+13. Deliver → **Export MP4** at 720p/30 over a short project. Plays in VLC?
+
+---
+
 ## 1 · Defects
 
 | # | Symptom | Cause | State |
@@ -28,6 +58,10 @@ owners:
 | D5 | Cloned objects vanished after selecting once | Selection outline shared the `instanceMatrix` attribute; unmounting it freed the buffer the visible mesh drew from | ✅ fixed |
 | D6 | Left dock panels drew over each other | `max-height` on a wrapper does not constrain a `shrink-0` child | ✅ fixed |
 | D7 | **Routed range readout is wrong** — "0 → 16" and "−98 → −1°" do not match what the visual does | The readout mapped the *declared* signal range 0–1 onto the parameter, but a real stem's envelope occupies only part of 0–1. Honest about the mapping, dishonest about the outcome | 🟡 `reachableRange()` now measures the real signal; the underlying **authoring** gap remains — see §4.1 |
+| D10 | **Reopened project had no audio** | `canRelinkByPath: false` was too pessimistic — a `FileSystemFileHandle` persists in IndexedDB even though a path cannot, so the stems can reopen themselves (D-56) | ✅ fixed |
+| D11 | **Lights appeared to do nothing** | Three is physically correct since r165: intensity 60 with `decay: 2` at the 22-unit spawn distance arrives as 0.12. Defaults are now derived from d² (D-57) | ✅ fixed |
+| D12 | **Deleting a stem orphaned its file handle** | `forgetHandle` was written and never called — dead code and a storage leak at once | ✅ fixed |
+| D9 | **Routing page crashed with "Maximum update depth exceeded"** | A Zustand selector returned `s.lanes.filter(...)` — a NEW array every call, so the equality check could never pass. React re-rendered, the selector ran again, forever. Taking down the tree also destroyed the one WebGL context, which reported as `Context Lost` and hid the real cause | ✅ fixed |
 | **D8** | Distant geometry pops out | Camera far plane, grid fade and fog interact; needs one coherent depth budget | ⬜ open |
 
 **D7 is the important one** and it is not a display bug. It is the same root cause as the
@@ -80,6 +114,17 @@ Flagged so far, not yet actioned:
 | Hand-rolled FFT in `analysis.worker.ts` | essentia.js | Only if beat tracking needs to beat inter-onset histogramming (D-32) |
 | `ScrubField`, panels, buttons | Radix primitives · `react-resizable-panels` | Part of the §3 craft pass, not before |
 | `WaveformCanvas` | wavesurfer.js | Rejected for the renderer; its Regions *interaction* is the reference for §4.3 |
+| `MultiTrackRack` imports `useAudioStore` | — | **The one live violation of the engine boundary.** Fix is the `FieldContext` shape: pass a track snapshot into `play()` and `applySoloMuteState()` rather than reading a store. Recorded in 03-ARCHITECTURE rather than hidden |
+
+### Standing rule from D9
+
+**A store selector must never build a new object or array.** `s.items.filter(...)`,
+`s.items.map(...)` and `({ a: s.a, b: s.b })` all allocate on every call, and every one of
+them is an infinite render loop. Select the raw value; narrow it in a `useMemo` outside
+the selector. Audited: one instance existed, and it is gone.
+
+Each page and the viewport now sit behind separate error boundaries, so the next crash of
+any kind shows a message in one panel instead of destroying the renderer.
 
 ## 3 · Craft
 
@@ -110,7 +155,7 @@ tools are gain and a response curve.
 
 | Item | Why |
 |---|---|
-| ✅ **Automation lane editor** — draw over the timeline, on the stems page | Built (D-51). The FL gesture; painting replaces rather than overlays |
+| ✅ **Per-stem automation** — the analysed curve under each stem's waveform, editable | Built (D-55). The waveform IS the time reference, which a detached lane never had |
 | ✅ **Signal normalise / input window** | Built (D-51). `Normalise` measures the source's p2/p98 and stretches it to fill |
 | ✅ **Reachable-range readout** | Built. `reachableRange()` measures the real signal |
 | ⬜ **Curve preview against the waveform** in the stems page | The lane editor shows the curve; the waveform behind it is still to come |

@@ -40,7 +40,7 @@ Rule: every sub-phase produces a working, testable build. No big-bang steps.
 
 The step that matters most is **percentile normalisation per metric**, which is only possible offline: each band is scaled against its own distribution across the whole file, so a band spanning one FFT bin (sub) and one spanning 150 (brilliance) both use the full 0–1 range. That is the root fix for the defect a live analyser cannot avoid — bands that read to a user as "nothing reacts to my hats".
 
-**2G remaining:** feature timelines are not yet serialised into the project file, so reopening re-analyses (Phase 8E).
+**2G complete.** Feature timelines are cached into the project file as of 8E, so reopening does not re-analyse (D-52).
 
 ## Phase 3 — Engine foundations
 
@@ -52,11 +52,15 @@ The step that matters most is **percentile normalisation per metric**, which is 
 | 3B | **Parameter registry** (HC-5) — `ParamAddress`, `ParamDescriptor`, `FieldRef`, transform/material descriptors, address resolution, exposed-param filtering | ✅ |
 | 3C | **`useSceneStore`** — the SceneObject layer stack; add / remove / duplicate / reorder / rename / select / lock / hide, param writes by address | ✅ |
 | 3D | **Persistent scene** (HC-9) — one shell-level Canvas positioned over whichever page exposes a `ViewportSlot` | ✅ |
-| 3E | **Platform adapter** (§1) — interface + web implementation; move all file I/O behind it | ⬜ |
-| 3F | **Command history** — `{do, undo}` pairs, coalescing, `Ctrl+Z`/`Ctrl+Y` | ⬜ |
+| 3E | **Platform adapter** (§1) — interface + web implementation; all file I/O behind it (D-52) | ✅ |
+| 3F | **Command history** — `{do, undo}` pairs over slice snapshots, coalescing, `Ctrl+Z`/`Ctrl+Y` (D-53) | ✅ |
 
 **3D test:** ✅ verified — 16 Scene↔Camera switches leave exactly 1 canvas, zero `Context Lost`.
-**3F test:** add and undo 50 operations; a slider drag is one undo step, not two hundred.
+**3F test:** ✅ passing — `CommandHistory.test.ts` asserts ordering, that a 50-change drag
+collapses to one step keeping the oldest undo and newest redo, that different keys never
+merge, that a new action drops the redo branch, that pushes made *while applying* are
+ignored (or an undo would push its own inverse and never drain), and that the stack is
+bounded with the oldest entries dropped first.
 
 ## Phase 4 — Scene objects & render backends
 
@@ -165,7 +169,7 @@ knobs with no material and no scale.
 | 5C | React Flow node graph (advanced toggle), typed connections | ⬜ |
 | 5D | Discrete event triggers — generic decaying impulse, pure function of time | ✅ |
 | 5E | Object-to-object routing + dependency ordering with cycle detection (§4.5) | ⬜ |
-| 5F | **Automation lanes** — hand-drawn curves as Fields, plus the signal-chain input window and Normalise (D-51) | ✅ |
+| 5F | **Automation lanes** — one editable curve per stem, drawn under its waveform (D-55), plus the signal-chain input window and Normalise (D-51) | ✅ |
 | 5G | **Patchbay** — drag-to-connect, live pulsing wires, wire inspector, resizable columns. See [11-ROUTING-UX.md](11-ROUTING-UX.md) | ✅ |
 | 5H | **Generators** — LFO/noise as first-class synthetic stems (D-37) | ✅ |
 | 5I | **Response curves + real-value display + modulation graph** (D-39/40/41) | ✅ |
@@ -200,7 +204,9 @@ inspector draws the parameter's actual value over time — computed by running t
 shaper over the real feature timeline, not illustrated from the settings. Each stem also
 shows its own signal strip, so you can read a stem's character before wiring it.
 
-**5F test:** ✅ passing — `lane.test.ts` asserts a lane holds its end values outside the
+**5F test:** ✅ passing — `lane.test.ts` also asserts decimation is peak-preserving (a
+one-sample spike survives being reduced to 64 points), refuses a zero-length project, and
+clamps into 0–1. Plus: a lane holds its end values outside the
 drawn range rather than falling to zero, that all three interpolation modes behave, that
 sampling is a pure function of time, that freehand writes stay sorted and collapse
 near-coincident points, and that the input window stretches a narrow range onto the full
@@ -245,13 +251,24 @@ stack accumulates rather than overwriting.
 
 | | | |
 |---|---|---|
-| 8A | `FrameRenderer` — worker + OffscreenCanvas + `FrameClock` | ⬜ |
-| 8B | WebCodecs encoder + `mp4-muxer` | ⬜ |
-| 8C | Horizontal + vertical from one pass | ⬜ |
+| 8A | **Frame renderer** — `FrameClock`-stepped render through the live renderer, not a worker (D-54) | ✅ |
+| 8B | **WebCodecs encoder + `mp4-muxer`** — H.264 + AAC, backpressure, offline stem mixdown | ✅ |
+| 8C | Horizontal + vertical from one pass | 🟡 presets exist (16:9 / 9:16 / 1:1); one render per aspect, not yet one pass |
 | 8D | Batch queue (capability-gated) | ⬜ |
-| 8E | `.aura.json` save/load with feature-timeline cache | ⬜ |
+| 8E | **`.aura.json` save/load** with base64 feature-timeline cache, versioning, migration and stem relinking (D-52) | ✅ |
 | 8F | `.aura-rig.json` portable rigs (needs Q10) | ⬜ |
 | 8G | Autosave | ⬜ |
+
+**8E test:** ✅ passing — `project.test.ts` asserts float encoding round-trips exactly and
+survives arrays past the `String.fromCharCode` argument limit, that the cache does not
+share memory with its source, that a newer-version file is refused rather than half-read,
+that non-JSON and non-projects produce readable messages, that an older project has its
+missing collections filled, and that project names become filesystem-safe.
+
+**8A/8B test:** ✅ passing — `export.test.ts` asserts the clock seam swaps and restores,
+that frame times are integer-derived so they never drift, that timestamps match the frame
+grid, that every resolution preset is even-dimensioned (H.264 chroma subsampling requires
+it), and that frame count follows from duration rather than from render time.
 
 **8 test:** export 1080p → frame count equals `duration × fps`, plays in VLC, audio-synced. **Render the same project twice → byte-identical output.** Save, reload → identical project.
 

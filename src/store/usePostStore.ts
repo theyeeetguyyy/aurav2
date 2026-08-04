@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { recordChange } from '@/store/historyHook'
 import type { ID } from '@/types/audio'
 import type { ParamValue } from '@/types/params'
 import type { EffectInstance } from '@/types/visual'
@@ -49,6 +50,7 @@ export const usePostStore = create<PostState>((set) => ({
   bypassed: false,
 
   addBrick: (brickId) => {
+    recordChange('Add post effect', ['post'])
     const brick = PostRegistry.get(brickId)
     if (!brick) return null
 
@@ -71,6 +73,7 @@ export const usePostStore = create<PostState>((set) => ({
   },
 
   remove: (id) => {
+    recordChange('Remove post effect', ['post', 'modulation'])
     // Same rule as deleting a deformer: the wires pointing at its parameters have to go
     // with it, or the matrix keeps evaluating a target nothing renders.
     useModulationStore.getState().releaseEffect(POST_STACK_ID, id)
@@ -80,7 +83,8 @@ export const usePostStore = create<PostState>((set) => ({
     }))
   },
 
-  reorder: (id, delta) =>
+  reorder: (id, delta) => {
+    recordChange('Reorder post effect', ['post'])
     set((s) => {
       const from = s.effects.findIndex((e) => e.id === id)
       if (from === -1) return s
@@ -90,17 +94,22 @@ export const usePostStore = create<PostState>((set) => ({
       const [moved] = effects.splice(from, 1)
       effects.splice(to, 0, moved)
       return { effects }
-    }),
+    })
+  },
 
-  setEnabled: (id, enabled) =>
-    set((s) => ({ effects: s.effects.map((e) => (e.id === id ? { ...e, enabled } : e)) })),
+  setEnabled: (id, enabled) => {
+    recordChange(enabled ? 'Enable post effect' : 'Disable post effect', ['post'])
+    set((s) => ({ effects: s.effects.map((e) => (e.id === id ? { ...e, enabled } : e)) }))
+  },
 
-  setParam: (effectId, paramKey, value) =>
+  setParam: (effectId, paramKey, value) => {
+    recordChange('Edit post effect', ['post'], `post:${effectId}:${paramKey}`)
     set((s) => ({
       effects: s.effects.map((e) =>
         e.id === effectId ? { ...e, params: { ...e.params, [paramKey]: value } } : e,
       ),
-    })),
+    }))
+  },
 
   select: (id) => set({ selectedId: id }),
 

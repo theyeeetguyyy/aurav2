@@ -568,3 +568,202 @@ the v2 design by accident. Combined with memory-carrying Fields (`drop-decay`,
 "story, tension, call and response" — which had sat as an open philosophical question
 through every prior document. *Why it matters:* frame-local metrics like RMS structurally
 cannot express "tension building over eight bars."
+
+**D-58 · The timeline and the editor's own toggles are one channel, and exactly one wins.**
+`isVisible(objectId, authored)` takes the authored eye-toggle value and *replaces* it while a
+strip is live, rather than being ANDed with it. Same for `isConnectionActive` and
+`isPostActive`. *Why:* capturing a state reads precisely those toggles (HC-7 — a state is a
+selection, not a copy), so consulting both means a state can never switch on something the
+user has since hidden — both answers would have to be true, and one of them is stale by
+construction. With one authority at a time, the eye icon works on an unsequenced project and
+the timeline works on a sequenced one, and neither has a hidden failure mode. *Consequence:*
+meshes and lights now mount regardless of visibility and are hidden via `.visible` in the
+frame loop. A hidden mesh is skipped before any draw call, so this costs nothing, and it
+means a cut is a boolean write rather than a remount of the layer stack (HC-1).
+
+**D-59 · An empty timeline means "everything", and so does a gap.**
+`resolveTimeline([], …)` returns a shared constant with every field null. A gap between
+strips returns the same. *Why:* every project is unsequenced before it is sequenced, and
+"mp3 → good-looking mp4" has to be reachable without ever opening the timeline — sequencing
+is opt-in, not a prerequisite. Cutting to black in a gap is nearly never what someone meant
+by leaving a space; holding the look is. Returning an identical object reference in the
+common case also means the per-frame driver allocates nothing.
+
+**D-60 · Markers join the snap grid; the snap window is in pixels, not seconds.**
+`snapToGrid(time, grid, tolerance)` takes tolerance in seconds and the caller derives it from
+zoom (`SNAP_WINDOW_PIXELS / pxPerSecond`). Section markers are appended to the detected beat
+grid. *Why:* a fixed time window cannot feel right at two zoom levels — 0.12s is 48px of dead
+pull when zoomed in and half a pixel across a whole song, i.e. grabby exactly where precision
+is wanted and absent exactly where snapping is the only way to hit anything. And a moment
+someone bothered to name is the moment they most want to cut on; it also still works when the
+tempo detector guessed wrong, which the beat grid does not.
+
+**D-61 · Post-processing rebuilds its chain at a cut; everything else reads a flag.**
+`useTimelineCut` re-renders `PostChain` when the live strip set changes. Every other consumer
+reads `isVisible`/`isConnectionActive` inside its own `useFrame` and never re-renders. *Why:*
+an effect is either compiled into a merged fullscreen pass or absent from it — there is no
+per-frame switch. Gating via `blendMode.opacity` was considered and rejected: several bricks
+(grain, vignette) own that uniform themselves, so gating would stomp an authored parameter,
+and the effect would keep costing GPU time while contributing nothing. Rebuilding happens a
+handful of times per song, never during a static passage. *Known limitation:* during an
+offline export the React rebuild lands after `advance()` returns, so a post-chain cut can be
+one frame late. Logged as D14 in [15-BUILD-PLAN.md](15-BUILD-PLAN.md).
+
+**D-62 · `projectDuration` has one definition.**
+The furthest trim end across every stem, exported from `useAudioStore` and used by the stem
+rack, the timeline and the exporter. *Why:* it had been re-derived in three places, and the
+last time each waveform measured its own buffer instead, the rack drew four playheads that
+disagreed (D2). A shared definition is what makes the rack one timeline rather than N.
+
+**D-63 · An unused store action is either wired or deleted, never left sitting.**
+Auditing `useProjectStore` after Phase 6 found five actions nothing called. Three named real
+gaps and were wired: `setProjectName` (the project name became the `.aura.json` and the `.mp4`
+filename and was unchangeable — now editable in the top bar), `updateState` (states were stuck
+as "State 1/2/3", which is unusable at four of them — now renameable in place), and `setBpm`
+(the detected tempo was analysed, serialised, and never once shown — now set by the first stem
+that reports one and displayed in the timeline header). Two named nothing and were deleted:
+`addState` and `clear`. *Why:* an unused action reads as a feature to a later reader, so it
+gets maintained, serialised and tested for a capability the product does not have. This is the
+same failure as `forgetHandle` (D12) and `add-marker` (Phase 1 → 6C): written, registered,
+never called. Both edits that record history coalesce per id — renaming is typing, and one
+undo step per keystroke is worse than none.
+
+**D-64 · The Scene Camera's transform is a parameter, and that is the whole keyframe system.**
+`position.x/y/z`, `rotation.x/y/z` and `fov` are registered as descriptors under `@camera`
+with no effect id, stored in `useCameraStore.transform`. *Why:* the camera that renders was
+the least controllable object in the product. Its transform lived as raw vectors on
+`DualCameraEngine`, writable only by *Align to this view*, so a camera move had to be **picked
+from a list of five behaviour shapes** rather than authored — which is exactly the "modes"
+complaint the element model (D-35) was supposed to have retired. Because everything
+downstream addresses parameters rather than enumerating them (HC-5), one registration gives
+all of it at once: numeric fields in the panel, seven new patchbay targets so a stem can drive
+a dolly, and — the point — an **automation lane against `position.z` is a dolly on a time
+axis**. That is keyframing, using the curve editor that already exists rather than a second
+one that would have to agree with it. Behaviours stay, additive on top of the authored value;
+they are for shapes you would not want to draw by hand, like handheld shake.
+*Consequence:* `alignSceneToPreview()` and `resetSceneCamera()` moved off the engine into
+store actions — the driver rewrites `baseScene*` from parameters every frame, so anything
+writing them directly would be overwritten on the next tick. `CameraKeyframe`,
+`SplineWaypoint` and `CameraConstraint` are **deleted**: three store slices with add/remove/
+update actions and zero readers, i.e. a keyframe system that existed only as a type (D-63).
+Spline paths, when they land, belong as a behaviour brick that reads a curve.
+
+**D-65 · Look-at applies with or without a behaviour.**
+`CameraRigDriver` no longer early-returns on an empty behaviour stack. *Why:* an empty rig is
+the identity — zero offsets, `distanceScale` 1 — so the same code path reproduces the authored
+transform exactly, and *Aim at target* now works on a locked-off camera. It previously did
+not: the checkbox is on by default and did nothing at all until an Orbit was added. The
+spherical round-trip is skipped when nothing orbits, because it is not a true no-op — a camera
+sitting exactly on its target has radius 0, and the clamp would nudge it to 0.01.
+
+**D-66 · Render targets follow the drawing buffer, never React's `size`.**
+`PostChain` reads `gl.getDrawingBufferSize()` each frame and resizes the composer when it
+changes. *Why:* the exporter resizes the drawing buffer with `updateStyle: false` on purpose,
+so the CSS box does not jump mid-render — which means R3F's `size` and the actual buffer
+disagree for the entire export. Following `size` allocated every render target at *preview*
+resolution and upscaled the result into the file, so a 1080p export with any effect enabled
+was a blurry 1080p. Resolution-dependent uniforms (kaleidoscope's aspect, grain's cell size)
+read the same buffer, or they would change appearance between preview and file.
+
+**D-67 · R3F's own loop stands down during an export, and Deliver hosts the viewport.**
+`ExportBridge.begin()` sets `frameloop: 'never'` and restores it. Deliver has a monitor above
+the timeline. *Why, for the first:* with the loop running, the browser's rAF kept firing
+between the exporter's hand-driven frames, feeding wall-clock timestamps into the same
+`useFrame` subscribers — so anything reading `delta` (feedback trail decay, grain) saw garbage
+interleaved with real frames, and the render was neither correct nor reproducible. *Why, for
+the second:* the exporter drives the live renderer (HC-9), and Deliver had no `ViewportSlot`.
+With no on-screen box the canvas measured **1×1**, which is what every post-processing render
+target was allocated at. The monitor is also the only way to see what a cut looks like while
+placing it.
+
+**D-68 · The H.264 level is derived, then confirmed with the browser.**
+`avcCandidates(width, height, fps)` returns codec strings from the lowest sufficient level
+upward, and `configure()` takes the first that `VideoEncoder.isConfigSupported` accepts.
+*Why:* a hardcoded level is a resolution ceiling hiding in a string literal — level 4.0 caps
+at 8192 macroblocks, which 1080p (8160) sneaks under and 1440p (14400) and 4K (32400) do not,
+so two presets the UI offered had never worked once. Frame *rate* matters too: 4K@60 needs
+2.07M macroblocks/second, past level 5.1's 983k. Lowest-sufficient-first because a lower level
+is more widely playable — a phone that decodes 4.0 in hardware may drop to software at 5.2 —
+and the higher levels stay in the list as fallbacks for encoders that under-report.
+
+**D-69 · Authoring furniture is a layer, and everything that qualifies must be on it.**
+The selection outline moved onto `GIZMO_LAYER` alongside the light gizmos. *Why:* the layer
+already existed and the exporter already disabled it, but the outline was a plain mesh and so
+was never excluded — selecting a shape before pressing Export baked a wireframe cage into the
+video. The rule is now explicit rather than incidental: **anything drawn to help the author
+and not to appear in the film goes on `GIZMO_LAYER`**, and adding such a thing without setting
+its layer is a defect, not an oversight.
+
+**D-70 · A new object gets the next colour, not the default colour.**
+`addObject` rotates `paletteColor` over the shape count. *Why:* three shapes arriving in the
+same indigo is the same failure D-43 named — "everything is grey plastic" — in a nicer colour,
+and picking a colour per object is the most common first edit anyone makes. Starting varied
+skips it, and a fresh scene reads as composed instead of unfinished. Lights are excluded: a
+light's colour is a lighting decision, not an identity.
+
+**D-71 · Placement finds a free slot; an aimed drop does not get one found for it.**
+`findFreeSlot` prefers the requested lane, then any free lane, then appends after everything.
+`placeStrip` uses it only when the caller passes no lane. *Why:* two *Place* clicks at the
+same playhead used to land exactly on top of each other, and by the higher-lane-wins rule the
+buried one was inert as well as invisible — a button that looked broken. But a double-click on
+lane 2 means lane 2; deciding otherwise would make the drop target a lie.
+
+**D-72 · `step` interpolation belongs on the stem lane, because the snap is the move.**
+`StemAutomation` now carries the interpolation picker, with `step` described as what makes a
+snap rather than a ramp. *Why:* the engine has sampled all three modes since it was written and
+`LaneInterpolation` has always had three members, but the control existed only on the
+detached-lane panel — the exception. On the primary path (D-55) a drawn curve could only ease,
+which means the one camera move this genre is built on, the hard snap-zoom, was undrawable in a
+product whose entire premise is cutting to music. This is the third instance of the same
+pattern: a capability fully implemented in the engine and unreachable from the UI (`add-marker`
+in Phase 1, `forgetHandle` in D12). **An engine feature with no control is not a feature.**
+
+**D-73 · A creation affordance never lives inside the thing it creates.**
+*Draw a curve* moved out of `AutomationPanel`'s header and into the page footer beside *Add
+more stems*. *Why:* the panel now hides itself when there are no detached lanes — correctly, an
+empty dock is furniture — and the `+` that made one was inside it. A door on the inside of the
+room. Worth stating as a rule because the same shape is easy to reproduce anywhere an empty
+state is hidden rather than shown.
+
+**D-74 · Auto-sequence derives variations from the scene; it never invents content.**
+`generateVariations` returns four states — Intro / Build / Drop / Breakdown — each a *subset*
+of what is already there, and `planSequence` lays them across the song. *Why:* the first real
+end-to-end run made the actual gap obvious. Building a good-looking frame is already easy;
+turning it into a piece was four deliberate steps (capture, capture, place, place, drag) that
+most people would never take, and a static three-minute shot is not what anyone came for. This
+is only possible because a state *selects* rather than owns (HC-7) — so the whole thing is a
+pure function over id lists, every strip is an ordinary state the user can edit or delete, and
+the output is always something they recognise as theirs.
+
+Two rules keep it usable rather than merely varied, and both were learned by writing the naive
+version first: **lights are in every variation** (a variation without them is a black frame —
+technically a different look, never the one anyone wanted), and **every wire stays live** —
+routing is project-global with states activating a subset (HC-8), but dropping wires makes a
+section *static*, which reads as broken rather than as restrained. Intensity is 6C's job.
+
+**Markers win when they exist.** Someone who marked the drop has told us more about their track
+than any heuristic can infer, so the marker's *type* selects the variation rather than its
+turn in a rotation. With no markers it divides evenly and walks the arc — a guess, but a guess
+in the right shape, and a wrong division costs one drag rather than a redo. It **replaces** the
+timeline rather than layering onto it: burying hand-placed strips under generated ones would
+make survival depend on lane order instead of on intent.
+
+*Verified in the exported file*, which is the only place it counts: mean luma 14.6 → 35.1 →
+38.6 across Intro, Build and Drop, with Breakdown landing between the two. The arc is real, not
+just four differently-named states.
+
+**D-75 · Cut Flash: admit the cut and hit it.**
+A post brick that reads `cutTime` from the resolved timeline and decays exponentially from it.
+*Why:* 6E's crossfade is the obvious way to *soften* a cut and it is still worth building, but
+the cheaper and — for this audience — more useful move is the opposite one. A single bright
+frame on a strip boundary is the difference between the picture having changed and the picture
+having landed, and it reads at any tempo.
+
+Keyed off the **edit**, not off an onset: it stays in sync when you drag the strip, and it does
+nothing at all on an unsequenced project rather than firing at arbitrary moments. `t - cutTime`
+is a pure function of the clock (HC-3), so an offline render that asks for frame 5000 before
+frame 12 gets the same flash either way — which is why `cutTime` is published by the resolver
+rather than tracked as a "time since last cut" accumulator. It is the **latest** boundary among
+live strips: with a background strip running under a drop, the moment the picture changed is
+when the drop came in. Confirmed in the export at 220.9 luma on a 6-second boundary against a
+38.6 baseline.

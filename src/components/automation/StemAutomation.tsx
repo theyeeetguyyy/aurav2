@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { RotateCcw } from 'lucide-react'
 import { AudioFeatures } from '@/engine/audio/AudioFeatures'
 import { FEATURE_KEYS, type FeatureKey } from '@/engine/audio/featureTypes'
+import type { LaneInterpolation } from '@/engine/automation/lane'
 import { useAutomationStore } from '@/store/useAutomationStore'
 import { LaneEditor } from './LaneEditor'
 import type { Track } from '@/types/audio'
@@ -20,6 +21,7 @@ export function StemAutomation({ track, duration }: { track: Track; duration: nu
   const setPoints = useAutomationStore((s) => s.setPoints)
   const setMetric = useAutomationStore((s) => s.setMetric)
   const resetToAnalysis = useAutomationStore((s) => s.resetToAnalysis)
+  const setInterpolation = useAutomationStore((s) => s.setInterpolation)
   const materialise = useAutomationStore((s) => s.materialise)
 
   const lane = lanes.find((l) => l.source?.trackId === track.id)
@@ -78,6 +80,23 @@ export function StemAutomation({ track, duration }: { track: Track; duration: nu
           ))}
         </select>
 
+        {/* Interpolation belongs here, not only on the detached-lane panel. This is the
+            primary authoring path (D-55), and without a `step` option a drawn curve can only
+            ease — so the one camera move this genre is built on, the snap, could not be
+            drawn at all. The engine has supported all three modes from the start. */}
+        <select
+          value={lane.interpolation}
+          onChange={(e) => setInterpolation(lane.id, e.target.value as LaneInterpolation)}
+          className="h-5 bg-aura-surface border border-aura-line rounded px-1 text-[10px] text-slate-300 outline-none focus:border-aura-focus"
+          title="How the curve moves between points — Step is what makes a snap rather than a ramp"
+        >
+          {INTERPOLATIONS.map(({ value, label, hint }) => (
+            <option key={value} value={value} title={hint} className="bg-aura-elevated">
+              {label}
+            </option>
+          ))}
+        </select>
+
         <span
           className={`text-[9px] font-mono px-1 rounded ${
             lane.mode === 'edited' ? 'text-aura-state-solo' : 'text-slate-600'
@@ -104,6 +123,13 @@ export function StemAutomation({ track, duration }: { track: Track; duration: nu
     </div>
   )
 }
+
+/** The three modes the sampler implements, with the reason each exists. */
+const INTERPOLATIONS: { value: LaneInterpolation; label: string; hint: string }[] = [
+  { value: 'smooth', label: 'Smooth', hint: 'Flat entering and leaving each point — the default, and what a hand-drawn curve should feel like' },
+  { value: 'linear', label: 'Linear', hint: 'Straight ramps. Predictable, and right for a steady sweep' },
+  { value: 'step', label: 'Step', hint: 'Holds, then jumps. This is how you draw a snap — a zoom that hits rather than eases' },
+]
 
 function metricLabel(key: string): string {
   return key

@@ -9,6 +9,7 @@ import type { EventTrigger, ModulationConnection } from '@/types/modulation'
 import type { ParamValue } from '@/types/params'
 import type { EffectInstance, SceneObject } from '@/types/visual'
 import type { ID } from '@/types/audio'
+import type { SectionMarker, Strip, VisualState } from '@/types/project'
 
 /** `.aura.json` — the project file (docs/04-ENGINE-SPECS.md §4.7).
  *
@@ -84,11 +85,19 @@ export interface SerialisedCamera {
   behaviours: EffectInstance[]
   lookAtId: ID | null
   lookAtEnabled: boolean
-  /** The authored Scene Camera transform, not the resolved one — behaviours regenerate
-   *  the resolved value on the first frame, and saving it would double-apply them. */
-  scenePosition: [number, number, number]
-  sceneQuaternion: [number, number, number, number]
-  sceneFov: number
+
+  /** The authored Scene Camera transform as parameter values — position, rotation in
+   *  degrees, fov. Only the authored layer: behaviours regenerate the resolved transform on
+   *  the first frame, and saving that too would double-apply them.
+   *
+   *  Optional so a file written before the transform became a parameter still opens; the
+   *  `scene*` fields below are how those files carried it, and are read as a fallback. */
+  transform?: Record<string, number>
+
+  /** @deprecated Pre-parameter transform. Written no longer, read for older files. */
+  scenePosition?: [number, number, number]
+  sceneQuaternion?: [number, number, number, number]
+  sceneFov?: number
 }
 
 export interface AuraProject {
@@ -108,6 +117,22 @@ export interface AuraProject {
   modulation: { connections: ModulationConnection[]; triggers: EventTrigger[] }
   generators: SerialisedGenerator[]
   lanes: SerialisedLane[]
+
+  /** The arrangement. Optional so a v1 file written before Phase 6 still opens — states,
+   *  strips and markers are all plain data, so no migration is needed beyond a default. */
+  timeline?: SerialisedTimeline
+}
+
+/** States, strips and markers.
+ *
+ *  Strips carry ids, not looks (HC-7), so this stays a few hundred bytes no matter how
+ *  elaborate the scene is — and a state whose objects were deleted resolves to nothing
+ *  rather than resurrecting them. */
+export interface SerialisedTimeline {
+  bpm: number | null
+  states: VisualState[]
+  strips: Strip[]
+  markers: SectionMarker[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

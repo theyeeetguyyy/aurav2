@@ -10,7 +10,7 @@ import { DEFAULT_MATERIAL_ID, MaterialRegistry } from '@/engine/scene/materials/
 import { LightRegistry } from '@/engine/scene/lights/LightRegistry'
 import { axisIndex } from '@/engine/params/ParamRegistry'
 import { useModulationStore } from '@/store/useModulationStore'
-import { generateId } from '@/utils/stemColors'
+import { generateId, paletteColor } from '@/utils/stemColors'
 
 /** useSceneStore — the open SceneObject layer stack (docs/03-ARCHITECTURE.md).
  *
@@ -145,7 +145,16 @@ export const useSceneStore = create<SceneState>((set, get) => ({
             ? LightRegistry.defaultParams(brickId)
             : BrickRegistry.defaultParams(brickId),
           materialId: DEFAULT_MATERIAL_ID,
-          material: MaterialRegistry.defaultParams(DEFAULT_MATERIAL_ID),
+          material: {
+            ...MaterialRegistry.defaultParams(DEFAULT_MATERIAL_ID),
+            // Rotated by how many shapes exist, so the second shape does not arrive the same
+            // colour as the first. A scene of one repeated material reads as unfinished no
+            // matter how good the geometry is, and picking a colour per object is the single
+            // most common first edit — starting varied skips it.
+            ...(lightBrick
+              ? {}
+              : { color: paletteColor(s.objects.filter((o) => o.type !== 'light').length) }),
+          },
           effects: [],
           visible: true,
           locked: false,

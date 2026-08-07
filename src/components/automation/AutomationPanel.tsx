@@ -1,24 +1,34 @@
+import { useMemo } from 'react'
 import { Plus, PenLine, Trash2 } from 'lucide-react'
 import { useAutomationStore } from '@/store/useAutomationStore'
 import { flatLane, rampLane } from '@/engine/automation/lane'
 import { LaneEditor } from './LaneEditor'
 
-/** Automation lanes, in the stems page, on the same timeline as the waveforms.
+/** **Detached** automation lanes — curves the music does not contain.
  *
- *  Placed here rather than in Routing on purpose: you draw a curve *against* what you are
- *  hearing, and the reference you need is the waveform directly above it. This is where a
- *  DAW puts it, and it is where it was asked for.
+ *  Deliberately only the detached ones. A lane belonging to a stem lives under that stem's
+ *  own waveform (D-55, `StemAutomation`), because a curve without the waveform above it has
+ *  no visual cue for *when* — which was the original complaint about detached tracks. Listing
+ *  stem lanes here as well put every curve in two places and re-created exactly that.
+ *
+ *  So this panel is the exception, not the norm: it exists for a shape you want that no stem
+ *  is the shape of. It hides itself when there are none.
  *
  *  A lane is a Field, so once drawn it appears in the patchbay beside the stems and wires
  *  to anything — including summing with a stem through the same weighted N:1. */
 export function AutomationPanel({ duration }: { duration: number }) {
-  const lanes = useAutomationStore((s) => s.lanes)
+  const allLanes = useAutomationStore((s) => s.lanes)
   const selectedId = useAutomationStore((s) => s.selectedId)
   const addLane = useAutomationStore((s) => s.addLane)
   const removeLane = useAutomationStore((s) => s.removeLane)
   const setPoints = useAutomationStore((s) => s.setPoints)
   const setInterpolation = useAutomationStore((s) => s.setInterpolation)
   const select = useAutomationStore((s) => s.select)
+
+  // Filtered here rather than in the selector: a selector that builds a new array returns a
+  // fresh reference every call, the equality check can never pass, and React re-renders
+  // forever — which is precisely how D9 crashed the Routing page.
+  const lanes = useMemo(() => allLanes.filter((l) => !l.source), [allLanes])
 
   const selected = lanes.find((l) => l.id === selectedId) ?? lanes[0] ?? null
 

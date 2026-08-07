@@ -71,3 +71,12 @@ export function isTrackVisuallyActive(trackId: ID): boolean {
   const anySoloed = tracks.some((t) => t.solo)
   return anySoloed ? track.solo : true
 }
+
+/** How long the finished video is: the furthest trim end across every stem.
+ *
+ *  One shared definition on purpose. When each waveform measured its *own* buffer instead,
+ *  every stem stretched a different duration across the same pixel width and the rack drew
+ *  four playheads that disagreed (docs/15-BUILD-PLAN.md D2). */
+export function projectDuration(tracks: readonly Track[]): number {
+  return tracks.reduce((max, t) => Math.max(max, t.trimBounds.end), 0)
+}

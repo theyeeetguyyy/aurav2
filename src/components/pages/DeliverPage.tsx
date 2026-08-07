@@ -12,22 +12,33 @@ import {
 } from '@/engine/export/types'
 import { platform } from '@/engine/platform/PlatformAdapter'
 import { projectFileName } from '@/engine/project/projectFile'
-import { useAudioStore } from '@/store/useAudioStore'
+import { useAudioStore, projectDuration } from '@/store/useAudioStore'
 import { useProjectStore } from '@/store/useProjectStore'
 import { useUIStore } from '@/store/useUIStore'
+import { Timeline } from '@/components/timeline/Timeline'
+import { ViewportSlot } from '@/components/viewport/ViewportSlot'
 
-/** Workspace 6 — Deliver.
+/** Workspace 6 — Deliver: arrange in time, then write the file.
  *
- *  The NLE timeline lands with Phase 6. This is the export half, which does not depend on
- *  it: a project without a timeline is one continuous scene, and rendering that is the
- *  same job as rendering a sequenced one. */
+ *  Two halves of one job, laid out as docs/05-DESIGN-SYSTEM.md specifies — timeline across
+ *  the width, export settings in a right rail. They share a page because they share the one
+ *  question this page answers: what is the finished video?
+ *
+ *  Sequencing is optional. A project with no strips is one continuous scene, and rendering
+ *  that is the same job as rendering a sequenced one.
+ *
+ *  The monitor above the timeline is **not decoration**. The exporter drives the live
+ *  renderer (HC-9), so this page has to host the viewport. Without a slot here the canvas
+ *  had no on-screen box, R3F reported a 1×1 size, and every post-processing render target
+ *  was allocated one pixel wide and upscaled into the file. It is also the only way to see
+ *  what a cut looks like while placing it. */
 export function DeliverPage() {
   const tracks = useAudioStore((s) => s.tracks)
   const projectName = useProjectStore((s) => s.project.name)
   const setActivePage = useUIStore((s) => s.setActivePage)
 
   const duration = useMemo(
-    () => tracks.reduce((max, t) => Math.max(max, t.trimBounds.end), 0),
+    () => projectDuration(tracks),
     [tracks],
   )
 
@@ -119,8 +130,22 @@ export function DeliverPage() {
           : null
 
   return (
-    <div className="w-full h-full flex items-start justify-center overflow-y-auto p-8">
-      <div className="w-full max-w-md space-y-4">
+    <div className="w-full h-full flex min-h-0">
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col">
+        {/* The picture gets the room. Non-interactive: dragging in a monitor while placing
+            strips would move the preview camera, which is never what the gesture meant. */}
+        <div className="flex-1 min-h-[180px] border-b border-aura-line">
+          <ViewportSlot compact interactive={false} />
+        </div>
+
+        {/* Fixed height, like every NLE. Given the rest of the column the lanes floated in
+            a few hundred pixels of empty track. */}
+        <div className="h-[268px] shrink-0">
+          <Timeline />
+        </div>
+      </div>
+
+      <aside className="w-72 shrink-0 border-l border-aura-line overflow-y-auto p-3 space-y-4">
         <header>
           <h1 className="text-sm font-medium text-slate-200">Export</h1>
           <p className="text-[11px] text-slate-500 leading-snug mt-0.5">
@@ -243,7 +268,7 @@ export function DeliverPage() {
           The viewport renders the export, so keep this tab in front — a backgrounded tab
           is throttled and the render will crawl.
         </p>
-      </div>
+      </aside>
     </div>
   )
 }

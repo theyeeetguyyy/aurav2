@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { EffectComposer, EffectPass, Pass, RenderPass, type Effect } from 'postprocessing'
-import { HalfFloatType } from 'three'
+import { HalfFloatType, Vector2 } from 'three'
 import { PostRegistry } from '@/engine/post/PostRegistry'
 import type { PostContext, PostHandle } from '@/engine/post/types'
 import { ModulationMatrix, addressKey } from '@/engine/modulation/ModulationMatrix'
 import { activeClock } from '@/engine/time/timeAuthority'
 import { usePostStore } from '@/store/usePostStore'
+import { isPostActive } from '@/engine/timeline/liveTimeline'
+import { useTimelineCut } from './useTimelineCut'
 import { POST_STACK_ID } from '@/types/visual'
 import type { ParamValue } from '@/types/params'
 
@@ -17,11 +19,21 @@ import type { ParamValue } from '@/types/params'
  *  render loop away from R3F, so unmounting is what returns it. With an empty stack the
  *  frame goes straight to the screen exactly as before, with no render target in the path.
  *
+ *  Render targets follow the renderer's **drawing buffer**, not R3F's `size` — those two
+ *  disagree during an offline export, and following the wrong one silently rendered the
+ *  whole chain at preview resolution and upscaled it into the file.
+ *
  *  Parameters are written imperatively every frame, never through props (HC-1). The chain
- *  is rebuilt only when its SHAPE changes — add, remove, reorder, enable — so dragging a
- *  bloom slider costs one uniform write, not a composer rebuild. */
+ *  is rebuilt only when its SHAPE changes — add, remove, reorder, enable, or a timeline cut
+ *  that switches one off — so dragging a bloom slider costs one uniform write, not a
+ *  composer rebuild. */
 export function PostChain() {
-  const active = usePostStore((s) => !s.bypassed && s.effects.some((e) => e.enabled))
+  // A cut can change which effects are live, and unlike a transform that cannot be applied
+  // imperatively — an effect is compiled into a fullscreen pass or it is absent.
+  useTimelineCut()
+  const bypassed = usePostStore((s) => s.bypassed)
+  const effects = usePostStore((s) => s.effects)
+  const active = !bypassed && effects.some((e) => isPostActive(e.id, e.enabled))
   return active ? <PostComposer /> : null
 }
 
@@ -41,13 +53,18 @@ function PostComposer() {
   const gl = useThree((s) => s.gl)
   const scene = useThree((s) => s.scene)
   const camera = useThree((s) => s.camera)
-  const size = useThree((s) => s.size)
+
+  /** Last size the composer was built for. Compared against the live drawing buffer every
+   *  frame — two number comparisons, and the only thing that catches an export resize. */
+  const built = useRef(new Vector2())
+  const buffer = useMemo(() => new Vector2(), [])
 
   const effects = usePostStore((s) => s.effects)
+  const cut = useTimelineCut()
 
   // Identity + order of the live stack. Parameter edits deliberately do not change it.
   const shape = effects
-    .filter((e) => e.enabled)
+    .filter((e) => isPostActive(e.id, e.enabled))
     .map((e) => `${e.id}:${e.effectId}`)
     .join('|')
 
@@ -75,7 +92,9 @@ function PostComposer() {
   // pass. Rebuilding from scratch makes ownership unambiguous, and it only happens on a
   // deliberate edit — never during playback.
   useEffect(() => {
-    const live = usePostStore.getState().effects.filter((e) => e.enabled)
+    const live = usePostStore
+      .getState()
+      .effects.filter((e) => isPostActive(e.id, e.enabled))
 
     const entries: StackEntry[] = []
     const passes: Pass[] = []
@@ -124,7 +143,9 @@ function PostComposer() {
     composer.removeAllPasses()
     composer.addPass(renderPass)
     for (const pass of passes) composer.addPass(pass)
-    composer.setSize(size.width, size.height)
+
+    gl.getDrawingBufferSize(built.current)
+    composer.setSize(built.current.x, built.current.y)
 
     return () => {
       composer.removeAllPasses()
@@ -139,7 +160,7 @@ function PostComposer() {
     }
     // `shape` is the real dependency; `effects` is a fresh array on every knob edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shape, composer, renderPass, camera])
+  }, [shape, cut, composer, renderPass, camera, gl])
 
   // Base values track the store without touching the composer.
   useEffect(() => {
@@ -148,10 +169,6 @@ function PostComposer() {
       if (instance) entry.params = instance.params
     }
   }, [effects])
-
-  useEffect(() => {
-    composer.setSize(size.width, size.height)
-  }, [composer, size])
 
   useEffect(() => {
     composer.setMainScene(scene)
@@ -172,11 +189,21 @@ function PostComposer() {
   const context = useRef<PostContext>({ time: 0, dt: 0, width: 1, height: 1 })
 
   useFrame((_, delta) => {
+    // Resize checked here rather than in an effect, because an export changes the drawing
+    // buffer without React ever hearing about it.
+    gl.getDrawingBufferSize(buffer)
+    if (buffer.x !== built.current.x || buffer.y !== built.current.y) {
+      built.current.copy(buffer)
+      composer.setSize(buffer.x, buffer.y)
+    }
+
     const ctx = context.current
     ctx.time = activeClock().time
     ctx.dt = delta
-    ctx.width = size.width
-    ctx.height = size.height
+    // Resolution-dependent effects — kaleidoscope's aspect, grain's cell size — must read
+    // the buffer they are actually writing into, or they change appearance on export.
+    ctx.width = buffer.x
+    ctx.height = buffer.y
 
     for (const entry of stack.current) {
       for (const key in entry.params) {

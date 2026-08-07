@@ -6,6 +6,11 @@ import { readParam, resolveDescriptor } from '@/engine/params/ParamRegistry'
 import { PostRegistry } from '@/engine/post/PostRegistry'
 import { ENV_STACK_ID, getEnvSection } from '@/engine/environment/sections'
 import { CAMERA_STACK_ID, getBehaviour } from '@/engine/camera/behaviours'
+import {
+  CAMERA_TRANSFORM_DEFAULTS,
+  getCameraTransformDescriptor,
+  type CameraTransformKey,
+} from '@/engine/camera/cameraTransform'
 import { useCameraStore } from '@/store/useCameraStore'
 import { POST_STACK_ID } from '@/types/visual'
 import type { ParamAddress, ParamDescriptor } from '@/types/params'
@@ -57,6 +62,22 @@ export function describeTarget(address: ParamAddress): TargetInfo {
   }
 
   if (address.objectId === CAMERA_STACK_ID) {
+    // No effect id means the camera itself, not a member of its behaviour stack — the same
+    // convention an object's own transform uses.
+    if (!address.effectId) {
+      const descriptor = getCameraTransformDescriptor(address.paramKey)
+      if (!descriptor) return UNKNOWN
+      const { transform } = useCameraStore.getState()
+      return {
+        descriptor,
+        base:
+          transform[address.paramKey] ??
+          CAMERA_TRANSFORM_DEFAULTS[address.paramKey as CameraTransformKey],
+        ownerLabel: 'Transform',
+        groupLabel: 'Camera',
+      }
+    }
+
     const behaviour = useCameraStore.getState().behaviours.find((b) => b.id === address.effectId)
     if (!behaviour) return UNKNOWN
 

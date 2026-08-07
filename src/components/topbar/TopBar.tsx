@@ -7,6 +7,7 @@ import { UndoButtons } from '@/components/project/UndoButtons'
 
 export function TopBar() {
   const projectName = useProjectStore((s) => s.project.name)
+  const setProjectName = useProjectStore((s) => s.setProjectName)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   return (
@@ -21,10 +22,19 @@ export function TopBar() {
           <span className="text-[10px] text-slate-500 uppercase tracking-widest">Studio</span>
         </div>
 
-        {/* Center: Project name */}
-        <div className="text-[11px] text-slate-400 font-medium truncate max-w-[300px]">
-          {projectName}
-        </div>
+        {/* Center: Project name — editable in place, because it becomes the .aura.json
+            and the exported .mp4 filename, and it had been unchangeable. */}
+        <input
+          value={projectName}
+          onChange={(e) => setProjectName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur()
+          }}
+          aria-label="Project name"
+          title="Project name — used for the saved file and the exported video"
+          spellCheck={false}
+          className="w-[220px] h-6 px-1.5 bg-transparent border border-transparent rounded text-center text-[11px] text-slate-400 font-medium truncate outline-none hover:border-aura-line focus:border-aura-focus focus:text-slate-200 focus:bg-aura-surface transition-colors"
+        />
 
         {/* Right: Actions */}
         <div className="flex items-center gap-3">

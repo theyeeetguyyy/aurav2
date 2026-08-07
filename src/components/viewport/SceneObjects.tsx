@@ -11,7 +11,8 @@ import { MAX_CLONES } from '@/engine/scene/cloners/types'
 import { MaterialRegistry } from '@/engine/scene/materials/MaterialRegistry'
 import { materialKey } from '@/engine/scene/materials/types'
 import { activeClock } from '@/engine/time/timeAuthority'
-import { SceneLight } from './SceneLight'
+import { isVisible } from '@/engine/timeline/liveTimeline'
+import { GIZMO_LAYER, SceneLight } from './SceneLight'
 import { readToken } from '@/utils/tokens'
 import type { ParamValue } from '@/types/params'
 import type { SceneObject } from '@/types/visual'
@@ -204,6 +205,14 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
       }
     }
 
+    // Visibility is resolved per frame rather than by mounting, so a cut costs a boolean
+    // write instead of re-rendering the whole stack (HC-1). A hidden mesh is skipped before
+    // any draw call, so mounting one costs nothing.
+    const shown = isVisible(object.id, object.visible)
+    for (const target of [meshRef.current, instancedRef.current]) {
+      if (target) target.visible = shown
+    }
+
     if (material) {
       const values = resolvedMaterial.current
       for (const key in object.material) {
@@ -215,7 +224,7 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
     }
   })
 
-  if (!object.visible || !geometry || !material) return null
+  if (!geometry || !material) return null
 
   const onSelect = (e: { stopPropagation: () => void }) => {
     if (object.locked) return
@@ -250,15 +259,25 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
 
       {/* Selection outline. Inflated back-face shell — cheap, needs no post-processing
           pass, and stays correct from any camera angle. Inherits the group's modulated
-          transform, and for a cloned object the clone matrices too. */}
+          transform, and for a cloned object the clone matrices too.
+
+          On GIZMO_LAYER, like the light gizmos: both cameras show it while authoring and the
+          exporter disables it, so selecting a shape before pressing Export no longer bakes a
+          wireframe cage into the video. */}
       {isSelected &&
         (cloned ? (
-          <mesh ref={selectionRef} raycast={() => {}}>
+          <mesh ref={selectionRef} raycast={() => {}} layers-mask={1 << GIZMO_LAYER}>
             <boxGeometry args={[1, 1, 1]} />
             <meshBasicMaterial color={outlineColour} wireframe transparent opacity={0.35} />
           </mesh>
         ) : (
-          <mesh ref={outlineRef} geometry={geometry} scale={1.015} raycast={() => {}}>
+          <mesh
+            ref={outlineRef}
+            geometry={geometry}
+            scale={1.015}
+            raycast={() => {}}
+            layers-mask={1 << GIZMO_LAYER}
+          >
             <meshBasicMaterial color={outlineColour} side={THREE.BackSide} wireframe />
           </mesh>
         ))}

@@ -216,16 +216,32 @@ one, clamps outside it, is inert at its defaults and never divides by zero.
 trigger → `emissiveIntensity`. Play; scrub backwards and confirm identical values;
 profile for zero React re-renders during playback.
 
-## Phase 6 — Timeline & states ⬜
+## Phase 6 — Timeline & states 🟡
 
 | | | |
 |---|---|---|
-| 6A | State library + Strip references (HC-7), per-state connection activation (HC-8) | ⬜ |
-| 6B | NLE timeline canvas — tracks, playhead, zoom, pan | ⬜ |
-| 6C | Section markers + **section-aware intensity engine** (restored from v1) | ⬜ |
-| 6D | Beat-grid snap + grid confirmation step | ⬜ |
+| 6A | State library + Strip references (HC-7), per-state connection activation (HC-8) | ✅ |
+| 6B | NLE timeline canvas — 3 lanes, playhead, drag/resize, zoom, pan | ✅ |
+| 6C | Section markers ✅ · **section-aware intensity engine** (restored from v1) | 🟡 |
+| 6D | Beat-grid snap, zoom-aware, markers included in the grid | ✅ |
 | 6E | Transitions — cut / crossfade / morph on overlap | ⬜ |
 | 6F | Camera track lane on the timeline | ⬜ |
+
+Markers landed with 6B rather than waiting for 6C, because `add-marker` (M) had been in the
+shortcut registry since Phase 1 with nothing listening — an advertised feature that silently
+did nothing. Marking a moment and snapping to it is the half that needs no intensity engine.
+
+**Cuts are hard by construction.** 6E is the *only* thing standing between this and
+crossfades, and nothing in 6A–6D presumes a hard cut: `resolveTimeline` returns the set of
+live strips, so a transition is a weight over that set rather than a change to it.
+
+**Auto-sequence (D-74) is the entry point 6A–6D were missing.** Four variations derived from
+the scene, laid across the song, in one click — and every strip is an ordinary state the user
+can then edit. Verified in an exported file rather than asserted: mean luma escalates 14.6 →
+35.1 → 38.6 across Intro, Build and Drop.
+
+**Cut Flash (D-75) makes a hard cut a feature rather than a limitation.** Not a substitute for
+6E, but it is what makes the current hard cuts *intentional* instead of abrupt.
 
 **6 test:** one state placed three times, edited once → all three update. Overlap two strips → crossfade. Drop a `drop` marker → intensity multiplier visibly rises.
 

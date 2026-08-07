@@ -7,6 +7,11 @@ import { allModulationTargets, readParam, resolveDescriptor } from '@/engine/par
 import { PostRegistry } from '@/engine/post/PostRegistry'
 import { ENV_SECTIONS, ENV_STACK_ID } from '@/engine/environment/sections'
 import { CAMERA_STACK_ID, getBehaviour } from '@/engine/camera/behaviours'
+import {
+  CAMERA_TRANSFORM_DEFAULTS,
+  CAMERA_TRANSFORM_DESCRIPTORS,
+  type CameraTransformKey,
+} from '@/engine/camera/cameraTransform'
 import { useCameraStore } from '@/store/useCameraStore'
 import { connectionRange, reachableRange } from '@/engine/modulation/preview'
 import { TransportClock } from '@/engine/time/TransportClock'
@@ -29,20 +34,19 @@ export function TargetColumn() {
   const objects = useSceneStore((s) => s.objects)
   const postEffects = usePostStore((s) => s.effects)
 
-  if (objects.length === 0 && postEffects.length === 0) {
-    return (
-      <div className="h-full flex items-center justify-center p-4">
-        <p className="text-[11px] text-slate-600 text-center leading-snug">
-          No objects yet.
-          <br />
-          Add a shape in Scene &amp; Shapes.
-        </p>
-      </div>
-    )
-  }
-
   return (
     <div className="h-full overflow-y-auto">
+      {/* A hint, not an empty state. The Camera and World groups below always exist — they
+          are not things you add — and hiding them behind "no objects yet" meant the most
+          useful routing in the product, a stem driving the camera, looked unavailable on a
+          fresh project. */}
+      {objects.length === 0 && (
+        <p className="px-2 py-1.5 text-[10px] text-slate-600 leading-snug">
+          Add a shape in Scene &amp; Shapes for more targets. The camera and the world are
+          always here.
+        </p>
+      )}
+
       {objects.map((object) => (
         <ObjectTargets key={object.id} object={object} />
       ))}
@@ -53,17 +57,34 @@ export function TargetColumn() {
   )
 }
 
-/** Camera behaviour knobs. Shake amplitude on the kick is the single routing that makes
+/** The Scene Camera's transform and its behaviour knobs.
+ *
+ *  Always present, unlike before: the transform exists whether or not a behaviour has been
+ *  added, and it is the thing most worth wiring. Shake amplitude on the kick is what makes
  *  the whole post chain read, because feedback and zoom blur are effects on motion. */
 function CameraTargets() {
   const behaviours = useCameraStore((s) => s.behaviours)
-  if (behaviours.length === 0) return null
+  const transform = useCameraStore((s) => s.transform)
 
   return (
     <section className="border-b border-aura-line pb-1">
       <header className="px-2 py-1.5 sticky top-0 bg-aura-base z-10">
         <h3 className="text-[11px] font-medium text-slate-200 truncate">Camera</h3>
       </header>
+
+      {CAMERA_TRANSFORM_DESCRIPTORS.filter((d) => d.exposed && d.realtime).map((descriptor) => (
+        <TargetRow
+          key={`transform/${descriptor.key}`}
+          address={{ objectId: CAMERA_STACK_ID, paramKey: descriptor.key }}
+          descriptor={descriptor}
+          base={
+            transform[descriptor.key] ??
+            CAMERA_TRANSFORM_DEFAULTS[descriptor.key as CameraTransformKey]
+          }
+          label={descriptor.label}
+          ownerLabel="Transform"
+        />
+      ))}
 
       {behaviours.map((behaviour) => {
         const brick = getBehaviour(behaviour.effectId)

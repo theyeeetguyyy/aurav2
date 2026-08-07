@@ -15,13 +15,15 @@
 
 ## The one-sentence version
 
-**Everything that makes a frame is built. Nothing that makes a film is.**
+**The path from an mp3 to a finished mp4 is now closed end to end. What is missing is
+everything that would make the result unmistakably yours.**
 
-You can build a scene, light it, treat it, drive it from your stems, save it, undo it,
-and **get an MP4 out**. What is missing is **sequencing** — the timeline, states and cuts
-that turn one continuous scene into a piece with structure.
+You can build a scene, light it, treat it, drive it from your stems, cut between looks on the
+beat, mark the drop, save it, undo it, and get an MP4 out. What is left divides cleanly:
+**narrative** — the section-aware intensity engine and crossfades, so structure does more than
+switch — and **the visual ceiling**, where particles, morphing and text live.
 
-And none of it has been run in a browser yet.
+Most of it has still only been run in a browser a handful of times.
 
 ---
 
@@ -49,10 +51,11 @@ And none of it has been run in a browser yet.
 | 1 | **Export** | The product's entire output does not exist. You cannot get a video out. | 8A–8C | medium |
 | ~~2~~ | ~~**Save / load**~~ | **Built** (D-52, D-56). Stems referenced, analysis cached, and the audio itself comes back — file handles persist in IndexedDB. | 8E ✅ | — |
 | ~~3~~ | ~~**Undo**~~ | **Built** (D-53). Ctrl+Z / Ctrl+Y, drag coalescing. | 3F ✅ | — |
-| 4 | **Timeline & states** | One static scene for the whole song. No cuts, no build, no drop. The brief's core structural idea. | 6A–6F | large |
+| ~~4~~ | ~~**Timeline & states**~~ | **Built** (6A/6B/6D). States are selections not copies, three lanes, beat-grid snap, markers. Cuts work; **crossfades (6E) and the intensity engine (6C) do not** — so structure switches rather than swells. | 6A–6D ✅ | — |
+| 5 | **Section-aware intensity engine** | A `drop` marker is a label, not a force. Nothing in the piece knows it is in a build-up, so "tension over eight bars" is still unexpressible — frame-local metrics structurally cannot say it (D-29). | 6C | medium |
+| 6 | **Transitions** | Every change of look is a hard cut. Fine for trap, wrong for almost everything slower. `resolveTimeline` already returns the *set* of live strips, so a crossfade is a weight over that set — no restructuring needed. | 6E | medium |
 
-Nothing above is blocked by anything else. `activeClock()` already unblocks export
-(D-45) and the state data model is specified (HC-7, HC-8).
+Nothing above is blocked by anything else.
 
 ### Tier 2 — visual ceiling
 
@@ -118,7 +121,9 @@ By cost of delay, not by phase number.
 1. ~~8E save/load~~ — ✅ built.
 2. ~~3F undo~~ — ✅ built.
 3. ~~Phase 8 export~~ — ✅ built.
-4. **Phase 6 timeline** — large, the brief's core idea, and nothing substitutes for it.
-5. **Particles** — the visual ceiling.
-6. **Phase 7 camera authoring** — needs the timeline underneath it.
-7. **Craft pass** — once the feature set stops moving.
+4. ~~Phase 6 timeline~~ — ✅ built (6A/6B/6D).
+5. **6C intensity engine** — markers exist and do nothing yet; this is what makes them matter.
+6. **6E transitions** — small next to what it buys, and every cut is currently hard.
+7. **Particles** — the visual ceiling.
+8. **Phase 7 camera authoring** — the time axis it needed now exists.
+9. **Craft pass** — once the feature set stops moving.

@@ -43,7 +43,19 @@ on an assumption.
 10. Routing → wire the lane, and a kick onset → the Spot's Intensity.
 11. Top bar → **Save**, reload, **Open** — audio should come back on its own, or in one click on **Restore**.
 12. Ctrl+Z a few times.
-13. Deliver → **Export MP4** at 720p/30 over a short project. Plays in VLC?
+> **Steps 1–17 below are now driven automatically.** See the `run-aura` skill — it launches
+> the dev server, screenshots every page, imports a generated stem, builds a look, exports an
+> MP4 and measures the decoded frames for brightness and motion. What it cannot judge is
+> whether the result looks *good*; that is still a human sitting in front of it.
+
+13. Deliver → **+** under *States* twice, with a different look each time. **Place** both,
+    drag one so they butt up, then play through the join. Does the picture change on the cut?
+14. Press **M** during playback, then drag a strip edge near the marker — does it snap?
+15. Camera → type into **Position Z**. Does the monitor move? Then **Align to this view**
+    — do the fields update to match?
+16. Routing → wire a stem to the camera's **Position Y**. Play. Does the camera bob?
+17. Deliver → **Export MP4** at 720p/30 over a short project with **Bloom on**. Plays in VLC,
+    and is it as sharp as the monitor?
 
 ---
 
@@ -62,6 +74,21 @@ on an assumption.
 | D11 | **Lights appeared to do nothing** | Three is physically correct since r165: intensity 60 with `decay: 2` at the 22-unit spawn distance arrives as 0.12. Defaults are now derived from d² (D-57) | ✅ fixed |
 | D12 | **Deleting a stem orphaned its file handle** | `forgetHandle` was written and never called — dead code and a storage leak at once | ✅ fixed |
 | D9 | **Routing page crashed with "Maximum update depth exceeded"** | A Zustand selector returned `s.lanes.filter(...)` — a NEW array every call, so the equality check could never pass. React re-rendered, the selector ran again, forever. Taking down the tree also destroyed the one WebGL context, which reported as `Context Lost` and hid the real cause | ✅ fixed |
+| D13 | **A post-chain cut can be one frame late in an export** | `PostChain` rebuilds through React when the live strip set changes (D-61), and the rebuild lands after `advance()` has already drawn the frame. Same lateness every time, so two exports still match — but the cut is 16 ms off at 60 fps. Fixing it properly means building the composer imperatively instead of through React | ⬜ open, low |
+| D14 | **Export looked soft / wrong** | Two causes, both size-related. `PostChain` sized its render targets from R3F's `size` (the CSS box) rather than the drawing buffer, so every effect rendered at preview resolution and was upscaled into the file. And Deliver had no `ViewportSlot` at all, so the canvas measured 1×1 and that was the resolution the whole chain got (D-66, D-67) | ✅ fixed |
+| D15 | **Export was not frame-deterministic** | R3F's rAF loop kept running during the export, interleaving wall-clock frames into the same `useFrame` subscribers — so feedback decay and grain read garbage `delta` values between the exporter's real frames (D-67) | ✅ fixed |
+| D16 | **Aim at target did nothing** | On by default, but `CameraRigDriver` early-returned before the look-at whenever the behaviour stack was empty — so the checkbox worked only once you added an Orbit (D-65) | ✅ fixed |
+| D17 | **The Scene Camera could not be positioned** | Its transform was raw vectors on `DualCameraEngine`, writable only by *Align to this view*. No numbers to type, no wires, no curve. `keyframes`/`waypoints`/`constraints` sat in the store with full CRUD actions and zero readers — a keyframe system that existed only as a type (D-64) | ✅ fixed |
+| D18 | **4K and 1440p could never export** | The codec string pinned H.264 **level 4.0**, whose frame ceiling is 8192 macroblocks. 1080p is 8160 and just fits; 1440p is 14400 and 4K is 32400, so both failed at `configure()` with a coded-area error. Two of the six resolutions the UI offers were dead on arrival, and the comment above the constant claimed it "still allows 4K". Now the level is derived from resolution *and* frame rate, then confirmed with `VideoEncoder.isConfigSupported` | ✅ fixed |
+| D19 | **The selection outline exported into the video** | Unlike the light gizmos it was a plain mesh, not on `GIZMO_LAYER` — so selecting a shape before pressing Export baked a purple wireframe cage into the file | ✅ fixed |
+| D20 | **Two Place clicks buried one strip under the other** | Both landed at the playhead on lane 0, and the one underneath is on a losing lane, so it was invisible *and* inert. `findFreeSlot` now steps up a lane, then appends | ✅ fixed |
+| D21 | **Routing hid Camera and World on an empty scene** | An early return replaced the whole target column with "No objects yet" — but the camera and the world are not things you add, and a stem driving the camera is the most useful routing in the product. It looked unavailable on every fresh project | ✅ fixed |
+| D22 | **Every new object arrived the same indigo** | `MaterialRegistry.defaultParams` handed out one colour, so a three-shape scene read as one material repeated — the failure D-43 named, in a nicer colour. Colours now rotate per shape | ✅ fixed |
+| D23 | **Deliver wasted ~380px under the lanes** | The timeline filled the column while its content is a fixed ~180px, and the track area ended mid-panel at whatever the content measured, which read as a rendering fault rather than the end of the song | ✅ fixed |
+| D25 | **Every stem curve appeared twice** | `AutomationPanel` listed *all* lanes, so a stem's curve showed both under its own waveform and again in the bottom dock — recreating the detached, contextless track D-55 exists to avoid. Now detached lanes only, and the dock hides itself when there are none | ✅ fixed |
+| D26 | **A stem curve could not be made to snap** | Interpolation was exposed only on the detached-lane panel. The stem lane is the *primary* path (D-55), so on the path anyone actually uses a curve could only ease — and the snap is the move this genre is built on. The engine had supported `step` since it was written | ✅ fixed |
+| D27 | **Hiding the empty lane dock hid the only way to make a lane** | The `+` lived in the panel's own header — a door on the inside of the room. *Draw a curve* now sits beside *Add more stems* | ✅ fixed |
+| D24 | **Tempo detected an octave low** | A synthetic 128 BPM kick reports 64 BPM. The beat grid still lands on beats, so snapping works — it is half as fine as it should be, and the readout is wrong | ⬜ open, low |
 | **D8** | Distant geometry pops out | Camera far plane, grid fade and fog interact; needs one coherent depth budget | ⬜ open |
 
 **D7 is the important one** and it is not a display bug. It is the same root cause as the

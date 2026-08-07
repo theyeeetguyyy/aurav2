@@ -1,5 +1,6 @@
 import { BlendFunction, Effect, EffectAttribute } from 'postprocessing'
 import { Uniform, Vector2 } from 'three'
+import { resolvedTimeline } from '@/engine/timeline/liveTimeline'
 import {
   choiceIndex,
   num,
@@ -409,6 +410,74 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
   },
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Timing — effects that key off the edit rather than off the music
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Flash on a cut.
+ *
+ *  6E's crossfade is the obvious way to soften a cut. This is the cheaper and, for this
+ *  audience, more useful move in the other direction: **admit the cut and hit it.** A single
+ *  bright frame on a strip boundary is the difference between the picture having changed and
+ *  the picture having landed, and it is the one edit-driven effect that reads at any tempo.
+ *
+ *  Keyed off `cutTime` from the resolved timeline rather than off an onset, so it fires on
+ *  *your edit* — which means it stays in sync when you drag the strip, and it does nothing at
+ *  all on an unsequenced project rather than flashing at arbitrary moments.
+ *
+ *  `t - cutTime` is a pure function of the clock (HC-3), so an offline render that asks for
+ *  frame 5000 before frame 12 gets the same flash either way. */
+export const cutFlashBrick: PostBrick = {
+  id: 'post-cut-flash',
+  label: 'Cut Flash',
+  hint: 'Bright frame on every timeline cut. Makes an edit hit instead of merely happening.',
+  group: 'Texture',
+  descriptors: [
+    postParam('strength', 'Strength', 0, 2, 0.7),
+    // Short. Past about a quarter second it stops reading as an impact and starts reading
+    // as a fade, which is the opposite of the point.
+    postParam('decay', 'Decay', 0.02, 0.5, 0.12, { unit: 's' }),
+    postParam('tint', 'Warmth', -1, 1, 0),
+  ],
+  create(): PostHandle {
+    const { effect, set } = shaderEffect(
+      'CutFlash',
+      /* glsl */ `
+uniform float flash;
+uniform float warmth;
+
+void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
+  // Warm one way, cool the other, white in the middle — a white flash is clean and a warm
+  // one reads as photographic, and which you want depends on the grade underneath.
+  vec3 tint = vec3(1.0 + max(0.0, warmth) * 0.4, 1.0, 1.0 + max(0.0, -warmth) * 0.4);
+  outputColor = vec4(inputColor.rgb + tint * flash, inputColor.a);
+}`,
+      { flash: 0, warmth: 0 },
+    )
+
+    return {
+      node: effect,
+      update(params, ctx) {
+        const cut = resolvedTimeline().cutTime
+        const decay = Math.max(0.001, num(params, 'decay', 0.12))
+        const since = cut === null ? Infinity : ctx.time - cut
+
+        // Exponential rather than linear: a linear ramp-out reads as a dip in exposure,
+        // where an exponential one reads as a hit. Negative `since` means the clock is
+        // before the cut (a scrub), and must not flash.
+        const amount =
+          since < 0 || !Number.isFinite(since)
+            ? 0
+            : Math.exp(-since / (decay / 3)) * num(params, 'strength', 0.7)
+
+        set('flash', amount)
+        set('warmth', num(params, 'tint', 0))
+      },
+      dispose: () => effect.dispose(),
+    }
+  },
+}
+
 export const SHADER_POST_BRICKS: PostBrick[] = [
   kaleidoscopeBrick,
   mirrorBrick,
@@ -416,4 +485,5 @@ export const SHADER_POST_BRICKS: PostBrick[] = [
   gradeBrick,
   paletteBrick,
   grainBrick,
+  cutFlashBrick,
 ]

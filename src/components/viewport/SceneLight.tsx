@@ -4,6 +4,7 @@ import * as THREE from 'three'
 import { useSceneStore } from '@/store/useSceneStore'
 import { LightRegistry } from '@/engine/scene/lights/LightRegistry'
 import { ModulationMatrix, addressKey } from '@/engine/modulation/ModulationMatrix'
+import { isVisible } from '@/engine/timeline/liveTimeline'
 import { readToken } from '@/utils/tokens'
 import type { ParamValue } from '@/types/params'
 import type { SceneObject } from '@/types/visual'
@@ -66,6 +67,9 @@ export function SceneLight({ object }: { object: SceneObject }) {
       (rotation[2] + M.getOffset(addressKey(object.id, 'rotation.z'))) * DEG_TO_RAD,
     )
 
+    // A light that a cut switched off must stop contributing, not merely stop moving.
+    handle.light.visible = isVisible(object.id, object.visible)
+
     const values = resolved.current
     for (const key in object.params) {
       const base = object.params[key]
@@ -89,7 +93,7 @@ export function SceneLight({ object }: { object: SceneObject }) {
     }
   })
 
-  if (!object.visible || !brick || !handle) return null
+  if (!brick || !handle) return null
 
   return (
     <group ref={groupRef}>

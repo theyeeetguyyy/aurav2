@@ -206,7 +206,7 @@ frame 12 and still produce exactly what was previewed.
 
 | File | Role |
 |---|---|
-| `schema.ts` | `AuraProject` + base64 `Float32Array` codec. Stems referenced, feature timelines embedded |
+| `schema.ts` | `AuraProject` + base64 `Float32Array` codec. Stems referenced, feature timelines embedded. `timeline` is optional, so a file written before Phase 6 still opens |
 | `projectFile.ts` | Encode/decode with versioning. Refuses a newer file rather than half-reading it; fills what an older one predates |
 
 ### `engine/params/`
@@ -219,13 +219,17 @@ frame 12 and still produce exactly what was previewed.
 
 | File | Role |
 |---|---|
-| `behaviours.ts` | Orbit / Sway / Shake / Dolly / Lens. Pure functions of clock time, summed into a `CameraRig` (D-50) |
+| `cameraTransform.ts` | The Scene Camera's own transform as parameter descriptors — position, rotation in degrees, fov — under `@camera` with no effect id. Makes the camera typeable, wireable and drawable, so an automation lane *is* a keyframed move (D-64). Also the `YXZ` Euler ↔ quaternion conversion *Align to this view* needs |
+| `behaviours.ts` | Orbit / Sway / Shake / Dolly / Lens. Pure functions of clock time, summed into a `CameraRig` (D-50). Additive **on top of** the authored transform |
 | `DualCameraEngine.ts` | Authoritative transforms for both cameras. Separates the **authored** `baseScene*` from the **resolved** `scene*` — behaviours are additive, so writing onto the authored value would accumulate. Owns `alignSceneToPreview()`. Fly movement, mouse-look, reference-counted input attach with text-field guards and key-release-on-blur. |
 
-### Not yet created
+### `engine/timeline/` — states & strips (6A/6B/6D)
 
-`engine/platform/` (adapter) ·
-`engine/modulation/` · `engine/timeline/` · `engine/commands/` · `engine/export/`
+| File | Role |
+|---|---|
+| `StateResolver.ts` | `findFreeSlot()` for unaimed placement (D-71), and `resolveTimeline()` — which objects, wires and effects are live at time `t`. Pure function of the clock (HC-3), so the exporter can ask for frame 5000 before frame 12. An empty timeline or a gap returns `EVERYTHING`, the shared all-null constant (D-59). Higher lanes win a conflict, key by key. Also `withOverride()` and `snapToGrid()` |
+| `variations.ts` | `generateVariations()` — Intro / Build / Drop / Breakdown as subsets of the current scene — and `planSequence()`, which lays them across the song, letting section markers pick the variation by type (D-74). Pure functions over id lists, which is only possible because a state selects rather than owns (HC-7) |
+| `liveTimeline.ts` | Module state holding the frame's resolved timeline, plus `isVisible` / `isConnectionActive` / `isPostActive` — each takes the authored toggle and replaces it while a strip is live (D-58). Not a store, because it is republished 60×/s and read imperatively (HC-1). `subscribeToCuts` notifies the one consumer that needs a rebuild rather than a flag |
 
 ### `engine/shortcuts/`
 
@@ -281,7 +285,11 @@ frame 12 and still produce exactly what was previewed.
 | `automation/LaneEditor.tsx` | The draw surface. Canvas, sampled per pixel so the drawn line matches what the engine reads; painting replaces what is under the stroke rather than overlaying it |
 | `automation/StemAutomation.tsx` | One stem's curve, under its own waveform, with a metric picker, an `edited` marker and Reset. The primary path (D-55) |
 | `automation/AutomationPanel.tsx` | Detached lanes — the exception, for a shape the music does not contain |
-| `camera/CameraRigPanel.tsx` | Scene Camera behaviour stack, Look-At target, Align-to-view |
+| `topbar/TopBar.tsx` | Brand, editable project name, undo/redo, save/open, shortcut settings. The name is the saved filename and the exported video's, so it is a field rather than a label (D-63) |
+| `viewport/TimelineDriver.tsx` | Resolves the timeline once per frame and publishes it. Mounted ahead of every reader |
+| `viewport/useTimelineCut.ts` | `useSyncExternalStore` over the live strip set, for the one consumer that must rebuild at a cut rather than read a flag (D-61) |
+| `camera/CameraRigPanel.tsx` | The Scene Camera: transform fields, Look-At target, Align-to-view and reset, then the behaviour stack that offsets them |
+| `timeline/Timeline.tsx` | The NLE surface. State library and section list in the left rail, ruler with beat grid and marker flags, three lanes of drag/resize strips, imperative playhead, Ctrl+wheel zoom anchored under the pointer. Snapping is to the detected beat grid plus every marker (D-60) |
 | `routing/targetInfo.ts` | Resolves any target address — SceneObject, post chain or world — to descriptor, base value and labels. Lives here rather than in `ParamRegistry` because it reads stores, and `engine/` may not |
 
 ### Viewport
@@ -319,8 +327,8 @@ frame 12 and still produce exactly what was previewed.
 | `pages/ShapesScenePage.tsx` | 2 · Scene & Shapes | built — layer stack ∣ viewport ∣ inspector |
 | `pages/LookPage.tsx` | 3 · Look | built — world & lighting ∣ viewport ∣ post chain |
 | `pages/NodeGraphPage.tsx` | 4 · Routing | built — patchbay |
-| `pages/CameraPage.tsx` | 5 · Camera | viewport only — Phase 7 |
-| `pages/DeliverPage.tsx` | 6 · Deliver | placeholder — Phase 6 & 8 |
+| `pages/CameraPage.tsx` | 5 · Camera | built — transform + behaviours ∣ viewport |
+| `pages/DeliverPage.tsx` | 6 · Deliver | built — monitor + timeline ∣ export settings. The monitor is load-bearing: the exporter drives the live renderer, so this page must host it (D-67) |
 
 ## `src/project/`
 
@@ -357,3 +365,9 @@ this owns the wiring.
 
 `npm run dev` · `typecheck` · `lint` · `test` (Vitest) · `test:watch` ·
 `check` (typecheck + lint + test) · `build` · `preview`
+
+## `.claude/skills/`
+
+| Skill | Role |
+|---|---|
+| `run-aura` | Launches the dev server and drives the app in headless Chromium: the SwiftShader flags WebGL needs, the stable selectors, how to get audio past the platform adapter, and how to judge an exported MP4 (structure, then pixels, then motion). Ten of the logged defects were found this way and none of them by a test |

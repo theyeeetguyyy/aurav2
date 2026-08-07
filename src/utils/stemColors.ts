@@ -13,11 +13,21 @@ const FALLBACKS = [
   '#8b5cf6', '#ec4899', '#14b8a6', '#f43f5e',
 ]
 
-/** Next colour from the rotating stem palette. */
-export function getNextStemColor(): string {
-  const slot = colorIndex % STEM_COLOR_TOKENS.length
-  colorIndex++
+/** Palette colour at a position, wrapping. Deterministic, so anything that already has a
+ *  natural index can colour itself without touching the stem rotation below. */
+export function paletteColor(index: number): string {
+  const length = STEM_COLOR_TOKENS.length
+  const slot = ((Math.trunc(index) % length) + length) % length
   return readToken(STEM_COLOR_TOKENS[slot], FALLBACKS[slot])
+}
+
+/** Next colour from the rotating stem palette.
+ *
+ *  Only stems may draw from this counter. Anything else that consumed it would shift the
+ *  colour the next imported stem gets, and stem colour is an identity users rely on across
+ *  the waveform rack, the routing graph and the automation lanes. */
+export function getNextStemColor(): string {
+  return paletteColor(colorIndex++)
 }
 
 /** Restart colour assignment. Call when a project is cleared or loaded, otherwise

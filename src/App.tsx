@@ -12,8 +12,11 @@ import { PersistentViewport } from '@/components/viewport/PersistentViewport'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { useUIStore } from '@/store/useUIStore'
 import { useAudioStore } from '@/store/useAudioStore'
+import { useProjectStore } from '@/store/useProjectStore'
 import { ShortcutManager } from '@/engine/shortcuts/ShortcutManager'
+import { DEFAULT_SECTION_TYPE } from '@/types/project'
 import { MultiTrackRack } from '@/engine/audio/MultiTrackRack'
+import { TransportClock } from '@/engine/time/TransportClock'
 import { initHistory, redo, undo } from '@/project/history'
 
 function ActivePage() {
@@ -52,6 +55,12 @@ export default function App() {
       // Registered in ShortcutManager since Phase 1 and never wired to anything.
       sm.subscribe('undo', () => undo()),
       sm.subscribe('redo', () => redo()),
+
+      sm.subscribe('add-marker', () => {
+        useProjectStore
+          .getState()
+          .placeMarker(TransportClock.time, DEFAULT_SECTION_TYPE)
+      }),
 
       sm.subscribe('toggle-loop', () => {
         useAudioStore.getState().toggleLoop()

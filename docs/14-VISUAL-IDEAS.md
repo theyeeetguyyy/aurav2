@@ -169,6 +169,83 @@ The parts that make a video read instantly as *music* rather than as abstract 3D
 
 ---
 
+## Part 7b — What the timeline and the camera-as-parameter just unlocked
+
+Written after driving the app end to end for the first time. Everything below is cheap
+*because of* what already shipped, not in spite of it — these are ideas the architecture is
+now shaped to accept, which is a different list from the one written before it existed.
+
+### The camera is a routing target, so these are wires and not features
+
+The Scene Camera's `position`, `rotation` and `fov` are ordinary parameters (D-64). That
+retires a whole category of "camera feature" into things a user assembles:
+
+| Look | How | Why it matters |
+|---|---|---|
+| **Kick-punch dolly** | kick onset → `position.z`, short decay | The single most recognisable music-video camera move, and it is now one wire |
+| **Breathing lens** | slow LFO → `fov`, ±3° | Reads as film rather than as a game engine. Nearly free |
+| **Snap-zoom on the drop** | a lane drawn against `fov`, stepped interpolation | Needs the *stepped* lane mode to be worth using — see the gap below |
+| **Dutch roll on the build** | build-up intensity → `rotation.z` | Waiting on 6C's intensity engine, and a good argument for it |
+
+**The gap this exposes:** a drawn lane interpolates smoothly, so a *snap* — the hardest cut in
+the visual language of this genre — cannot be drawn. `LaneInterpolation` already exists as a
+type. A `step` mode is a small change with a large payoff, and it is the missing half of
+"keyframing" as this product means it.
+
+### States are selections, so a state can be a *variation* and not just a look
+
+`captureState` records which objects are on. Two ideas fall straight out:
+
+1. ~~**Auto-variations.**~~ ✅ built (D-74). Two rules were not obvious until the naive version
+   existed: lights must be in every variation (or a "variation" is a black frame), and wires
+   must stay live (or a section goes static, which reads as broken rather than restrained).
+   **Next along this line:** vary the *material* rather than the object set — the same three
+   shapes in emissive for the drop and matte for the breakdown is a bigger visual change than
+   showing fewer of them, and materials are already bricks (D-43).
+2. **A-B compare.** Two states, one key, alternate between them. Trivial given the resolver,
+   and the fastest way to judge whether an edit helped — which is currently a matter of memory.
+
+### Cuts are hard, and hard cuts are worth more with a strobe — ✅ built
+
+Shipped as `Cut Flash` (D-75), keyed off `cutTime` rather than `activeStripIds` — the boundary
+*time* is what an envelope needs, and publishing it keeps the effect a pure function of the
+clock. **What it opened up:** any effect can now key off the edit rather than the music. Worth
+following with a **cut-triggered RGB split**, a **one-bar zoom punch** on a boundary, and a
+**hold-frame** that freezes the outgoing picture for a beat before the incoming one arrives —
+the last one is the cheapest way to get something that reads as a deliberate edit rather than
+a switch.
+
+### The monitor made one thing obvious
+
+A three-lane timeline under a live monitor invites **a strip that is a camera**, not a look —
+6F. Watching the picture while dragging a camera strip is the whole reason NLEs put the monitor
+above the track, and the layout is now correct for it.
+
+---
+
+## Part 7c — Craft observations from the first real run
+
+Not effects. Things a screenshot showed that a test never would.
+
+- **Object colour rotation changed the feel of the product more than any effect so far.** Two
+  shapes in orange and yellow read as a designed scene; the same two in one indigo read as a
+  bug (D-70). Worth generalising: a new light could take a warm/cool alternation, a new post
+  effect could arrive at a tasteful rather than a neutral default. **Defaults are a design
+  surface, and this one was being wasted.**
+- **The grid is the most prominent thing in an empty frame** and it is authoring furniture
+  dressed as content. Consider a `Grid` mode that is *deliberately* part of the look —
+  perspective-faded, colour-routable, driven by the kick — rather than a neutral reference
+  plane the user is expected to switch off.
+- **Bloom on a smooth-shaded primitive is already good.** The 720p export frame with one
+  torus knot, one bloom and one orbit is genuinely presentable. The ceiling is not as far away
+  as the backlog implies; the gap is *authoring* — knowing which two wires to attach — more
+  than it is missing element families.
+- **A preset that cannot work is worse than a missing preset.** 4K sat in the dropdown failing
+  every time it was chosen (D18). Audit the other enumerations the UI offers against what the
+  engine can actually deliver — frame rates, material models, cloner counts.
+
+---
+
 ## Part 8 — What I would actually build, in order
 
 1. ~~**Bloom + Feedback + Kaleidoscope** (4I)~~ — ✅ built, and fourteen effects rather than
@@ -184,6 +261,19 @@ The parts that make a video read instantly as *music* rather than as abstract 3D
 8. **Domain warping + SDF metaballs** — proves the `sdf` backend.
 9. **Slit-scan + RGB delay** — signature looks that lean on the timeline architecture.
 10. Everything else, as appetite dictates.
+
+**Revised after running it, then built.** Three things jumped the queue and all three shipped:
+
+- ~~**`step` lane interpolation**~~ — ✅ built (D-72). It was already in the engine and
+  unreachable from the primary path, which is the third time that pattern has appeared.
+- ~~**Auto-variations from one scene**~~ — ✅ built (D-74). Intro / Build / Drop / Breakdown
+  derived as subsets and sequenced in one click. The escalation is measurable in the exported
+  file, not just in the state list.
+- ~~**One-frame flash on a strip boundary**~~ — ✅ built (D-75) as the `Cut Flash` post brick.
+
+Both are authoring, not rendering. The first real export made clear that the ceiling is
+further off than the *floor* is: one shape, one bloom and one orbit already looks like
+something. Knowing which two wires to attach is the harder problem.
 
 ---
 

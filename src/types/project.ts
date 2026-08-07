@@ -1,45 +1,45 @@
 import type { ID } from './audio'
+import type { SignalChain } from './modulation'
 
-/** A State is a reusable visual configuration snapshot:
- *  sceneObjects + effects + modulation routing + camera position + post-processing.
- *  States live in a library and are *referenced* by timeline Strips. */
+/** States, strips and markers (docs/03-ARCHITECTURE.md HC-7/HC-8, §4.5).
+ *
+ *  Modelled on Blender's NLA, which solved this exact problem: an **Action** is the
+ *  reusable data and a **Strip** on the timeline is a *reference* to it. Editing the
+ *  Action updates every placement.
+ *
+ *  A State therefore holds **selections, not copies** — which objects are visible and
+ *  which wires are live. That follows from HC-8: the modulation graph is project-global,
+ *  and a State activates a subset of it. If routing lived inside states, every cut would
+ *  hard-reset every envelope in the project, which is musically wrong in the common case:
+ *  you want "drums → scale" to survive the cut and only the *scene* to change. */
+
+/** A named, reusable visual configuration. Referenced by strips, never copied (HC-7). */
 export interface VisualState {
   id: ID
   name: string
-  /** IDs of SceneObjects (shapes, lights, particles, backgrounds) included in this state */
+  color: string
+  /** SceneObjects visible in this state. Objects themselves live in `useSceneStore`. */
   sceneObjectIds: ID[]
-  /** Modulation connections active in this state */
-  modulationConnectionIds: ID[]
-  /** Camera position snapshot */
-  cameraSnapshot: {
-    position: [number, number, number]
-    quaternion: [number, number, number, number]
-  } | null
-  /** Post-processing settings */
-  postProcessing: PostProcessingSettings
+  /** Modulation connections live in this state (HC-8). */
+  activeConnectionIds: ID[]
+  /** Post-process effects enabled in this state. */
+  activePostIds: ID[]
+  /** Per-state chain tweaks on otherwise-global connections — "the same wire, harder in
+   *  the drop". Partial, so a state only records what it actually changes. */
+  connectionOverrides: Record<ID, Partial<SignalChain>>
 }
 
-export interface PostProcessingSettings {
-  bloom: boolean
-  bloomIntensity: number
-  bloomThreshold: number
-  toneMapping: boolean
-}
-
-/** A Strip is a reference to a State placed on the NLE timeline.
- *  Multiple strips can reference the same state. */
+/** A placement of a State on the timeline. Multiple strips may reference one state. */
 export interface Strip {
   id: ID
   stateId: ID
-  /** Start time in seconds on the timeline */
+  /** Seconds on the project timeline. */
   startTime: number
-  /** Duration in seconds */
   duration: number
-  /** Track lane index (for multi-track visual timeline) */
+  /** Lane index. Higher lanes take precedence, like layers in an image editor. */
   lane: number
 }
 
-/** Section marker on the timeline */
 export interface SectionMarker {
   id: ID
   time: number
@@ -47,24 +47,39 @@ export interface SectionMarker {
   label: string
 }
 
-export type SectionType =
-  | 'intro'
-  | 'build-up'
-  | 'drop'
-  | 'breakdown'
-  | 'verse'
-  | 'chorus'
-  | 'bridge'
-  | 'outro'
+/** The vocabulary from the original brief, kept verbatim — `fakeout` and `fill` are
+ *  trap-beat structure and are exactly the audience's own words.
+ *
+ *  Ordered roughly as a track unfolds, because this array is what the picker renders and a
+ *  list in song order is faster to scan than one in alphabetical order. */
+export const SECTION_TYPES = [
+  'intro',
+  'build-up',
+  'fakeout',
+  'drop',
+  'fill',
+  'breakdown',
+  'verse',
+  'chorus',
+  'bridge',
+  'outro',
+] as const
 
-/** Top-level project container */
+export type SectionType = (typeof SECTION_TYPES)[number]
+
+/** What pressing the marker shortcut drops. The moment worth marking is almost always the
+ *  drop, and any marker's type can be changed after the fact. */
+export const DEFAULT_SECTION_TYPE: SectionType = 'drop'
+
 export interface Project {
   name: string
   bpm: number | null
-  /** States library — the reusable visual configs */
+  /** The library. Keyed by id because strips look states up constantly. */
   statesLibrary: Record<ID, VisualState>
-  /** Timeline strips referencing states */
   timelineStrips: Strip[]
-  /** Section markers */
   markers: SectionMarker[]
 }
+
+/** Lanes available on the visual track. Three is enough to overlap a build, a drop and a
+ *  persistent background without becoming a spreadsheet. */
+export const TIMELINE_LANES = 3

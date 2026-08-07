@@ -1,10 +1,16 @@
 import { create } from 'zustand'
 import { recordChange } from '@/store/historyHook'
-import type { CameraKeyframe, SplineWaypoint, CameraConstraint, CameraMode, CameraControlMode } from '@/types/camera'
+import type { CameraMode, CameraControlMode } from '@/types/camera'
 import type { ID } from '@/types/audio'
 import type { ParamValue } from '@/types/params'
 import type { EffectInstance } from '@/types/visual'
 import { CAMERA_STACK_ID, behaviourDefaults, getBehaviour } from '@/engine/camera/behaviours'
+import {
+  CAMERA_TRANSFORM_DEFAULTS,
+  cameraTransformFromQuaternion,
+  type CameraTransformKey,
+} from '@/engine/camera/cameraTransform'
+import { DualCameraEngine } from '@/engine/camera/DualCameraEngine'
 import { useModulationStore } from '@/store/useModulationStore'
 import { generateId } from '@/utils/stemColors'
 
@@ -13,12 +19,10 @@ interface CameraState {
   activeCamera: CameraMode
   /** Control mode for preview camera */
   controlMode: CameraControlMode
-  /** Camera keyframes for timeline interpolation */
-  keyframes: CameraKeyframe[]
-  /** Spline path waypoints */
-  waypoints: SplineWaypoint[]
-  /** Camera constraints stack */
-  constraints: CameraConstraint[]
+  /** The Scene Camera's authored transform — position, rotation in degrees, and fov.
+   *  Ordinary parameters (HC-5), so they are routing targets and automation lanes can draw
+   *  them, which is what makes the camera keyframable without a keyframe engine. */
+  transform: Record<string, number>
 
   /** Ordered behaviour stack on the Scene Camera — orbit, sway, shake, dolly, lens.
    *  Every behaviour is a pure function of time, so they sum and the order is cosmetic. */
@@ -32,17 +36,10 @@ interface CameraState {
   setActiveCamera: (mode: CameraMode) => void
   setControlMode: (mode: CameraControlMode) => void
 
-  addKeyframe: (kf: CameraKeyframe) => void
-  removeKeyframe: (id: ID) => void
-  updateKeyframe: (id: ID, patch: Partial<CameraKeyframe>) => void
-
-  addWaypoint: (wp: SplineWaypoint) => void
-  removeWaypoint: (id: ID) => void
-  updateWaypoint: (id: ID, patch: Partial<SplineWaypoint>) => void
-
-  addConstraint: (c: CameraConstraint) => void
-  removeConstraint: (id: ID) => void
-  updateConstraint: (id: ID, patch: Partial<CameraConstraint>) => void
+  setTransformParam: (key: CameraTransformKey, value: number) => void
+  /** Copy the preview camera's framing onto the authored transform. */
+  alignToPreview: () => void
+  resetTransform: () => void
 
   addBehaviour: (brickId: string) => ID | null
   removeBehaviour: (id: ID) => void
@@ -58,9 +55,7 @@ interface CameraState {
 export const useCameraStore = create<CameraState>((set) => ({
   activeCamera: 'preview',
   controlMode: 'orbit',
-  keyframes: [],
-  waypoints: [],
-  constraints: [],
+  transform: { ...CAMERA_TRANSFORM_DEFAULTS },
   behaviours: [],
   lookAtId: null,
   lookAtEnabled: true,
@@ -68,21 +63,31 @@ export const useCameraStore = create<CameraState>((set) => ({
   setActiveCamera: (mode) => set({ activeCamera: mode }),
   setControlMode: (mode) => set({ controlMode: mode }),
 
-  addKeyframe: (kf) => set((s) => ({ keyframes: [...s.keyframes, kf] })),
-  removeKeyframe: (id) =>
-    set((s) => ({ keyframes: s.keyframes.filter((k) => k.id !== id) })),
-  updateKeyframe: (id, patch) =>
-    set((s) => ({
-      keyframes: s.keyframes.map((k) => (k.id === id ? { ...k, ...patch } : k)),
-    })),
+  setTransformParam: (key, value) => {
+    // Coalesced per parameter, so dragging a field is one undo step rather than one per pixel.
+    recordChange('Move camera', ['camera'], `camtx:${key}`)
+    set((s) => ({ transform: { ...s.transform, [key]: value } }))
+  },
 
-  addWaypoint: (wp) => set((s) => ({ waypoints: [...s.waypoints, wp] })),
-  removeWaypoint: (id) =>
-    set((s) => ({ waypoints: s.waypoints.filter((w) => w.id !== id) })),
-  updateWaypoint: (id, patch) =>
+  alignToPreview: () => {
+    recordChange('Align camera to view', ['camera'])
+    const engine = DualCameraEngine.getInstance()
     set((s) => ({
-      waypoints: s.waypoints.map((w) => (w.id === id ? { ...w, ...patch } : w)),
-    })),
+      transform: {
+        ...s.transform,
+        'position.x': engine.previewPosition.x,
+        'position.y': engine.previewPosition.y,
+        'position.z': engine.previewPosition.z,
+        ...cameraTransformFromQuaternion(engine.previewQuaternion),
+        fov: engine.previewFov,
+      },
+    }))
+  },
+
+  resetTransform: () => {
+    recordChange('Reset camera', ['camera'])
+    set({ transform: { ...CAMERA_TRANSFORM_DEFAULTS } })
+  },
 
   addBehaviour: (brickId) => {
     recordChange('Add camera behaviour', ['camera'])
@@ -153,13 +158,5 @@ export const useCameraStore = create<CameraState>((set) => ({
   },
 
   clear: () =>
-    set({ behaviours: [], keyframes: [], waypoints: [], constraints: [], lookAtId: null }),
-
-  addConstraint: (c) => set((s) => ({ constraints: [...s.constraints, c] })),
-  removeConstraint: (id) =>
-    set((s) => ({ constraints: s.constraints.filter((c) => c.id !== id) })),
-  updateConstraint: (id, patch) =>
-    set((s) => ({
-      constraints: s.constraints.map((c) => (c.id === id ? { ...c, ...patch } : c)),
-    })),
+    set({ behaviours: [], transform: { ...CAMERA_TRANSFORM_DEFAULTS }, lookAtId: null }),
 }))

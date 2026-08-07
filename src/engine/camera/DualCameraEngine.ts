@@ -26,8 +26,11 @@ const BOOST_MULTIPLIER = 3
 export class DualCameraEngine {
   private static instance: DualCameraEngine
 
-  /** The AUTHORED Scene Camera transform — where the user placed it, and later what the
-   *  camera track sets. Never written by controls, and never written by behaviours. */
+  /** The AUTHORED Scene Camera transform, resolved from its parameters each frame by
+   *  `CameraRigDriver` (see `cameraTransform.ts`). Held here rather than in the store
+   *  because the render path reads it 60×/s and must not go through React (HC-1).
+   *
+   *  Never written by controls, and never written by behaviours. */
   public readonly baseScenePosition = DEFAULT_SCENE_POSITION.clone()
   public readonly baseSceneQuaternion = new THREE.Quaternion()
   public baseSceneFov = 45
@@ -76,15 +79,6 @@ export class DualCameraEngine {
     this.scenePosition.copy(this.baseScenePosition)
     this.sceneQuaternion.copy(this.baseSceneQuaternion)
     this.sceneFov = this.baseSceneFov
-  }
-
-  /** "Align Scene Camera to this view" — the action every 3D tool has and this one did
-   *  not, which meant the camera that actually renders could never be aimed at all. */
-  public alignSceneToPreview(): void {
-    this.baseScenePosition.copy(this.previewPosition)
-    this.baseSceneQuaternion.copy(this.previewQuaternion)
-    this.baseSceneFov = this.previewFov
-    this.holdScene()
   }
 
   public static getInstance(): DualCameraEngine {
@@ -225,16 +219,6 @@ export class DualCameraEngine {
     camera.quaternion.copy(this.sceneQuaternion)
     this.capturePreview(camera)
     this.syncAnglesFrom(this.sceneQuaternion)
-  }
-
-  /** Reset the scene camera to its documented default: (0,0,50) facing the origin. */
-  public resetSceneCamera(): void {
-    this.baseScenePosition.copy(DEFAULT_SCENE_POSITION)
-    this.baseSceneQuaternion.setFromRotationMatrix(
-      new THREE.Matrix4().lookAt(DEFAULT_SCENE_POSITION, new THREE.Vector3(), this._up),
-    )
-    this.baseSceneFov = 45
-    this.holdScene()
   }
 
   /** Keep yaw/pitch in step with an externally-set orientation (e.g. after Orbit),

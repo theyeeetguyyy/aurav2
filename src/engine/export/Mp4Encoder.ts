@@ -68,17 +68,34 @@ export class Mp4Encoder {
   }
 
   async configure(config: EncoderConfig): Promise<void> {
-    this.video.configure({
-      // avc1.640028 = H.264 High profile, level 4.0 — the widest-supported combination
-      // that still allows 4K, and what every player and platform expects.
-      codec: 'avc1.640028',
+    const base = {
       width: config.width,
       height: config.height,
       bitrate: config.bitrate,
       framerate: config.fps,
       // Annex-B would need converting before muxing; avc is what mp4-muxer wants.
-      avc: { format: 'avc' },
-    })
+      avc: { format: 'avc' as const },
+    }
+
+    // The level has to match the resolution, and asking the browser is more reliable than
+    // trusting a table: encoder support varies by platform and by whether the path is
+    // hardware or software.
+    let codec: string | null = null
+    for (const candidate of avcCandidates(config.width, config.height, config.fps)) {
+      const support = await VideoEncoder.isConfigSupported({ ...base, codec: candidate })
+      if (support.supported) {
+        codec = candidate
+        break
+      }
+    }
+
+    if (!codec) {
+      throw new Error(
+        `No H.264 level on this machine can encode ${config.width}×${config.height} at ${config.fps} fps. Try a lower resolution or frame rate.`,
+      )
+    }
+
+    this.video.configure({ ...base, codec })
 
     if (this.audio && config.audio) {
       this.audio.configure({
@@ -152,4 +169,45 @@ export function canExport(): { ok: boolean; reason: string | null } {
     return { ok: false, reason: 'This browser cannot capture video frames.' }
   }
   return { ok: true, reason: null }
+}
+
+/** H.264 levels, lowest first, as the hex byte in an `avc1.6400xx` codec string.
+ *
+ *  `MaxFS` is the frame size ceiling in macroblocks and `MaxMBPS` the throughput ceiling in
+ *  macroblocks per second — both from Annex A of the H.264 spec. A level that satisfies
+ *  neither is rejected by `configure()` with a coded-area error, which is exactly how the
+ *  4K preset used to fail.
+ *
+ *  High profile (`6400`) throughout: it is what every player and every platform expects, and
+ *  the profile was never the problem. */
+const AVC_LEVELS = [
+  { hex: '28', name: '4.0', maxFrameMacroblocks: 8_192, maxMacroblocksPerSecond: 245_760 },
+  { hex: '29', name: '4.1', maxFrameMacroblocks: 8_192, maxMacroblocksPerSecond: 245_760 },
+  { hex: '2a', name: '4.2', maxFrameMacroblocks: 8_704, maxMacroblocksPerSecond: 522_240 },
+  { hex: '32', name: '5.0', maxFrameMacroblocks: 22_080, maxMacroblocksPerSecond: 589_824 },
+  { hex: '33', name: '5.1', maxFrameMacroblocks: 36_864, maxMacroblocksPerSecond: 983_040 },
+  { hex: '34', name: '5.2', maxFrameMacroblocks: 36_864, maxMacroblocksPerSecond: 2_073_600 },
+  { hex: '3c', name: '6.0', maxFrameMacroblocks: 139_264, maxMacroblocksPerSecond: 4_177_920 },
+] as const
+
+/** Codec strings worth trying for a given output, in increasing order of level.
+ *
+ *  Lowest sufficient level first, because a lower level is more widely playable — an old
+ *  phone that decodes 4.0 in hardware may fall back to software at 5.2. Anything the maths
+ *  says is too small is skipped, and everything above the first candidate is kept as a
+ *  fallback for encoders that under-report. */
+export function avcCandidates(width: number, height: number, fps: number): string[] {
+  // A macroblock is 16×16, rounded up — 1080 is not a multiple of 16.
+  const macroblocks = Math.ceil(width / 16) * Math.ceil(height / 16)
+  const perSecond = macroblocks * fps
+
+  const usable = AVC_LEVELS.filter(
+    (level) =>
+      macroblocks <= level.maxFrameMacroblocks && perSecond <= level.maxMacroblocksPerSecond,
+  )
+
+  // Nothing fits on paper: hand back the highest level anyway and let the browser be the
+  // one to say no, with its own message.
+  const chosen = usable.length > 0 ? usable : [AVC_LEVELS[AVC_LEVELS.length - 1]]
+  return chosen.map((level) => `avc1.6400${level.hex}`)
 }

@@ -1,7 +1,8 @@
 import { useState, useCallback, useMemo, useRef } from 'react'
-import { Upload, Music } from 'lucide-react'
-import { useAudioStore } from '@/store/useAudioStore'
+import { Upload, Music, PenLine } from 'lucide-react'
+import { useAudioStore, projectDuration } from '@/store/useAudioStore'
 import { useAutomationStore } from '@/store/useAutomationStore'
+import { useProjectStore } from '@/store/useProjectStore'
 import { MultiTrackRack } from '@/engine/audio/MultiTrackRack'
 import { RealtimeAnalyser } from '@/engine/audio/RealtimeAnalyser'
 import { AudioFeatures } from '@/engine/audio/AudioFeatures'
@@ -24,10 +25,9 @@ export function MediaStemsPage() {
 
   // The longest trimmed stem IS the project. Every waveform is drawn against it, so the
   // rack is one timeline rather than N independent ones.
-  const projectDuration = useMemo(
-    () => tracks.reduce((max, t) => Math.max(max, t.trimBounds.end), 0),
-    [tracks],
-  )
+  const duration = useMemo(() => projectDuration(tracks), [tracks])
+  const hasDetachedLane = useAutomationStore((s) => s.lanes.some((l) => !l.source))
+  const addLane = useAutomationStore((s) => s.addLane)
 
   const importFiles = useCallback(async (picked: PickedAudio[]) => {
     const audioFiles = picked.filter(
@@ -73,7 +73,14 @@ export function MediaStemsPage() {
         // Offline MIR runs once, in a worker, and is what modulation actually reads
         // (HC-3). Deliberately not awaited — decoding the next stem should not wait on
         // the previous one's analysis, and the UI reflects arrival via onProgress.
-        void AudioFeatures.analyse(trackId, buffer)
+        void AudioFeatures.analyse(trackId, buffer).then((features) => {
+          // The first stem to report a tempo sets the project's. Later stems in the same
+          // beat agree with it, and overwriting on every arrival would make the readout
+          // depend on which worker happened to finish last.
+          if (features.bpm !== null && useProjectStore.getState().project.bpm === null) {
+            useProjectStore.getState().setBpm(features.bpm)
+          }
+        })
       } catch (err) {
         console.error(`Failed to decode ${file.name}:`, err)
       }
@@ -113,9 +120,9 @@ export function MediaStemsPage() {
       {tracks.length > 0 && (
         <div ref={rackRef} className="relative flex-1 overflow-y-auto p-3 space-y-1.5">
           {tracks.map((track) => (
-            <TrackRow key={track.id} track={track} projectDuration={projectDuration} />
+            <TrackRow key={track.id} track={track} projectDuration={duration} />
           ))}
-          <RackPlayhead containerRef={rackRef} duration={projectDuration} />
+          <RackPlayhead containerRef={rackRef} duration={duration} />
         </div>
       )}
 
@@ -156,24 +163,40 @@ export function MediaStemsPage() {
 
       {/* Detached lanes — for a shape the music does not contain. A stem's own curve
           lives under its row, where its waveform gives it a time reference. */}
-      {tracks.length > 0 && <AutomationPanel duration={projectDuration} />}
+      {/* Detached lanes only, and only once one exists. Every stem already has its curve
+          under its own waveform, so an empty dock here would be furniture. */}
+      {hasDetachedLane && <AutomationPanel duration={duration} />}
 
-      {/* ─── Add More Button (when tracks exist) ─── */}
+      {/* ─── Add more (when tracks exist) ─── */}
       {tracks.length > 0 && (
-        <div
-          className={[
-            'mx-3 mb-3 p-2 rounded border border-dashed flex items-center justify-center gap-2 text-xs cursor-pointer transition-colors',
-            isDragOver
-              ? 'border-aura-accent bg-aura-accent/5 text-aura-accent'
-              : 'border-aura-line text-slate-500 hover:border-slate-500 hover:text-slate-300',
-          ].join(' ')}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onClick={openPicker}
-        >
-          <Music className="w-3.5 h-3.5" />
-          <span>Add more stems</span>
+        <div className="mx-3 mb-3 flex gap-2 shrink-0">
+          <div
+            className={[
+              'flex-1 p-2 rounded border border-dashed flex items-center justify-center gap-2 text-xs cursor-pointer transition-colors',
+              isDragOver
+                ? 'border-aura-accent bg-aura-accent/5 text-aura-accent'
+                : 'border-aura-line text-slate-500 hover:border-slate-500 hover:text-slate-300',
+            ].join(' ')}
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onClick={openPicker}
+          >
+            <Music className="w-3.5 h-3.5" />
+            <span>Add more stems</span>
+          </div>
+
+          {/* The way in to a detached lane. The panel that used to own this button now hides
+              itself when empty, and a creation affordance inside the thing it creates is a
+              door on the inside of the room. */}
+          <button
+            onClick={() => addLane(duration)}
+            title="Draw a curve the music does not contain — an entrance sweep, a manual build"
+            className="p-2 px-3 rounded border border-dashed border-aura-line flex items-center gap-2 text-xs text-slate-500 hover:border-slate-500 hover:text-slate-300 transition-colors"
+          >
+            <PenLine className="w-3.5 h-3.5" />
+            <span>Draw a curve</span>
+          </button>
         </div>
       )}
 

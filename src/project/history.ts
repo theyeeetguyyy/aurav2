@@ -7,6 +7,7 @@ import { useEnvironmentStore } from '@/store/useEnvironmentStore'
 import { useGeneratorStore } from '@/store/useGeneratorStore'
 import { useModulationStore } from '@/store/useModulationStore'
 import { usePostStore } from '@/store/usePostStore'
+import { useProjectStore } from '@/store/useProjectStore'
 import { useSceneStore } from '@/store/useSceneStore'
 
 /** Wires the command history to the stores.
@@ -67,6 +68,11 @@ function capture(slices: HistorySlice[]): Snapshot {
       case 'lanes':
         snapshot.lanes = useAutomationStore.getState().lanes
         break
+      case 'project':
+        // States, strips and markers. Not the project *name* — renaming is not the kind
+        // of thing anyone reaches for Ctrl+Z to undo.
+        snapshot.project = useProjectStore.getState().project
+        break
     }
   }
 
@@ -113,6 +119,9 @@ function restore(snapshot: Snapshot): void {
   }
   if (snapshot.lanes) {
     useAutomationStore.setState({ lanes: snapshot.lanes as never })
+  }
+  if (snapshot.project) {
+    useProjectStore.setState({ project: snapshot.project as never })
   }
 }
 

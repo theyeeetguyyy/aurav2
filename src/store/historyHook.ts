@@ -17,6 +17,7 @@ export type HistorySlice =
   | 'modulation'
   | 'generators'
   | 'lanes'
+  | 'project'
 
 type Recorder = (label: string, slices: HistorySlice[], coalesceKey?: string) => void
 

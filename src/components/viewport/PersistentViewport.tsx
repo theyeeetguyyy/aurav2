@@ -4,6 +4,7 @@ import { DualCameraRig } from './DualCameraRig'
 import { EnvironmentRig } from './EnvironmentRig'
 import { SceneObjects } from './SceneObjects'
 import { ModulationDriver } from './ModulationDriver'
+import { TimelineDriver } from './TimelineDriver'
 import { CameraRigDriver } from './CameraRigDriver'
 import { PostChain } from './PostChain'
 import { ExportBridge } from './ExportBridge'
@@ -111,6 +112,9 @@ export function PersistentViewport() {
         frameloop={visible ? 'always' : 'never'}
         onPointerMissed={() => select(null)}
       >
+        {/* Resolves which state is live before the matrix decides which wires to run. */}
+        <TimelineDriver />
+
         {/* Before SceneObjects, so the matrix is evaluated before it is read. */}
         <ModulationDriver />
         {/* Before DualCameraRig: it resolves the Scene Camera transform the rig copies. */}

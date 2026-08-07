@@ -3,7 +3,9 @@
 **Read this first.** Where the project actually is, what runs today, what does not, and
 what to do next. Everything here is verified against the code, not aspirational.
 
-*Last verified: 2026-08-03 · `npm run check` green (typecheck · lint · 324 tests)*
+*Last verified: 2026-08-07 · `npm run check` green (typecheck · lint · 381 tests) · production
+build clean · **driven in a real browser: every page screenshotted, and a 720p MP4 exported,
+decoded and measured for brightness and motion**  (`run-aura` skill)*
 
 > **What is missing and what it costs: [13-PRODUCT-GAP.md](13-PRODUCT-GAP.md).**
 
@@ -123,15 +125,33 @@ analysis, reshape it, reset it. Plus the signal-chain **input window** and **Nor
 ⬜ 5C node graph (advanced view) · 5E object-to-object routing.
 
 ### Phase 7 — Camera (partial)
-✅ **7D camera behaviours** — Orbit / Sway / Handheld Shake / Dolly / Lens on the Scene
-Camera, each a pure function of clock time with every amplitude a modulation target, plus
-Look-At and **Align to this view** (D-50).
-⬜ 7A spline · 7B easing editor · 7C constraints · 7E motion trail · 7F presets — all need
-the Phase 6 time axis.
+✅ **The Scene Camera's transform is a parameter** — position, rotation and fov as ordinary
+descriptors, so they can be typed, wired from a stem, or drawn as a curve. That last one is
+keyframing: a lane against `position.z` is a dolly on a time axis (D-64). Look-At now applies
+with or without a behaviour (D-65).
+✅ **7D camera behaviours** — Orbit / Sway / Handheld Shake / Dolly / Lens, each a pure
+function of clock time with every amplitude a modulation target. Additive on top of the
+authored transform rather than the only way to move (D-50).
+⬜ 7A spline — belongs as a behaviour brick reading a curve, not a parallel owner of the
+camera · 7B easing editor · 7C constraints · 7E motion trail · 7F presets.
+
+### Phase 6 — Timeline & states (partial)
+✅ **6A states + strips** — a state is a *selection* of visible objects, live wires and live
+post effects (HC-7/HC-8), never a copy, so editing a shape updates every state that shows it.
+✅ **6B the NLE timeline** — three lanes, drag and resize, imperative playhead, Ctrl+wheel
+zoom anchored under the pointer, states and section markers in the left rail.
+✅ **6D beat-grid snap** — tolerance in pixels so it feels identical at every zoom, and every
+section marker joins the grid (D-60).
+✅ **Auto-sequence** — Intro / Build / Drop / Breakdown derived as subsets of the current
+scene and laid across the song in one click (D-74), with markers picking the variation by type.
+The escalation is measurable in the exported file. Plus `Cut Flash` (D-75), which makes a hard
+cut land rather than merely happen.
+🟡 **6C markers** — placing, typing, jumping and snapping all work; the section-aware
+**intensity engine** is still to come, and that is the part that carries musical narrative.
+⬜ 6E transitions (crossfade / morph) · 6F camera track lane.
 
 ### Not started
-**Phase 6** timeline & states · **Phase 8** export & project files · **Phase 9** brick
-mining from v1.
+**Phase 9** brick mining from v1.
 
 ---
 
@@ -140,8 +160,8 @@ mining from v1.
 | # | Gap | Where | Consequence |
 |---|---|---|---|
 | ~~1~~ | ~~No undo~~ | ✅ 3F | Ctrl+Z / Ctrl+Y, or the top-bar buttons. A slider drag is one step |
-| 2 | **Camera page is viewport only** | `CameraPage.tsx` | No spline, keyframes, or constraints yet |
-| 3 | **Deliver has export but no timeline** | `DeliverPage.tsx` | Export MP4 works; sequencing is Phase 6 |
+| ~~2~~ | ~~Camera page is viewport only~~ | ✅ D-64 | Transform fields, routing targets and lane-drawn moves. Spline paths still to come |
+| ~~3~~ | ~~Deliver has export but no timeline~~ | ✅ 6A/6B | Timeline across the width, export in the right rail. Sequencing is optional — an empty timeline is one continuous scene (D-59) |
 | 4 | **Geometry params are not modulation targets** | `realtime: false` | Intentional (D-31) — wiring a kick to `radius` would re-tessellate 60×/sec. `scale.uniform` covers the common case; deformers (4G) are the real answer |
 | 5 | ~~No project save/load~~ | ✅ 8E | Save/Open/Relink in the top bar. Stems are referenced, so a reopened project needs its audio re-picked — analysis is cached, so it does not re-run |
 | 6 | **Root is not a git repo** | — | `aurav2/` and `legacy/aura-v1/` have separate histories; nothing spans the workspace |
@@ -177,15 +197,18 @@ break by accident:
 
 ## Next
 
-**Run it.** Nothing in this workspace has been driven in a browser. Fifteen modules,
-315 structural tests, zero pixels. Before more is built on top, the render path needs one
-real run — the smoke test is [15-BUILD-PLAN.md](15-BUILD-PLAN.md) §0.
+**It runs, and it exports.** An mp3 goes in and a 720p H.264/AAC MP4 comes out: bloom
+glowing, camera orbiting, ~17 % of pixels changing between sampled frames, no authoring
+furniture in the file. That is the product's whole premise, closed and measured.
 
-Then **Phase 6 — timeline & states**: the brief's core structural idea and the last
-Tier-1 blocker. Everything it needs is specified — states reference rather than copy
-(HC-7), routing is global with per-state activation (HC-8), and the beat grid exists.
+Running it is also where the defects are. Thirteen of the twenty-seven logged were found by opening
+a screenshot or decoding a file — including two export resolutions that had **never once
+worked**. The `run-aura` skill automates the pass; what it cannot judge is whether the result
+looks *good*, which still needs someone sitting in front of it.
 
-After that: **GPU particles** (stateless, D-49) → the craft pass on the UI.
+Then, in order: the **section-aware intensity engine** (6C), which is what turns markers from
+labels into narrative · **transitions** (6E), which is the only thing between hard cuts and
+crossfades · **GPU particles** (stateless, D-49) → the craft pass on the UI.
 
 Full queue: [15-BUILD-PLAN.md](15-BUILD-PLAN.md). Library assessments first:
 [16-LIBRARIES.md](16-LIBRARIES.md).

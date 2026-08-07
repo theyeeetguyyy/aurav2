@@ -24,6 +24,12 @@ export function ExportBridge() {
         const previous = new THREE.Vector2()
         gl.getSize(previous)
         const previousCamera = get().camera
+        const previousFrameloop = get().frameloop
+
+        // The exporter drives every frame by hand. Leaving R3F's rAF running would
+        // interleave wall-clock frames into the same useFrame subscribers, and anything
+        // reading `delta` — feedback decay, grain — would see garbage between real frames.
+        set({ frameloop: 'never' })
 
         // HC-10: the Scene Camera is the only camera that renders output. Whatever the
         // user happens to be looking through, the export uses that one.
@@ -50,7 +56,7 @@ export function ExportBridge() {
             sceneCamera.updateProjectionMatrix()
             sceneCamera.layers.enable(GIZMO_LAYER)
           }
-          set({ camera: previousCamera })
+          set({ camera: previousCamera, frameloop: previousFrameloop })
         }
       },
 

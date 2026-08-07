@@ -6,10 +6,12 @@ import { CameraRigPanel } from '@/components/camera/CameraRigPanel'
  *
  *  Same scene as Scene & Shapes, viewed through the same renderer (HC-9).
  *
- *  Left is the Scene Camera's behaviour stack — the declarative half of Phase 7, which
- *  needs no timeline because every behaviour is a pure function of clock time. Spline
- *  waypoints, keyframes and easing land with Phase 6, since a keyframe needs a time axis
- *  to sit on. */
+ *  Left is the Scene Camera: its transform as ordinary parameters, then the behaviour stack
+ *  that offsets them. Keyframing needs no separate system — the transform is a routing
+ *  target, so an automation lane drawn against `position.z` *is* a dolly on a time axis.
+ *
+ *  Spline paths are still to come, and belong as a behaviour brick that reads a curve
+ *  rather than as a parallel way to own the camera. */
 export function CameraPage() {
   return <WorkspaceLayout left={<CameraRigPanel />} center={<ViewportSlot />} />
 }

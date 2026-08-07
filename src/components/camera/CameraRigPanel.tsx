@@ -1,20 +1,39 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, ChevronUp, Crosshair, Plus, Power, Trash2 } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Crosshair,
+  Plus,
+  Power,
+  RotateCcw,
+  Trash2,
+} from 'lucide-react'
 import { BEHAVIOUR_BRICKS, CAMERA_STACK_ID, getBehaviour } from '@/engine/camera/behaviours'
-import { DualCameraEngine } from '@/engine/camera/DualCameraEngine'
+import {
+  CAMERA_TRANSFORM_DEFAULTS,
+  CAMERA_TRANSFORM_DESCRIPTORS,
+  type CameraTransformKey,
+} from '@/engine/camera/cameraTransform'
 import { useCameraStore } from '@/store/useCameraStore'
 import { useSceneStore } from '@/store/useSceneStore'
 import { ParamField } from '@/components/scene/ParamField'
 
-/** The Scene Camera's behaviour stack.
+/** The Scene Camera: where it is, and what moves it.
  *
- *  Phase 7's declarative half (Principle 1): raw data is where the camera is, and this is
- *  the behaviour layer on top. Keyframes come with the timeline; these do not need one,
- *  because every behaviour is a pure function of clock time.
+ *  Two layers, in that order. The **transform** is the camera itself — position, rotation
+ *  and lens as ordinary parameters, so they can be typed, wired from a stem, or drawn as a
+ *  curve on the automation lanes. That last one is what "keyframing the camera" means here:
+ *  a lane against `position.z` is a dolly on a time axis, using the curve editor that
+ *  already exists rather than a second one that would have to agree with it.
  *
- *  It is also the answer to a specific observation — post effects looked alive while
- *  flying the preview and dead in the Scene Camera, because feedback trails and zoom blur
- *  are effects on *movement* and the camera that renders had never moved. */
+ *  The **behaviour stack** then offsets that result — orbit, sway, handheld shake. Each is a
+ *  pure function of clock time, so they sum and their order is cosmetic. They add to where
+ *  you put the camera; they no longer are the only way to move it.
+ *
+ *  Motion in the Scene Camera also matters more than it looks: feedback trails and zoom blur
+ *  are effects on *movement*, so they read as flat in the only view that renders unless
+ *  something here is moving. */
 export function CameraRigPanel() {
   const behaviours = useCameraStore((s) => s.behaviours)
   const lookAtId = useCameraStore((s) => s.lookAtId)
@@ -26,6 +45,10 @@ export function CameraRigPanel() {
   const setParam = useCameraStore((s) => s.setBehaviourParam)
   const setLookAt = useCameraStore((s) => s.setLookAt)
   const setLookAtEnabled = useCameraStore((s) => s.setLookAtEnabled)
+  const transform = useCameraStore((s) => s.transform)
+  const setTransformParam = useCameraStore((s) => s.setTransformParam)
+  const alignToPreview = useCameraStore((s) => s.alignToPreview)
+  const resetTransform = useCameraStore((s) => s.resetTransform)
 
   const objects = useSceneStore((s) => s.objects)
   const [picking, setPicking] = useState(false)
@@ -34,12 +57,24 @@ export function CameraRigPanel() {
   return (
     <div className="flex flex-col h-full min-h-0">
       <header className="px-3 py-2 border-b border-aura-line shrink-0 space-y-1.5">
-        <h2 className="text-[10px] uppercase tracking-wider text-slate-500">Scene Camera</h2>
+        <div className="flex items-center gap-1">
+          <h2 className="flex-1 text-[10px] uppercase tracking-wider text-slate-500">
+            Scene Camera
+          </h2>
+          <button
+            onClick={resetTransform}
+            className="text-slate-600 hover:text-slate-300 transition-colors"
+            title="Reset the transform to its default framing"
+          >
+            <RotateCcw className="w-3 h-3" />
+          </button>
+        </div>
 
-        {/* The action every 3D tool has and this one did not — without it there was no way
-            to aim the camera that actually renders. */}
+        {/* Flying to a framing is faster than typing one, so this stays the primary gesture
+            — it now writes the parameters rather than a hidden vector, which is why the
+            fields below update when you press it. */}
         <button
-          onClick={() => DualCameraEngine.getInstance().alignSceneToPreview()}
+          onClick={alignToPreview}
           className="w-full h-7 px-2 flex items-center gap-1.5 bg-aura-surface hover:bg-aura-elevated border border-aura-line rounded text-[11px] text-slate-300 transition-colors"
           title="Move the Scene Camera to exactly where the Preview Camera is looking"
         >
@@ -80,6 +115,30 @@ export function CameraRigPanel() {
         </p>
       </header>
 
+      {/* ─── Transform ─── */}
+      <div className="px-1.5 py-1.5 border-b border-aura-line shrink-0 space-y-1">
+        <h3 className="px-0.5 text-[10px] uppercase tracking-wider text-slate-500">Transform</h3>
+        {CAMERA_TRANSFORM_DESCRIPTORS.map((descriptor) => (
+          <ParamField
+            key={descriptor.key}
+            objectId={CAMERA_STACK_ID}
+            descriptor={descriptor}
+            value={
+              transform[descriptor.key] ??
+              CAMERA_TRANSFORM_DEFAULTS[descriptor.key as CameraTransformKey]
+            }
+            onChange={(value) =>
+              typeof value === 'number' &&
+              setTransformParam(descriptor.key as CameraTransformKey, value)
+            }
+          />
+        ))}
+        <p className="px-0.5 text-[10px] text-slate-600 leading-snug">
+          Wire any of these from a stem on Routing, or draw one as a curve on Media &amp; Stems
+          — that is a keyframed camera move.
+        </p>
+      </div>
+
       <div className="flex items-center justify-between px-2 py-1.5 shrink-0">
         <h3 className="text-[10px] uppercase tracking-wider text-slate-500">
           Behaviours · {behaviours.filter((b) => b.enabled).length} active
@@ -114,8 +173,9 @@ export function CameraRigPanel() {
 
         {behaviours.length === 0 && !picking && (
           <p className="text-[10px] text-slate-600 leading-snug py-1 px-1">
-            The Scene Camera is locked off. Add Orbit or Sway to give it motion — feedback
-            trails and zoom blur only read when something is moving.
+            Nothing on top of the transform. Behaviours are shapes of motion you do not want
+            to draw by hand — a handheld shake, a slow orbit. They offset the transform above,
+            so adding one never loses your framing.
           </p>
         )}
 

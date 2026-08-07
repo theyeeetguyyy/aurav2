@@ -22,6 +22,12 @@ import { usePostStore } from '@/store/usePostStore'
 import { useProjectStore } from '@/store/useProjectStore'
 import { useSceneStore } from '@/store/useSceneStore'
 import { RealtimeAnalyser } from '@/engine/audio/RealtimeAnalyser'
+import * as THREE from 'three'
+import { resetTimeline } from '@/engine/timeline/liveTimeline'
+import {
+  CAMERA_TRANSFORM_DEFAULTS,
+  cameraTransformFromQuaternion,
+} from '@/engine/camera/cameraTransform'
 
 /** The bridge between the stores and the project file.
  *
@@ -32,7 +38,6 @@ import { RealtimeAnalyser } from '@/engine/audio/RealtimeAnalyser'
  *  encoding. */
 
 export function collectProject(name: string): AuraProject {
-  const engine = DualCameraEngine.getInstance()
   const camera = useCameraStore.getState()
 
   const stems: StemRef[] = useAudioStore.getState().tracks.map((track) => {
@@ -72,11 +77,11 @@ export function collectProject(name: string): AuraProject {
       behaviours: camera.behaviours,
       lookAtId: camera.lookAtId,
       lookAtEnabled: camera.lookAtEnabled,
-      // The AUTHORED transform. Saving the resolved one would bake a frame of orbit and
-      // shake into the file, and reopening would then apply them a second time.
-      scenePosition: engine.baseScenePosition.toArray() as [number, number, number],
-      sceneQuaternion: engine.baseSceneQuaternion.toArray() as [number, number, number, number],
-      sceneFov: engine.baseSceneFov,
+      // The AUTHORED transform, from the store rather than the engine. The engine holds it
+      // too, but only as the value resolved for the last frame — which includes modulation,
+      // so saving that would bake one frame of a wired camera move into the file and
+      // reopening would apply it a second time.
+      transform: { ...camera.transform },
     },
     modulation: {
       connections: useModulationStore.getState().connections,
@@ -84,12 +89,43 @@ export function collectProject(name: string): AuraProject {
     },
     generators: useGeneratorStore.getState().generators.map((g) => ({ ...g })),
     lanes: useAutomationStore.getState().lanes.map((l) => ({ ...l, points: [...l.points] })),
+    timeline: (() => {
+      const { project } = useProjectStore.getState()
+      return {
+        bpm: project.bpm,
+        states: Object.values(project.statesLibrary),
+        strips: [...project.timelineStrips],
+        markers: [...project.markers],
+      }
+    })(),
   }
 }
 
 export interface ApplyResult {
   /** Stems the project expects but which have no audio yet. */
   missingStems: StemRef[]
+}
+
+/** The camera transform from a project file, whichever way that file stored it.
+ *
+ *  Files written before the transform became a parameter carried a position vector and a
+ *  quaternion. Converting rather than discarding them means an older project reopens framed
+ *  the way it was saved. */
+function readCameraTransform(camera: AuraProject['camera']): Record<string, number> {
+  if (camera.transform) return { ...CAMERA_TRANSFORM_DEFAULTS, ...camera.transform }
+
+  const position = camera.scenePosition
+  const quaternion = camera.sceneQuaternion
+  return {
+    ...CAMERA_TRANSFORM_DEFAULTS,
+    ...(position
+      ? { 'position.x': position[0], 'position.y': position[1], 'position.z': position[2] }
+      : {}),
+    ...(quaternion
+      ? cameraTransformFromQuaternion(new THREE.Quaternion().fromArray(quaternion))
+      : {}),
+    ...(camera.sceneFov !== undefined ? { fov: camera.sceneFov } : {}),
+  }
 }
 
 export function applyProject(project: AuraProject): ApplyResult {
@@ -127,17 +163,16 @@ export function applyProject(project: AuraProject): ApplyResult {
     behaviours: project.camera.behaviours,
     lookAtId: project.camera.lookAtId,
     lookAtEnabled: project.camera.lookAtEnabled,
+    transform: readCameraTransform(project.camera),
   })
 
-  const engine = DualCameraEngine.getInstance()
-  engine.baseScenePosition.fromArray(project.camera.scenePosition)
-  engine.baseSceneQuaternion.fromArray(project.camera.sceneQuaternion)
-  engine.baseSceneFov = project.camera.sceneFov
-  engine.holdScene()
+  // `CameraRigDriver` resolves the transform onto the engine on the next frame. This covers
+  // the gap until it does, so a freshly opened project is not framed by the previous one.
+  DualCameraEngine.getInstance().holdScene()
 
   // Stems: metadata and cached analysis come back immediately, so wires and waveforms are
-  // correct before any audio exists. The buffers are relinked separately (see below),
-  // because a browser cannot reopen a file it was given last session.
+  // correct before any audio exists. The buffers arrive a moment later via
+  // `restoreStemAudio`, which reopens each stem's remembered handle (D-56).
   for (const stem of project.stems) {
     if (stem.features) AudioFeatures.adopt(stem.id, deserialiseFeatures(stem.features))
   }
@@ -163,12 +198,27 @@ export function applyProject(project: AuraProject): ApplyResult {
     triggers: project.modulation.triggers,
   })
 
-  useProjectStore.setState((s) => ({ project: { ...s.project, name: project.name } }))
+  // Written straight rather than through the store's actions: those record undo steps, and
+  // opening a document must not leave a history that undoes back into the previous one.
+  const timeline = project.timeline
+  useProjectStore.setState({
+    project: {
+      name: project.name,
+      bpm: timeline?.bpm ?? null,
+      statesLibrary: Object.fromEntries((timeline?.states ?? []).map((st) => [st.id, st])),
+      timelineStrips: timeline?.strips ?? [],
+      markers: timeline?.markers ?? [],
+    },
+  })
+  // A cut resolved from the outgoing project must not gate the incoming one's objects; the
+  // driver republishes on the next frame, and this covers the gap until it does.
+  resetTimeline()
 
   rack.refreshDuration()
 
-  // Every stem lands without audio: a browser cannot reopen a file it was handed last
-  // session (`canRelinkByPath` is false). The caller prompts for them.
+  // Every stem lands without audio here; `restoreStemAudio` fills them in immediately
+  // afterwards from their persisted handles. Whatever it cannot recover is what the
+  // Restore button is for.
   return { missingStems: project.stems }
 }
 

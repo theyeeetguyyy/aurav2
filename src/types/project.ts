@@ -1,32 +1,40 @@
 import type { ID } from './audio'
-import type { SignalChain } from './modulation'
+import type { ModulationConnection } from './modulation'
+import type { EffectInstance, SceneObject } from './visual'
+import type { Palette } from '@/engine/scene/palette'
 
-/** States, strips and markers (docs/03-ARCHITECTURE.md HC-7/HC-8, §4.5).
+/** States, strips and markers (docs/03-ARCHITECTURE.md §4.5).
  *
- *  Modelled on Blender's NLA, which solved this exact problem: an **Action** is the
- *  reusable data and a **Strip** on the timeline is a *reference* to it. Editing the
- *  Action updates every placement.
+ *  **A State owns its scene.** Its objects, its routing, its post chain. Switching to a state
+ *  loads that scene; switching away saves it. Strips on the timeline reference states, so one
+ *  state placed three times is still one thing to edit — that part of the Blender NLA model
+ *  holds.
  *
- *  A State therefore holds **selections, not copies** — which objects are visible and
- *  which wires are live. That follows from HC-8: the modulation graph is project-global,
- *  and a State activates a subset of it. If routing lived inside states, every cut would
- *  hard-reset every envelope in the project, which is musically wrong in the common case:
- *  you want "drums → scale" to survive the cut and only the *scene* to change. */
+ *  *This replaces an earlier design where a state was a **selection** over one shared object
+ *  pool — a set of visible-object ids rather than the objects themselves.* It was wrong in
+ *  practice for a reason no amount of correctness could fix: every state's objects appeared in
+ *  the layer stack at once, so a five-state project showed you thirty shapes and switching
+ *  states only toggled which were hidden. Nobody can author against that. A state is a scene,
+ *  and the layer stack shows the scene you are in. */
 
-/** A named, reusable visual configuration. Referenced by strips, never copied (HC-7). */
+/** A scene, named. Referenced by strips, never copied — one state placed three times is one
+ *  thing to edit. */
 export interface VisualState {
   id: ID
   name: string
   color: string
-  /** SceneObjects visible in this state. Objects themselves live in `useSceneStore`. */
-  sceneObjectIds: ID[]
-  /** Modulation connections live in this state (HC-8). */
-  activeConnectionIds: ID[]
-  /** Post-process effects enabled in this state. */
-  activePostIds: ID[]
-  /** Per-state chain tweaks on otherwise-global connections — "the same wire, harder in
-   *  the drop". Partial, so a state only records what it actually changes. */
-  connectionOverrides: Record<ID, Partial<SignalChain>>
+
+  /** This state's scene. Owned, not referenced: switching states swaps these in and out. */
+  objects: SceneObject[]
+  /** This state's routing. A wire belongs to the state it was drawn in. */
+  connections: ModulationConnection[]
+  /** This state's post chain, in order. */
+  post: EffectInstance[]
+  /** This state's colours. Owned, so switching states changes the palette — and so a shared state
+   *  carries the colours it was designed in. */
+  palette: Palette
+  /** Whether the whole post chain is bypassed in this state. */
+  postBypassed: boolean
 }
 
 /** A placement of a State on the timeline. Multiple strips may reference one state. */

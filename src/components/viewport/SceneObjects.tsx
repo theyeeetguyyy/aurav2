@@ -10,14 +10,22 @@ import { CloneRuntime, hasCloner } from '@/engine/scene/cloners/CloneRuntime'
 import { MAX_CLONES } from '@/engine/scene/cloners/types'
 import { MaterialRegistry } from '@/engine/scene/materials/MaterialRegistry'
 import { materialKey } from '@/engine/scene/materials/types'
+import { paletteAt } from '@/engine/scene/palette'
 import { activeClock } from '@/engine/time/timeAuthority'
-import { isVisible } from '@/engine/timeline/liveTimeline'
 import { GIZMO_LAYER, SceneLight } from './SceneLight'
 import { readToken } from '@/utils/tokens'
 import type { ParamValue } from '@/types/params'
 import type { SceneObject } from '@/types/visual'
 
 const DEG_TO_RAD = Math.PI / 180
+
+/** Above this many triangles, selection switches from a hugging shell to a bounding box.
+ *
+ *  The inflated back-face shell is the better indicator on a simple shape — it traces the
+ *  silhouette exactly. On a subdivided one it is a mesh of hundreds of lines drawn over the
+ *  art, which hides the thing it is meant to point at. A box is less precise and always
+ *  legible, and precision is not what a selection indicator is for. */
+const OUTLINE_SHELL_MAX_TRIANGLES = 600
 
 /** Renders the SceneObject layer stack.
  *
@@ -47,6 +55,9 @@ export function SceneObjects() {
 
 function SceneObjectMesh({ object }: { object: SceneObject }) {
   const select = useSceneStore((s) => s.select)
+  // Subscribed, not read per frame: a palette changes on a deliberate edit, and re-rendering for
+  // it is correct — it is the material's *shape* changing, not its value.
+  const palette = useSceneStore((s) => s.palette)
   const isSelected = useSceneStore((s) => s.selectedId === object.id)
 
   // The group carries the object's own transform; the mesh below it carries either one
@@ -95,6 +106,12 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
     () => BrickRegistry.buildGeometry(object.brickId, object.params),
     [object.brickId, object.params],
   )
+
+  const denseGeometry = useMemo(() => {
+    if (!geometry) return false
+    const vertices = geometry.index?.count ?? geometry.getAttribute('position')?.count ?? 0
+    return vertices / 3 > OUTLINE_SHELL_MAX_TRIANGLES
+  }, [geometry])
 
   // Address keys for every effect parameter, built once per stack shape rather than
   // per frame. Deformer params are modulation targets like any other (HC-5).
@@ -203,14 +220,20 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
         box.position.copy(center)
         box.scale.setScalar(Math.max(0.001, radius * 2))
       }
+    } else if (selectionRef.current && geometry) {
+      // A dense single mesh gets the same box, sized from its own bounds. Read from the
+      // geometry rather than the mesh so a deformer's displaced vertices are included — the
+      // bounding sphere is recomputed when the working geometry changes.
+      geometry.computeBoundingSphere()
+      const bounds = geometry.boundingSphere
+      if (bounds) {
+        selectionRef.current.position.copy(bounds.center)
+        selectionRef.current.scale.setScalar(Math.max(0.001, bounds.radius * 2))
+      }
     }
 
-    // Visibility is resolved per frame rather than by mounting, so a cut costs a boolean
-    // write instead of re-rendering the whole stack (HC-1). A hidden mesh is skipped before
-    // any draw call, so mounting one costs nothing.
-    const shown = isVisible(object.id, object.visible)
     for (const target of [meshRef.current, instancedRef.current]) {
-      if (target) target.visible = shown
+      if (target) target.visible = object.visible
     }
 
     if (material) {
@@ -219,6 +242,12 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
         const base = object.material[key]
         values[key] =
           typeof base === 'number' ? base + M.getOffset(materialKeys[key]) : base
+      }
+      // The palette wins over the stored colour when the object is bound to a slot. Resolved here
+      // rather than written into `object.material` so re-picking the palette recolours the scene
+      // without touching every object — which is the whole point of a slot.
+      if (object.paletteSlot !== null) {
+        values.color = paletteAt(palette, object.paletteSlot)
       }
       material.update(values)
     }
@@ -265,7 +294,7 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
           exporter disables it, so selecting a shape before pressing Export no longer bakes a
           wireframe cage into the video. */}
       {isSelected &&
-        (cloned ? (
+        (cloned || denseGeometry ? (
           <mesh ref={selectionRef} raycast={() => {}} layers-mask={1 << GIZMO_LAYER}>
             <boxGeometry args={[1, 1, 1]} />
             <meshBasicMaterial color={outlineColour} wireframe transparent opacity={0.35} />

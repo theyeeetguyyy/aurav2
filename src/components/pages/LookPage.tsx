@@ -1,6 +1,7 @@
 import { ViewportSlot } from '@/components/viewport/ViewportSlot'
 import { WorkspaceLayout } from '@/components/shell/WorkspaceLayout'
 import { WorldPanel } from '@/components/scene/WorldPanel'
+import { PalettePanel } from '@/components/scene/PalettePanel'
 import { PostStack } from '@/components/scene/PostStack'
 
 /** Workspace 3 — Look.
@@ -17,16 +18,14 @@ export function LookPage() {
   return (
     <WorkspaceLayout
       left={
-        <div className="flex flex-col h-full min-h-0">
+        <div className="flex flex-col h-full min-h-0 overflow-y-auto">
+          {/* Palette first: it is upstream of every other decision on this page. The background,
+              the rig and every material read against it. */}
+          <PalettePanel />
           <header className="px-3 py-2 border-b border-aura-line shrink-0">
             <h2 className="text-[10px] uppercase tracking-wider text-slate-500">World</h2>
-            <p className="text-[10px] text-slate-600 leading-snug mt-0.5">
-              What the objects sit in and are lit by.
-            </p>
           </header>
-          <div className="flex-1 min-h-0 overflow-y-auto">
-            <WorldPanel embedded />
-          </div>
+          <WorldPanel embedded />
         </div>
       }
       center={<ViewportSlot />}

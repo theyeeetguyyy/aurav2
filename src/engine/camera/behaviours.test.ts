@@ -56,7 +56,11 @@ describe('camera behaviours', () => {
     (_id, brick) => {
       const rig = emptyRig()
       expect(() => brick.apply({ time: 5, params: {}, rig })).not.toThrow()
-      for (const value of Object.values(rig)) expect(Number.isFinite(value)).toBe(true)
+      // Only the numeric fields: the rig also carries flags for behaviours that PLACE the camera
+      // rather than nudging it. The point of the check is that no NaN got in.
+      for (const value of Object.values(rig)) {
+        if (typeof value === 'number') expect(Number.isFinite(value)).toBe(true)
+      }
     },
   )
 

@@ -206,16 +206,23 @@ the fog, the lighting — and the whole post row.
 **Still unbuilt:** the tunnel, the cloner, the particles, the spectrum and the logo text —
 which is exactly the gap [13-PRODUCT-GAP.md](13-PRODUCT-GAP.md) measures.
 
-### Why it will not look like everyone else's
+### Why it will not look like everyone else's — **this argument was wrong**
 
-Two structural reasons, not aesthetic ones:
+*Corrected 2026-08-07, after driving the software.* The original text argued that because there are
+no presets to pick and the stack is per-project, the combinatorics are large enough for individual
+identity.
 
-- **No presets to fall back on.** There is no "Kaleidoscope mode" to pick, so no two
-  users land on the same frame by picking the same item from a list.
-- **The stack is per-project.** Element order, deformer order, routing weights and curves
-  are all authored. The combinatorics are large enough that a recognisable channel
-  identity is achievable — which is the stated growth loop in
-  [01-VISION.md](01-VISION.md).
+**Combinations of a narrow vocabulary are still narrow.** Only families A, E, F and H below are
+built, and all four resolve to *lit triangle mesh* or *full-frame filter* — one implemented
+`RenderBackend` out of three declared. Ten thousand permutations of one kind of image are ten
+thousand images that look like each other. In practice ten users produce eight similar results:
+wireframed cloned shapes, routed to a stem, with a little post.
+
+Variety needs different **kinds** of image, not more arrangements of one kind — which is what the
+unbuilt families B, C, D and G are for, and why they are now the top of the queue.
+
+Full diagnosis, the falsifiable bar it has to clear, and the sequence:
+**[17-EXPRESSIVE-RANGE.md](17-EXPRESSIVE-RANGE.md)**.
 
 ---
 

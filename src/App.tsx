@@ -7,6 +7,7 @@ import { ShapesScenePage } from '@/components/pages/ShapesScenePage'
 import { LookPage } from '@/components/pages/LookPage'
 import { NodeGraphPage } from '@/components/pages/NodeGraphPage'
 import { CameraPage } from '@/components/pages/CameraPage'
+import { TimelinePage } from '@/components/pages/TimelinePage'
 import { DeliverPage } from '@/components/pages/DeliverPage'
 import { PersistentViewport } from '@/components/viewport/PersistentViewport'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
@@ -33,6 +34,8 @@ function ActivePage() {
       return <NodeGraphPage />
     case 'camera':
       return <CameraPage />
+    case 'timeline':
+      return <TimelinePage />
     case 'deliver':
       return <DeliverPage />
   }
@@ -41,6 +44,9 @@ function ActivePage() {
 export default function App() {
   useEffect(() => {
     initHistory()
+    // A project always has a state — a project with none has no scene, which is not a state the
+    // app should ever be in.
+    useProjectStore.getState().ensureState()
     const sm = ShortcutManager.getInstance()
 
     const unsubscribers = [

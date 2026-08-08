@@ -3,7 +3,8 @@ import { previewConnection } from '@/engine/modulation/preview'
 import { TransportClock } from '@/engine/time/TransportClock'
 import { isTrackVisuallyActive } from '@/store/useAudioStore'
 import { getGenerator } from '@/store/useGeneratorStore'
-import { getLane } from '@/store/useAutomationStore'
+import { getLane, getPatterns } from '@/store/useAutomationStore'
+import { getProcessor } from '@/store/useModulationStore'
 import { readToken } from '@/utils/tokens'
 import type { ModulationConnection } from '@/types/modulation'
 
@@ -60,6 +61,8 @@ export function ModulationGraph({
         isTrackActive: isTrackVisuallyActive,
         getGenerator,
         getLane,
+        getPatterns,
+        getProcessor,
       })
 
       const span = preview.max - preview.min || 1

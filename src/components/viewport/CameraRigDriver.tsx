@@ -12,6 +12,7 @@ import {
   CAMERA_TRANSFORM_DEFAULTS,
   cameraQuaternionFrom,
 } from '@/engine/camera/cameraTransform'
+import { buildPath } from '@/engine/camera/cameraPath'
 import { DualCameraEngine } from '@/engine/camera/DualCameraEngine'
 import { ModulationMatrix, addressKey } from '@/engine/modulation/ModulationMatrix'
 import { activeClock } from '@/engine/time/timeAuthority'
@@ -55,6 +56,13 @@ export function CameraRigDriver() {
   const rollQuaternion = useMemo(() => new THREE.Quaternion(), [])
   const forward = useMemo(() => new THREE.Vector3(), [])
 
+  // The curve is rebuilt only when the waypoints change: it allocates, and `apply` runs every
+  // frame. Subscribing to these two is safe because editing a waypoint is a deliberate act, not
+  // something that happens at frame rate (HC-1).
+  const waypoints = useCameraStore((s) => s.waypoints)
+  const pathClosed = useCameraStore((s) => s.pathClosed)
+  const path = useMemo(() => buildPath(waypoints, pathClosed), [waypoints, pathClosed])
+
   useFrame(() => {
     const { behaviours, lookAtId, lookAtEnabled, transform } = useCameraStore.getState()
     const M = ModulationMatrix
@@ -83,6 +91,7 @@ export function CameraRigDriver() {
     const time = activeClock().time
     resetRig(rig)
     context.current.time = time
+    context.current.path = path
 
     for (const behaviour of behaviours) {
       if (!behaviour.enabled) continue
@@ -122,7 +131,14 @@ export function CameraRigDriver() {
     // Skipped entirely when nothing orbits, because the round trip is not a no-op: a camera
     // sitting exactly on its target has radius 0, which the clamp below would push to 0.01
     // and nudge the framing of a shot that asked for no orbit at all.
-    basePosition.copy(engine.baseScenePosition)
+    // A behaviour that PLACES the camera replaces the authored position; offsets and orbit then
+    // apply on top, so a handheld shake still shakes a camera travelling along a path.
+    if (rig.hasPlacement) {
+      basePosition.set(rig.placeX, rig.placeY, rig.placeZ)
+    } else {
+      basePosition.copy(engine.baseScenePosition)
+    }
+
     if (rig.azimuth !== 0 || rig.elevation !== 0 || rig.distanceScale !== 1) {
       basePosition.sub(target)
       spherical.setFromVector3(basePosition)
@@ -138,7 +154,13 @@ export function CameraRigDriver() {
       basePosition.z + rig.offsetZ,
     )
 
-    if (lookAtEnabled) {
+    // Aiming along the path wins over the Look-At target: a camera told to look where it is
+    // going has been given a more specific instruction than "look at that".
+    if (rig.hasAim) {
+      target.set(rig.aimX, rig.aimY, rig.aimZ)
+      matrix.lookAt(engine.scenePosition, target, up)
+      engine.sceneQuaternion.setFromRotationMatrix(matrix)
+    } else if (lookAtEnabled) {
       matrix.lookAt(engine.scenePosition, target, up)
       engine.sceneQuaternion.setFromRotationMatrix(matrix)
     } else {

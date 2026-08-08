@@ -17,6 +17,8 @@ export interface ModulationConnection {
   source: FieldRef
   target: ParamAddress
   chain: SignalChain
+  /** Shared stages after the chain. Absent on a plain wire, which is most of them. */
+  processorIds?: ProcessorRefs
   enabled: boolean
 }
 
@@ -27,6 +29,13 @@ export interface ModulationConnection {
  *
  *  Raw audio mapped straight onto a parameter looks jittery and amateurish. Rise/Fall
  *  is the single most-missed feature by people prototyping this kind of tool. */
+/** Shared processing stages this wire passes through, in order, **after** its own chain.
+ *
+ *  Ids rather than objects: the whole point is that two wires can name the same processor and
+ *  editing it changes both. Inlining them would make every wire's copy independent, which is what
+ *  the chain already is. */
+export type ProcessorRefs = string[]
+
 export interface SignalChain {
   /** Input window, in the SOURCE's normalised 0–1 domain. The incoming signal is
    *  rescaled from [inputMin, inputMax] onto 0–1 before anything else runs.

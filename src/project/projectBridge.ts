@@ -38,6 +38,10 @@ import {
  *  encoding. */
 
 export function collectProject(name: string): AuraProject {
+  // The live scene IS the active state's scene, and it is only written back on a switch. Saving
+  // without committing would write whatever the state held when you last left it.
+  useProjectStore.getState().commitActiveState()
+
   const camera = useCameraStore.getState()
 
   const stems: StemRef[] = useAudioStore.getState().tracks.map((track) => {
@@ -82,13 +86,17 @@ export function collectProject(name: string): AuraProject {
       // so saving that would bake one frame of a wired camera move into the file and
       // reopening would apply it a second time.
       transform: { ...camera.transform },
+      waypoints: camera.waypoints.map((w) => ({ ...w })),
+      pathClosed: camera.pathClosed,
     },
     modulation: {
       connections: useModulationStore.getState().connections,
       triggers: useModulationStore.getState().triggers,
+      processors: { ...useModulationStore.getState().processors },
     },
     generators: useGeneratorStore.getState().generators.map((g) => ({ ...g })),
-    lanes: useAutomationStore.getState().lanes.map((l) => ({ ...l, points: [...l.points] })),
+    lanes: useAutomationStore.getState().lanes.map((l) => ({ ...l, clips: [...l.clips] })),
+    patterns: { ...useAutomationStore.getState().patterns },
     timeline: (() => {
       const { project } = useProjectStore.getState()
       return {
@@ -96,6 +104,7 @@ export function collectProject(name: string): AuraProject {
         states: Object.values(project.statesLibrary),
         strips: [...project.timelineStrips],
         markers: [...project.markers],
+        activeStateId: useProjectStore.getState().activeStateId,
       }
     })(),
   }
@@ -157,13 +166,19 @@ export function applyProject(project: AuraProject): ApplyResult {
     disabled: project.environment.disabled,
   })
   useGeneratorStore.setState({ generators: project.generators as never })
-  useAutomationStore.setState({ lanes: project.lanes, selectedId: project.lanes[0]?.id ?? null })
+  useAutomationStore.setState({
+    lanes: project.lanes as never,
+    patterns: project.patterns ?? {},
+    selectedClipId: null,
+  })
 
   useCameraStore.setState({
     behaviours: project.camera.behaviours,
     lookAtId: project.camera.lookAtId,
     lookAtEnabled: project.camera.lookAtEnabled,
     transform: readCameraTransform(project.camera),
+    waypoints: project.camera.waypoints ?? [],
+    pathClosed: project.camera.pathClosed ?? false,
   })
 
   // `CameraRigDriver` resolves the transform onto the engine on the next frame. This covers
@@ -195,6 +210,7 @@ export function applyProject(project: AuraProject): ApplyResult {
 
   useModulationStore.setState({
     connections: project.modulation.connections,
+    processors: project.modulation.processors ?? {},
     triggers: project.modulation.triggers,
   })
 
@@ -209,10 +225,13 @@ export function applyProject(project: AuraProject): ApplyResult {
       timelineStrips: timeline?.strips ?? [],
       markers: timeline?.markers ?? [],
     },
+    activeStateId: timeline?.activeStateId ?? null,
   })
-  // A cut resolved from the outgoing project must not gate the incoming one's objects; the
-  // driver republishes on the next frame, and this covers the gap until it does.
+  // A cut resolved from the outgoing project must not gate the incoming one; the driver
+  // republishes on the next frame, and this covers the gap until it does.
   resetTimeline()
+  // Loads the saved active state onto the three stores. An older file with no states gets one.
+  useProjectStore.getState().ensureState()
 
   rack.refreshDuration()
 

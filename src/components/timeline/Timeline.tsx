@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Flag, Magnet, Plus, Sparkles, Trash2, ZoomIn, ZoomOut } from 'lucide-react'
+import { Flag, Magnet, Trash2, ZoomIn, ZoomOut } from 'lucide-react'
 import { AudioFeatures } from '@/engine/audio/AudioFeatures'
 import { SNAP_WINDOW_PIXELS, snapToGrid } from '@/engine/timeline/StateResolver'
 import { TransportClock } from '@/engine/time/TransportClock'
 import { MultiTrackRack } from '@/engine/audio/MultiTrackRack'
 import { projectDuration, useAudioStore } from '@/store/useAudioStore'
 import { useProjectStore } from '@/store/useProjectStore'
+import { useUIStore } from '@/store/useUIStore'
 import {
   DEFAULT_SECTION_TYPE,
   SECTION_TYPES,
@@ -41,15 +42,9 @@ export function Timeline() {
   const placeStrip = useProjectStore((s) => s.placeStrip)
   const updateStrip = useProjectStore((s) => s.updateStrip)
   const removeStrip = useProjectStore((s) => s.removeStrip)
-  const captureState = useProjectStore((s) => s.captureState)
-  const applyState = useProjectStore((s) => s.applyState)
-  const recaptureState = useProjectStore((s) => s.recaptureState)
-  const removeState = useProjectStore((s) => s.removeState)
-  const updateState = useProjectStore((s) => s.updateState)
   const placeMarker = useProjectStore((s) => s.placeMarker)
   const removeMarker = useProjectStore((s) => s.removeMarker)
   const updateMarker = useProjectStore((s) => s.updateMarker)
-  const autoSequence = useProjectStore((s) => s.autoSequence)
 
   const tracks = useAudioStore((s) => s.tracks)
   // Floored at one second so an empty project still has a ruler to look at rather than a
@@ -59,13 +54,12 @@ export function Timeline() {
   const [pxPerSecond, setPxPerSecond] = useState(40)
   const [snap, setSnap] = useState(true)
   const [selectedStripId, setSelectedStripId] = useState<string | null>(null)
-  /** Feedback for Auto. It either replaces the timeline or refuses, and both outcomes need
-   *  saying — a button that silently does nothing reads as broken. */
-  const [notice, setNotice] = useState<string | null>(null)
   const [selectedStateId, setSelectedStateId] = useState<string | null>(null)
 
   // A constant pixel reach means the snap feels identical at every zoom level.
   const tolerance = snap ? SNAP_WINDOW_PIXELS / pxPerSecond : 0
+
+  const setActivePage = useUIStore((s) => s.setActivePage)
 
   const seek = (time: number) => MultiTrackRack.getInstance().seek(time)
 
@@ -263,45 +257,22 @@ export function Timeline() {
         <aside className="w-52 shrink-0 border-r border-aura-line flex flex-col min-h-0">
           <div className="flex items-center gap-1.5 px-2 py-1.5 shrink-0">
             <h3 className="flex-1 text-[10px] uppercase tracking-wider text-slate-500">States</h3>
-
-            {/* The one-click path. Building a good frame is already easy; turning it into a
-                piece was four deliberate steps that most people would never take. */}
             <button
-              onClick={() => {
-                const placed = autoSequence()
-                setNotice(
-                  placed > 0
-                    ? `${placed} strip${placed === 1 ? '' : 's'} from your scene — edit or drag any of them`
-                    : 'Add a shape first — variations are subsets of what is already there',
-                )
-              }}
-              title="Build Intro / Build / Drop / Breakdown from what is in the scene and lay them across the song"
-              className="flex items-center gap-1 h-5 px-1.5 rounded border border-aura-accent text-[9px] text-aura-accent hover:bg-aura-surface transition-colors"
+              onClick={() => setActivePage('scene-shapes')}
+              title="States are built on Scene & Shapes"
+              className="text-[9px] text-slate-600 hover:text-aura-accent transition-colors"
             >
-              <Sparkles className="w-2.5 h-2.5" />
-              Auto
-            </button>
-
-            <button
-              onClick={() => captureState()}
-              title="Capture what is currently visible and wired as a reusable state"
-              className="text-slate-500 hover:text-aura-accent transition-colors"
-            >
-              <Plus className="w-3 h-3" />
+              build →
             </button>
           </div>
 
-          {notice && (
-            <p className="mx-1.5 mb-1 px-1.5 py-1 rounded bg-aura-surface text-[10px] text-slate-400 leading-snug shrink-0">
-              {notice}
-            </p>
-          )}
+
 
           <div className="flex-1 min-h-0 overflow-y-auto px-1.5 pb-1.5 space-y-1">
             {states.length === 0 && (
               <p className="text-[10px] text-slate-600 leading-snug px-0.5">
-                Build a look, then capture it. A state records which objects and wires are
-                on — not copies, so editing a shape updates every state that shows it.
+                No states yet. Build one on Scene &amp; Shapes — a state is the scene plus its
+                routing — then place it here and cut between them.
               </p>
             )}
 
@@ -309,7 +280,7 @@ export function Timeline() {
               <div
                 key={state.id}
                 onClick={() => setSelectedStateId(state.id)}
-                className={`group px-1.5 py-1 rounded border cursor-pointer transition-colors ${
+                className={`px-1.5 py-1 rounded border cursor-pointer transition-colors ${
                   activeState?.id === state.id
                     ? 'border-aura-accent bg-aura-surface'
                     : 'border-transparent hover:bg-aura-surface'
@@ -320,56 +291,26 @@ export function Timeline() {
                     className="w-1.5 h-1.5 rounded-full shrink-0"
                     style={{ backgroundColor: state.color }}
                   />
-                  <input
-                    value={state.name}
-                    onChange={(e) => updateState(state.id, { name: e.target.value })}
-                    onClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur()
-                    }}
-                    aria-label="State name"
-                    title="Rename this state"
-                    spellCheck={false}
-                    className="flex-1 min-w-0 h-4 bg-transparent border border-transparent rounded px-0.5 text-[11px] text-slate-200 truncate outline-none hover:border-aura-line focus:border-aura-focus transition-colors"
-                  />
+                  <span className="flex-1 min-w-0 truncate text-[11px] text-slate-200">
+                    {state.name}
+                  </span>
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
-                      removeState(state.id)
-                    }}
-                    title="Delete this state and every strip using it"
-                    className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-aura-hot transition-all"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-1 mt-1">
-                  <MiniButton onClick={() => applyState(state.id)} title="Load it into the scene">
-                    Load
-                  </MiniButton>
-                  <MiniButton
-                    onClick={() => recaptureState(state.id)}
-                    title="Overwrite it with the current scene"
-                  >
-                    Update
-                  </MiniButton>
-                  <MiniButton
-                    onClick={() =>
                       setSelectedStripId(
                         placeStrip(state.id, TransportClock.time, Math.max(2, duration / 8)),
                       )
-                    }
-                    title="Place it on the timeline at the playhead"
-                    accent
+                    }}
+                    title="Place it at the playhead"
+                    className="shrink-0 h-[18px] px-1.5 rounded border border-aura-accent text-[10px] leading-none text-aura-accent hover:bg-aura-surface transition-colors"
                   >
                     Place
-                  </MiniButton>
+                  </button>
                 </div>
 
                 <p className="text-[9px] text-slate-600 mt-0.5 font-mono tabular-nums">
-                  {state.sceneObjectIds.length} obj · {state.activeConnectionIds.length} wire
-                  {state.activeConnectionIds.length === 1 ? '' : 's'}
+                  {state.objects.length} obj · {state.connections.length} wire
+                  {state.connections.length === 1 ? '' : 's'}
                 </p>
               </div>
             ))}
@@ -474,7 +415,6 @@ export function Timeline() {
                 className="relative border-b border-aura-line"
                 style={{ height: LANE_HEIGHT }}
                 onDoubleClick={(e) => {
-                  setNotice(null)
                   if (!activeState) return
                   setSelectedStripId(
                     placeStrip(
@@ -681,35 +621,6 @@ function IconButton({
       title={title}
       onClick={onClick}
       className="h-6 w-6 flex items-center justify-center rounded text-slate-500 hover:text-slate-100 hover:bg-aura-surface transition-colors"
-    >
-      {children}
-    </button>
-  )
-}
-
-function MiniButton({
-  children,
-  title,
-  onClick,
-  accent,
-}: {
-  children: React.ReactNode
-  title: string
-  onClick: () => void
-  accent?: boolean
-}) {
-  return (
-    <button
-      title={title}
-      onClick={(e) => {
-        e.stopPropagation()
-        onClick()
-      }}
-      className={`h-[18px] flex-1 rounded border text-[10px] leading-none transition-colors ${
-        accent
-          ? 'border-aura-accent text-aura-accent hover:bg-aura-surface'
-          : 'border-aura-line text-slate-400 hover:text-slate-100 hover:border-slate-500'
-      }`}
     >
       {children}
     </button>

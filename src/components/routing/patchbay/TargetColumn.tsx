@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import { useSceneStore } from '@/store/useSceneStore'
-import { useModulationStore } from '@/store/useModulationStore'
+import { useModulationStore, getProcessor } from '@/store/useModulationStore'
 import { usePostStore } from '@/store/usePostStore'
 import { useEnvironmentStore } from '@/store/useEnvironmentStore'
 import { allModulationTargets, readParam, resolveDescriptor } from '@/engine/params/ParamRegistry'
@@ -17,7 +17,7 @@ import { connectionRange, reachableRange } from '@/engine/modulation/preview'
 import { TransportClock } from '@/engine/time/TransportClock'
 import { isTrackVisuallyActive } from '@/store/useAudioStore'
 import { getGenerator } from '@/store/useGeneratorStore'
-import { getLane } from '@/store/useAutomationStore'
+import { getLane, getPatterns } from '@/store/useAutomationStore'
 import { unitSuffix } from '@/utils/units'
 import { formatAddress, type ParamAddress, type ParamDescriptor } from '@/types/params'
 import { registerAnchor, targetAnchorId } from './anchors'
@@ -268,6 +268,8 @@ function TargetRow({ address, descriptor, base, label, ownerLabel }: TargetRowPr
         isTrackActive: isTrackVisuallyActive,
         getGenerator,
         getLane,
+        getPatterns,
+        getProcessor,
       }) ?? connectionRange(connection, base)
 
     // Multiple wires sum onto one parameter (weighted N:1), so the reachable span is

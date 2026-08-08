@@ -1,17 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, Trash2, Waves, PenLine } from 'lucide-react'
 import { useAudioStore } from '@/store/useAudioStore'
 import { useGeneratorStore } from '@/store/useGeneratorStore'
 import { GENERATOR_TYPES, type GeneratorType } from '@/types/generator'
 import { AudioFeatures } from '@/engine/audio/AudioFeatures'
 import { TransportClock } from '@/engine/time/TransportClock'
-import {
-  AUDIO_FIELDS,
-  AUTOMATION_FIELD,
-  GENERATOR_FIELD,
-  RHYTHM_FIELDS,
-} from '@/engine/modulation/fields'
-import { useAutomationStore } from '@/store/useAutomationStore'
+import { AUTOMATION_FIELD, GENERATOR_FIELD, RHYTHM_FIELDS } from '@/engine/modulation/fields'
+import { metricLabel, useAutomationStore } from '@/store/useAutomationStore'
 import type { FeatureKey } from '@/engine/audio/featureTypes'
 import type { FieldRef } from '@/types/params'
 import { StemSignalStrip } from './StemSignalStrip'
@@ -24,10 +19,28 @@ interface SourceColumnProps {
 
 /** Left column of the patchbay — every Field that can drive something.
  *
- *  Each dot is a drag handle. Press and drag one onto a parameter to connect: one
- *  gesture instead of the five-step dropdown flow it replaces (11-ROUTING-UX.md). */
+ *  Each dot is a drag handle. Press and drag one onto a parameter to connect: one gesture
+ *  instead of the five-step dropdown flow it replaces (11-ROUTING-UX.md).
+ *
+ *  **A stem lists the signals you selected, not all thirteen.** Selection happens on the stems
+ *  page (D-88), so this column shows lanes rather than raw metrics — four stems used to mean
+ *  sixty-four rows of things nobody was going to wire, with the two that mattered buried in the
+ *  middle. Rhythm fields are one group rather than one per stem, because beat and bar phase come
+ *  from the project's grid: repeating them under every stem implied four different answers to a
+ *  question that has one. */
 export function SourceColumn({ onDragStart }: SourceColumnProps) {
   const tracks = useAudioStore((s) => s.tracks)
+
+  const allLanes = useAutomationStore((s) => s.lanes)
+  // Narrowed outside the selector: one that built an array would re-render forever (D9).
+  const stemLanes = useMemo(() => allLanes.filter((l) => l.source), [allLanes])
+  const drawnLanes = useMemo(() => allLanes.filter((l) => !l.source), [allLanes])
+
+  /** Which of a stem's signals its strip is drawing. Clicking a row changes it.
+   *
+   *  The strip used to be hardwired to `envelope`, so it showed the same shape no matter which
+   *  signal you were about to wire — a picture that answered a question nobody asked. */
+  const [preview, setPreview] = useState<Record<string, FeatureKey>>({})
 
   return (
     <div className="h-full overflow-y-auto">
@@ -38,40 +51,44 @@ export function SourceColumn({ onDragStart }: SourceColumnProps) {
         </p>
       )}
 
-      {tracks.map((track) => (
-        <Group key={track.id}>
-          <StemHeader trackId={track.id} name={track.name} color={track.color} />
-          {/* The stem's own signal — the shape everything wired from it inherits. */}
-          <StemSignalStrip trackId={track.id} color={track.color} />
+      {tracks.map((track) => {
+        const lanes = stemLanes.filter((l) => l.source!.trackId === track.id)
+        const shown = preview[track.id] ?? (lanes[0]?.source!.metric as FeatureKey) ?? 'envelope'
 
-          {/* This stem's editable curve, first: it is the one most routings should use,
-              because it is the only source you can reshape when the analysis is wrong. */}
-          <StemLaneDot track={track} onDragStart={onDragStart} />
+        return (
+          <Group key={track.id}>
+            <StemHeader trackId={track.id} name={track.name} color={track.color} />
+            <StemSignalStrip trackId={track.id} color={track.color} metric={shown} />
 
-          {AUDIO_FIELDS.map((option) => (
-            <SourceDot
-              key={option.key}
-              label={option.label}
-              field={{ kind: 'audio', key: option.key, sourceId: track.id }}
-              color={track.color}
-              onDragStart={onDragStart}
-              meterKey={option.key as FeatureKey}
-              trackId={track.id}
-            />
-          ))}
-          {RHYTHM_FIELDS.map((option) => (
-            <SourceDot
-              key={option.key}
-              label={option.label}
-              field={{ kind: 'rhythm', key: option.key, sourceId: track.id }}
-              color="var(--color-aura-node-processor)"
-              onDragStart={onDragStart}
-            />
-          ))}
-        </Group>
-      ))}
+            {lanes.length === 0 && (
+              <p className="px-3 py-1 text-[10px] text-slate-600 leading-snug">
+                No signals selected. Choose them on Media &amp; Stems.
+              </p>
+            )}
 
-      <AutomationSection onDragStart={onDragStart} />
+            {lanes.map((lane) => (
+              <SourceDot
+                key={lane.id}
+                label={`${metricLabel(lane.source!.metric)}${
+                  lane.clips.length > 0 ? ` · ${lane.clips.length} clip` : ''
+                }`}
+                field={{ kind: 'automation', key: AUTOMATION_FIELD.key, sourceId: lane.id }}
+                color={lane.color}
+                onDragStart={onDragStart}
+                meterKey={lane.source!.metric as FeatureKey}
+                trackId={track.id}
+                previewing={shown === lane.source!.metric}
+                onPreview={() =>
+                  setPreview((p) => ({ ...p, [track.id]: lane.source!.metric as FeatureKey }))
+                }
+              />
+            ))}
+          </Group>
+        )
+      })}
+
+      <RhythmSection onDragStart={onDragStart} />
+      <DrawnSection lanes={drawnLanes} onDragStart={onDragStart} />
       <GeneratorSection onDragStart={onDragStart} />
     </div>
   )
@@ -115,9 +132,22 @@ interface SourceDotProps {
   onDragStart: (field: FieldRef, event: React.PointerEvent) => void
   meterKey?: FeatureKey
   trackId?: string
+  /** This metric is the one drawn in the strip above. */
+  previewing?: boolean
+  /** Draw this metric in the strip above. Absent on sources with no strip. */
+  onPreview?: () => void
 }
 
-function SourceDot({ label, field, color, onDragStart, meterKey, trackId }: SourceDotProps) {
+function SourceDot({
+  label,
+  field,
+  color,
+  onDragStart,
+  meterKey,
+  trackId,
+  previewing,
+  onPreview,
+}: SourceDotProps) {
   const id = sourceAnchorId(field)
   const dotRef = useRef<HTMLSpanElement>(null)
   const meterRef = useRef<HTMLDivElement>(null)
@@ -146,13 +176,18 @@ function SourceDot({ label, field, color, onDragStart, meterKey, trackId }: Sour
 
   return (
     <div
-      className="group relative flex items-center gap-1.5 pl-3 pr-2 py-0.5 hover:bg-aura-surface cursor-grab active:cursor-grabbing select-none"
+      className={`group relative flex items-center gap-1.5 pl-3 pr-2 py-0.5 cursor-grab active:cursor-grabbing select-none ${
+        previewing ? 'bg-aura-surface' : 'hover:bg-aura-surface'
+      }`}
       onPointerDown={(e) => {
         e.preventDefault()
+        // Draw it above before the drag begins, so the shape you are about to wire is on
+        // screen while you aim — press-and-look is one gesture, not two.
+        onPreview?.()
         beginDrag(field, id, 0, 0)
         onDragStart(field, e)
       }}
-      title="Drag onto a parameter to connect" 
+      title={onPreview ? 'Drag onto a parameter to connect · click to graph it above' : 'Drag onto a parameter to connect'}
     >
       {meterKey && (
         <div
@@ -161,7 +196,11 @@ function SourceDot({ label, field, color, onDragStart, meterKey, trackId }: Sour
           style={{ backgroundColor: color, transform: 'scaleX(0)' }}
         />
       )}
-      <span className="relative flex-1 min-w-0 truncate text-[10px] text-slate-400 group-hover:text-slate-200">
+      <span
+        className={`relative flex-1 min-w-0 truncate text-[10px] transition-colors ${
+          previewing ? 'text-slate-100' : 'text-slate-400 group-hover:text-slate-200'
+        }`}
+      >
         {label}
       </span>
       {/* The anchor the wire actually leaves from. */}
@@ -175,43 +214,45 @@ function SourceDot({ label, field, color, onDragStart, meterKey, trackId }: Sour
 }
 
 /** The stem's own automation curve, shown inside its group. */
-function StemLaneDot({
-  track,
-  onDragStart,
-}: {
-  track: { id: string; color: string }
-  onDragStart: SourceColumnProps['onDragStart']
-}) {
-  const lane = useAutomationStore((s) => s.lanes.find((l) => l.source?.trackId === track.id))
-  if (!lane) return null
-
+/** Beat and bar phase. One group, not one per stem.
+ *
+ *  These are derived from the project's beat grid and take no stem argument — `evaluateRhythm`
+ *  never looked at `sourceId`. Listing them under every stem implied four different answers to a
+ *  question that has one, and multiplied the column length for nothing. */
+function RhythmSection({ onDragStart }: SourceColumnProps) {
   return (
-    <SourceDot
-      label={`Automation${lane.mode === 'edited' ? ' · edited' : ''}`}
-      field={{ kind: 'automation', key: AUTOMATION_FIELD.key, sourceId: lane.id }}
-      color={track.color}
-      onDragStart={onDragStart}
-    />
+    <Group>
+      <header className="flex items-center gap-1.5 px-2 py-1.5 sticky top-0 bg-aura-base z-10">
+        <Waves className="w-3 h-3 text-slate-500" />
+        <h3 className="flex-1 text-[11px] font-medium text-slate-200">Rhythm</h3>
+      </header>
+
+      {RHYTHM_FIELDS.map((option) => (
+        <SourceDot
+          key={option.key}
+          label={option.label}
+          field={{ kind: 'rhythm', key: option.key }}
+          color="var(--color-aura-node-processor)"
+          onDragStart={onDragStart}
+        />
+      ))}
+    </Group>
   )
 }
 
-/** Detached lanes only. A stem's own curve appears inside that stem's group instead,
- *  because that is where it belongs — it is that stem's signal, not a separate one. */
-function AutomationSection({ onDragStart }: SourceColumnProps) {
-  // Select the raw array and narrow it OUTSIDE the selector. A selector that returns
-  // `.filter(...)` allocates a new array on every call, so Zustand's equality check can
-  // never pass — React re-renders, the selector runs again, and the component loops
-  // until "Maximum update depth exceeded". The console names it: "the result of
-  // getSnapshot should be cached".
-  const allLanes = useAutomationStore((s) => s.lanes)
-  const lanes = useMemo(() => allLanes.filter((l) => !l.source), [allLanes])
+/** Curves with no stem behind them. A stem's own signals appear inside that stem's group
+ *  instead, because that is where they belong. */
+function DrawnSection({
+  lanes,
+  onDragStart,
+}: SourceColumnProps & { lanes: { id: string; name: string; color: string }[] }) {
   if (lanes.length === 0) return null
 
   return (
     <Group>
       <header className="flex items-center gap-1.5 px-2 py-1.5 sticky top-0 bg-aura-base z-10">
-        <PenLine className="w-3 h-3 text-aura-node-parameter shrink-0" />
-        <h3 className="flex-1 text-[10px] uppercase tracking-wider text-slate-500">Drawn</h3>
+        <PenLine className="w-3 h-3 text-slate-500" />
+        <h3 className="flex-1 text-[11px] font-medium text-slate-200">Drawn</h3>
       </header>
 
       {lanes.map((lane) => (
@@ -227,8 +268,6 @@ function AutomationSection({ onDragStart }: SourceColumnProps) {
   )
 }
 
-/** Generators — synthetic stems. Deformers have no built-in motion (D-36), so anything
- *  that should move on its own is driven from one of these. */
 function GeneratorSection({ onDragStart }: SourceColumnProps) {
   const generators = useGeneratorStore((s) => s.generators)
   const addGenerator = useGeneratorStore((s) => s.addGenerator)

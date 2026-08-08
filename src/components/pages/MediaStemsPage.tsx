@@ -8,8 +8,7 @@ import { RealtimeAnalyser } from '@/engine/audio/RealtimeAnalyser'
 import { AudioFeatures } from '@/engine/audio/AudioFeatures'
 import { platform, type PickedAudio } from '@/engine/platform/PlatformAdapter'
 import { TrackRow } from '@/components/audio/TrackRow'
-import { RackPlayhead } from '@/components/audio/RackPlayhead'
-import { AutomationPanel } from '@/components/automation/AutomationPanel'
+import { DrawnLaneRow } from '@/components/automation/DrawnLaneRow'
 import { getNextStemColor, generateId } from '@/utils/stemColors'
 import type { Track } from '@/types/audio'
 
@@ -26,8 +25,21 @@ export function MediaStemsPage() {
   // The longest trimmed stem IS the project. Every waveform is drawn against it, so the
   // rack is one timeline rather than N independent ones.
   const duration = useMemo(() => projectDuration(tracks), [tracks])
-  const hasDetachedLane = useAutomationStore((s) => s.lanes.some((l) => !l.source))
+  const allLanes = useAutomationStore((s) => s.lanes)
   const addLane = useAutomationStore((s) => s.addLane)
+  // Filtered outside the selector: one that built a new array would return a fresh reference
+  // every call and re-render forever, which is exactly how D9 crashed Routing.
+  const detachedLanes = useMemo(() => allLanes.filter((l) => !l.source), [allLanes])
+
+  /** One grid for the whole rack, from the first stem that reports a tempo — every row on
+   *  the page shares a time axis, so they must share what they snap to. */
+  const beatGrid = useMemo(() => {
+    for (const track of tracks) {
+      const grid = AudioFeatures.getBeatGrid(track.id)
+      if (grid.length > 0) return grid
+    }
+    return [] as number[]
+  }, [tracks])
 
   const importFiles = useCallback(async (picked: PickedAudio[]) => {
     const audioFiles = picked.filter(
@@ -122,7 +134,19 @@ export function MediaStemsPage() {
           {tracks.map((track) => (
             <TrackRow key={track.id} track={track} projectDuration={duration} />
           ))}
-          <RackPlayhead containerRef={rackRef} duration={duration} />
+
+          {/* Drawn curves, immediately under the stems and in the same shape as a stem's own
+              curve — because that is what they are: a curve on this project's timeline. The
+              only difference is that no stem is the shape of it. */}
+          {detachedLanes.map((lane) => (
+            <DrawnLaneRow
+              key={lane.id}
+              lane={lane}
+              duration={duration}
+              beatGrid={beatGrid}
+            />
+          ))}
+
         </div>
       )}
 
@@ -163,10 +187,6 @@ export function MediaStemsPage() {
 
       {/* Detached lanes — for a shape the music does not contain. A stem's own curve
           lives under its row, where its waveform gives it a time reference. */}
-      {/* Detached lanes only, and only once one exists. Every stem already has its curve
-          under its own waveform, so an empty dock here would be furniture. */}
-      {hasDetachedLane && <AutomationPanel duration={duration} />}
-
       {/* ─── Add more (when tracks exist) ─── */}
       {tracks.length > 0 && (
         <div className="mx-3 mb-3 flex gap-2 shrink-0">
@@ -186,11 +206,10 @@ export function MediaStemsPage() {
             <span>Add more stems</span>
           </div>
 
-          {/* The way in to a detached lane. The panel that used to own this button now hides
-              itself when empty, and a creation affordance inside the thing it creates is a
-              door on the inside of the room. */}
+          {/* Sits beside Add more stems because it adds the same kind of thing: another
+              source on the same timeline. The new row appears under the last stem. */}
           <button
-            onClick={() => addLane(duration)}
+            onClick={() => addLane()}
             title="Draw a curve the music does not contain — an entrance sweep, a manual build"
             className="p-2 px-3 rounded border border-dashed border-aura-line flex items-center gap-2 text-xs text-slate-500 hover:border-slate-500 hover:text-slate-300 transition-colors"
           >

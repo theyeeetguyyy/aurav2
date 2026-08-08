@@ -1,34 +1,35 @@
-/** Automation lanes — the editable modulation curve (Principle 10, §4.2).
+import type { AutomationClip } from './clips'
+
+/** Automation lanes — a row that automation clips sit on (Principle 10, §4.2).
  *
- *  **A lane normally belongs to a stem.** Every imported stem gets one, showing the curve
- *  the analyser derived from it, drawn under that stem's own waveform on that stem's own
- *  timeline. You can see exactly where the kick lands, reshape the curve where the
- *  analysis got it wrong, and wire the result.
+ *  **A lane normally belongs to a stem.** Every imported stem gets one, and with nothing on it
+ *  the lane *is* that stem's analysed signal — exact, free, and with no separate curve to keep
+ *  in sync. Placing a clip overrides that signal for the span the clip covers, and only there:
+ *  outside it the analysis resumes. So "the kick drives this, except during the drop where I
+ *  want my own shape" is two objects and no modes.
  *
- *  That placement is the whole design. A free-floating lane on its own timeline is close
- *  to unusable — there is no visual cue for what moment you are drawing at, so you are
- *  drawing to a beat you cannot see. Detached lanes still exist for "I want a shape the
- *  music does not contain", but they are the exception, not the path.
+ *  That placement under the stem's own waveform is the whole design. A free-floating lane on
+ *  its own timeline is close to unusable — there is no visual cue for what moment you are
+ *  drawing at, so you are drawing to a beat you cannot see. Detached lanes still exist for "I
+ *  want a shape the music does not contain", but they are the exception, not the path.
  *
- *  A lane starts in `analysis` mode holding **no points at all**: it defers to the feature
- *  timeline, which is exact and costs nothing. The first edit snapshots that curve into
- *  points and the lane becomes `edited`. One-way, with a reset — so "what is this showing
- *  me" always has a simple answer.
+ *  **There is no `mode` any more.** A lane used to carry `analysis | edited`, a flag that had
+ *  to agree with whether it held points — and a flag that can disagree with the data it
+ *  describes is a bug waiting for a reason. `clips.length === 0` says the same thing and cannot
+ *  be wrong.
  *
- *  Trivially satisfies HC-3 either way: a feature lookup and a point lookup are both pure
+ *  Trivially satisfies HC-3: a feature lookup, a clip lookup and a point lookup are all pure
  *  functions of `t`. */
 
 export interface AutomationPoint {
-  /** Seconds into the project. */
+  /** Time. **Seconds** in a raw curve; **0–1** inside a pattern. Whoever holds the array
+   *  knows which, and the two never mix in one array. */
   t: number
   /** 0–1. Same normalised domain every Field speaks. */
   v: number
 }
 
 export type LaneInterpolation = 'linear' | 'smooth' | 'step'
-
-/** `analysis` defers to the feature timeline; `edited` uses the lane's own points. */
-export type LaneMode = 'analysis' | 'edited'
 
 /** Which stem and metric a lane is the curve *of*. Absent on a detached lane. */
 export interface LaneSource {
@@ -40,19 +41,24 @@ export interface LaneSource {
 
 /** The shape lane evaluation needs. Structural, so `engine/` never imports the store. */
 export interface LaneData {
-  points: AutomationPoint[]
-  interpolation: LaneInterpolation
-  mode: LaneMode
+  /** Clips placed on this lane, in creation order. Later ones win an overlap. */
+  clips: AutomationClip[]
   source?: LaneSource
 }
 
-/** Value of a lane at a time. Points are kept sorted by `t`, so this is a binary search.
+/** Value of a point curve at `t`, in whatever domain the points use.
  *
- *  Outside the drawn range the lane holds its end value rather than falling to zero —
- *  a lane drawn over the chorus should not silently mute the parameter everywhere else.
- *  (Blender NLA calls this `hold`; it is the only sane default.) */
-export function sampleLane(lane: LaneData, t: number): number {
-  const points = lane.points
+ *  The one interpolator in the system: patterns, migrations and previews all read through it,
+ *  so a curve drawn on screen is arithmetically the curve that runs. Points are kept sorted,
+ *  so this is a binary search.
+ *
+ *  Outside the range it holds the end value rather than falling to zero — a curve that stops
+ *  should not silently mute its parameter. (Blender NLA calls this `hold`.) */
+export function samplePoints(
+  points: readonly AutomationPoint[],
+  interpolation: LaneInterpolation,
+  t: number,
+): number {
   if (points.length === 0) return 0
   if (points.length === 1) return points[0].v
   if (t <= points[0].t) return points[0].v
@@ -75,7 +81,7 @@ export function sampleLane(lane: LaneData, t: number): number {
 
   const x = (t - a.t) / span
 
-  switch (lane.interpolation) {
+  switch (interpolation) {
     case 'step':
       return a.v
     case 'smooth':
@@ -89,16 +95,21 @@ export function sampleLane(lane: LaneData, t: number): number {
 
 /** Insert or replace a point, keeping the array sorted and free of duplicates.
  *
- *  `tolerance` is what makes freehand drawing usable: a pointer emits far more samples
- *  than the curve needs, and without collapsing near-coincident times a two-second drag
- *  produces hundreds of points that are indistinguishable from a dozen. */
+ *  `tolerance` is what makes freehand drawing usable: a pointer emits far more samples than
+ *  the curve needs, and without collapsing near-coincident times a two-second drag produces
+ *  hundreds of points that are indistinguishable from a dozen.
+ *
+ *  `max` clamps the time domain — 1 for a pattern, the project duration for a raw curve.
+ *  Without it, drawing at the right edge of a pattern writes points past 1 that nothing will
+ *  ever sample. */
 export function writePoint(
   points: AutomationPoint[],
   t: number,
   v: number,
   tolerance = 0.01,
+  max = Number.POSITIVE_INFINITY,
 ): AutomationPoint[] {
-  const time = Math.max(0, t)
+  const time = Math.min(max, Math.max(0, t))
   const value = Math.min(1, Math.max(0, v))
 
   const next = points.filter((p) => Math.abs(p.t - time) > tolerance)
@@ -119,15 +130,15 @@ export function clearRange(
   return points.filter((p) => p.t < low || p.t > high)
 }
 
-/** Snapshot a sampled signal into an editable curve.
+/** Snapshot a sampled signal into an editable curve, normalised to 0–1 time.
  *
- *  Feature timelines run at 200 Hz — a four-minute stem is 48 000 values, which is not a
- *  curve anyone can edit. Decimating to a few hundred points keeps the shape legible and
- *  the drag handles reachable, and the error against the original is far below what a
- *  visual parameter can express.
+ *  Feature timelines run at 200 Hz — a four-minute stem is 48 000 values, which is not a curve
+ *  anyone can edit. Decimating to a few hundred points keeps the shape legible and the drag
+ *  handles reachable, and the error against the original is far below what a visual parameter
+ *  can express.
  *
- *  Peak-preserving rather than averaging: a kick is one or two samples wide at this rate,
- *  and averaging would flatten exactly the transients the curve exists to capture. */
+ *  Peak-preserving rather than averaging: a kick is one or two samples wide at this rate, and
+ *  averaging would flatten exactly the transients the curve exists to capture. */
 export function decimate(
   sample: (t: number) => number,
   duration: number,
@@ -137,8 +148,8 @@ export function decimate(
 
   const out: AutomationPoint[] = []
   const step = duration / (points - 1)
-  // Oversample within each bucket and keep the peak, so a transient between two output
-  // points still shows up.
+  // Oversample within each bucket and keep the peak, so a transient between two output points
+  // still shows up.
   const SUBSAMPLES = 8
 
   for (let i = 0; i < points; i++) {
@@ -148,24 +159,38 @@ export function decimate(
       const value = sample(t + (j / SUBSAMPLES) * step)
       if (value > peak) peak = value
     }
-    out.push({ t, v: Math.min(1, Math.max(0, peak)) })
+    out.push({ t: i / (points - 1), v: Math.min(1, Math.max(0, peak)) })
   }
   return out
 }
 
-/** A flat lane at `value`, spanning the project. The starting point for "I want to draw
- *  on top of something" rather than an empty canvas. */
-export function flatLane(duration: number, value = 0.5): AutomationPoint[] {
+// ─────────────────────────────────────────────────────────────────────────────
+// Starting shapes. All in pattern time (0–1), because a pattern is what you draw on.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Flat, for drawing on top of rather than into an empty canvas. */
+export function flatPattern(value = 0.5): AutomationPoint[] {
   return [
     { t: 0, v: value },
-    { t: Math.max(0.001, duration), v: value },
+    { t: 1, v: value },
   ]
 }
 
-/** One cycle-per-bar ramp, as a starting shape worth having. */
-export function rampLane(duration: number, from = 0, to = 1): AutomationPoint[] {
+/** A rise. The shape a build-up wants, and the one people reach for first. */
+export function rampPattern(from = 0, to = 1): AutomationPoint[] {
   return [
     { t: 0, v: from },
-    { t: Math.max(0.001, duration), v: to },
+    { t: 1, v: to },
+  ]
+}
+
+/** A hit: full immediately, then decaying. The shape of a kick, and the reason `repeat`
+ *  exists — one of these on a one-beat clip repeated across a bar is a pumping parameter. */
+export function stabPattern(): AutomationPoint[] {
+  return [
+    { t: 0, v: 1 },
+    { t: 0.25, v: 0.35 },
+    { t: 0.6, v: 0.08 },
+    { t: 1, v: 0 },
   ]
 }

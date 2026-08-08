@@ -59,6 +59,25 @@ on an assumption.
 
 ---
 
+## 0b · The queue has changed
+
+*2026-08-07.* Everything below this section is the old queue — defects, structure, craft, features.
+It is still accurate as an inventory and it is **no longer the priority order**.
+
+The priority is now one thing: **widen the medium**. Ten users produce eight similar outputs, and no
+amount of defect-fixing or UI craft changes that. The argument, the bar and the sequence are in
+**[17-EXPRESSIVE-RANGE.md](17-EXPRESSIVE-RANGE.md)**; the phase breakdown is 10A–10F in
+[06-ROADMAP.md](06-ROADMAP.md).
+
+Two things in the lists below are explicitly deferred rather than dropped:
+
+- **The craft pass** (gizmos, drag-to-scrub, hover, easing). Diagnosed in
+  [05-DESIGN-SYSTEM.md](05-DESIGN-SYSTEM.md) §"Where this system is still not honest". Real, and it
+  makes a narrow tool pleasant — see D-104.
+- **More post effects and more primitives.** Permutations inside the one image family that exists.
+
+Defects still get fixed as found. That has not changed and does not need a queue.
+
 ## 1 · Defects
 
 | # | Symptom | Cause | State |
@@ -89,6 +108,15 @@ on an assumption.
 | D26 | **A stem curve could not be made to snap** | Interpolation was exposed only on the detached-lane panel. The stem lane is the *primary* path (D-55), so on the path anyone actually uses a curve could only ease — and the snap is the move this genre is built on. The engine had supported `step` since it was written | ✅ fixed |
 | D27 | **Hiding the empty lane dock hid the only way to make a lane** | The `+` lived in the panel's own header — a door on the inside of the room. *Draw a curve* now sits beside *Add more stems* | ✅ fixed |
 | D24 | **Tempo detected an octave low** | A synthetic 128 BPM kick reports 64 BPM. The beat grid still lands on beats, so snapping works — it is half as fine as it should be, and the readout is wrong | ⬜ open, low |
+| D25 | **Every state's shapes appeared in the layer stack at once** | A state was a *selection* over one shared object pool, so a five-state project showed thirty objects and switching states only toggled which were hidden. Unauthorable. States own their scenes now (D-98) | ✅ fixed |
+| D26 | **The camera path was drawn on every page** | It was on the general gizmo layer, so it appeared on Look, Routing, Scene — and on the export monitor, which is supposed to be a proof of the file. Camera furniture has its own layer and each page declares what it shows (D-101) | ✅ fixed |
+| D27 | **The Scene Camera was invisible in preview** | Nothing drew it, so you composed a shot whose frame edges you could not see. Frustum + motion trail, as Blender does (D-102) | ✅ fixed |
+| D28 | **Adding Follow Path did nothing** | `progress` sat at 0 with nothing driving it, so the camera parked at the first waypoint and the feature looked broken. Creating the behaviour now creates the ramp too | ✅ fixed |
+| D29 | **"Aim Along Path" rendered as `0.00×`** | Declared as a 0–1 float, so it drew as a numeric field that said nothing about being a yes/no. It is a checkbox | ✅ fixed |
+| D30 | **Two playhead systems disagreed on the stems page** | A rack-wide line measured a *different element* than the per-row clip tracks, so it sat at a visible offset. Deleted; each row draws its own inside its own container, correct by construction | ✅ fixed |
+| D31 | **The scrub bar did not feel draggable** | It had the drag listeners all along — and a 6px-tall target with no handle. 24px hit area and a visible grip | ✅ fixed |
+| D32 | **REC was wired to nothing** | Styled like a live feature since Phase 1. Third instance of the pattern after `add-marker` and `forgetHandle` (D-100) | ✅ fixed |
+| D33 | **A new state's default object was named "Object"** | `defaultScene()` named a brick id that does not exist, so the registry lookup failed and it fell through to the generic label. Mine, introduced the same day | ✅ fixed |
 | **D8** | Distant geometry pops out | Camera far plane, grid fade and fog interact; needs one coherent depth budget | ⬜ open |
 
 **D7 is the important one** and it is not a display bug. It is the same root cause as the

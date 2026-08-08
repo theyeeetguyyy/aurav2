@@ -194,7 +194,7 @@ type. A `step` mode is a small change with a large payoff, and it is the missing
 
 ### States are selections, so a state can be a *variation* and not just a look
 
-`captureState` records which objects are on. Two ideas fall straight out:
+A state owns its scene (D-98). Two ideas fall straight out:
 
 1. ~~**Auto-variations.**~~ ✅ built (D-74). Two rules were not obvious until the naive version
    existed: lights must be in every variation (or a "variation" is a black frame), and wires

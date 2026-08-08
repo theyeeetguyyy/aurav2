@@ -18,6 +18,32 @@ cd aurav2 && (npm run dev > "$TEMP/aura-dev.log" 2>&1 &) ; sleep 6; cat "$TEMP/a
 
 Vite serves on **5173**. Confirm with `curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/`.
 
+**If the log says `Port 5173 is in use, trying another one...`, a previous run is still alive.**
+Stop it before starting another — do not just accept the new port. Six orphans accumulated in one
+session that way, each still holding a port and still recompiling on every edit.
+
+### Stopping it — `pkill -f vite` does NOT work here
+
+Vite runs as `node.exe` with `vite.js` as an *argument*. `pkill -f vite` matches nothing, **exits 0,
+and looks like it worked**. Use PowerShell and match the command line:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
+  Where-Object { $_.CommandLine -like '*vite*' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+```
+
+Verify, rather than trusting the kill:
+
+```powershell
+Get-NetTCPConnection -State Listen -LocalPort 5173,5174,5175,5176,5177,5178 -ErrorAction SilentlyContinue |
+  Select-Object LocalPort, OwningProcess
+```
+
+Empty output means clean. Check the `CommandLine` before killing if anything else on the machine
+might be running node — the filter above catches *every* vite, including one the user started
+themselves.
+
 ## 2 · Browser
 
 Playwright is not a dependency of the project — install it in the scratchpad, not the repo:

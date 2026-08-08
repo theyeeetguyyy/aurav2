@@ -1,7 +1,13 @@
 import type { FieldRef } from '@/types/params'
 import { AudioFeatures } from '@/engine/audio/AudioFeatures'
 import type { FeatureKey } from '@/engine/audio/featureTypes'
-import { sampleLane, type LaneData } from '@/engine/automation/lane'
+import type { LaneData } from '@/engine/automation/lane'
+import {
+  holdValue,
+  sampleClips,
+  type AutomationPattern,
+} from '@/engine/automation/clips'
+import type { ModulationProcessor } from './processors'
 
 /** Field evaluation — every signal in AURA reduced to one call (Principle 12).
  *
@@ -28,6 +34,11 @@ export interface FieldContext {
   getGenerator?(id: string): GeneratorConfig | null
   /** Automation lane lookup. Same rule. */
   getLane?(id: string): LaneData | null
+  /** Every pattern in the project, keyed by id. Clips reference patterns rather than holding
+   *  them, so evaluating a lane needs both. */
+  getPatterns?(): Readonly<Record<string, AutomationPattern>>
+  /** A shared processing stage by id. Wires reference processors rather than owning them. */
+  getProcessor?(id: string): ModulationProcessor | null
 }
 
 /** The shape field evaluation needs from a Generator. Structural, so `engine/` does not
@@ -53,18 +64,25 @@ export function evaluateField(field: FieldRef, ctx: FieldContext): number {
       const lane = field.sourceId ? (ctx.getLane?.(field.sourceId) ?? null) : null
       if (!lane) return 0
 
-      // Unedited, a stem lane IS its feature timeline — exact, and with no separate curve
-      // to keep in sync. Editing snapshots it into points and this branch stops applying.
-      if (lane.mode === 'analysis' && lane.source) {
-        if (!ctx.isTrackActive(lane.source.trackId)) return 0
+      // Solo gates first, whatever the lane holds: the curve came from that stem, so isolating
+      // the stem must isolate what it drives (HC-11).
+      if (lane.source && !ctx.isTrackActive(lane.source.trackId)) return 0
+
+      const patterns = ctx.getPatterns?.() ?? {}
+
+      // A clip wins for exactly the span it covers, and nowhere else. That is what makes "the
+      // kick drives this, except during the drop" expressible without a mode.
+      const clipped = sampleClips(lane.clips, patterns, ctx.time)
+      if (clipped !== null) return clipped
+
+      // Outside every clip, a stem lane resumes its analysed signal — the useful default, and
+      // the reason placing one clip does not silence the rest of the song.
+      if (lane.source) {
         return AudioFeatures.sample(lane.source.trackId, lane.source.metric as FeatureKey, ctx.time)
       }
 
-      // An edited curve is already f(t) — no shaping, no state, nothing to get wrong.
-      // Solo still gates it: the curve came from that stem, so isolating the stem must
-      // isolate what it drives (HC-11).
-      if (lane.source && !ctx.isTrackActive(lane.source.trackId)) return 0
-      return sampleLane(lane, ctx.time)
+      // A drawn lane has no signal to fall back to, so it holds the nearest clip edge.
+      return holdValue(lane.clips, patterns, ctx.time) ?? 0
     }
     case 'narrative':
     case 'object':
@@ -218,10 +236,13 @@ export const GENERATOR_FIELD: FieldOption = {
 
 /** Same shape as the generator field: lanes are user-created, so the catalogue exposes
  *  the kind and the instance supplies the identity. */
+/** Any lane: a stem's selected signal, or a curve drawn from nothing. Both are lanes, and a
+ *  lane is the only way to reference either (D-88) — which is why this one option covers what
+ *  used to need thirteen per stem. */
 export const AUTOMATION_FIELD: FieldOption = {
   kind: 'automation',
   key: 'out',
-  label: 'Drawn',
+  label: 'Automation',
   needsSource: true,
 }
 

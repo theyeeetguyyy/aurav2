@@ -206,35 +206,59 @@ Per Principle 3. `Signal` is the only type permitted to bind onto a parameter of
 type. Enforced in React Flow via `isValidConnection`, and independently in the engine —
 the UI is not the validator.
 
-### HC-7 — States reference, they do not copy
+### HC-7 — A State owns its scene
 
-Per Principle 5. `Strip.stateId` is a reference. Editing a `VisualState` updates every
-strip that points at it.
+**Rewritten 2026-08-07. The previous version of this constraint was wrong in practice.**
 
-### HC-8 — Routing is global; States activate subsets
-
-**Decided 2026-07-27.** Previously the type said connections belong to a State while the
-store held one flat global array — a direct contradiction.
-
-Resolved: **the modulation graph is project-global.** A `VisualState` holds a set of
-*activations* — which connections are live, and per-state overrides of their weights.
+A `VisualState` holds its objects, its routing and its post chain. Switching to a state loads that
+scene; switching away saves it. `Strip.stateId` is still a reference, so one state placed three
+times is still one thing to edit — that half was right.
 
 ```ts
 interface VisualState {
   id: ID
   name: string
-  sceneObjectIds: ID[]
-  activeConnectionIds: ID[]
-  connectionOverrides: Record<ID, Partial<SignalChain>>
-  // ...
+  color: string
+  objects: SceneObject[]
+  connections: ModulationConnection[]
+  post: EffectInstance[]
+  postBypassed: boolean
 }
 ```
 
-Why: if routing lived inside a state, every timeline cut would hard-reset every envelope
-in the project. Musically that is almost always wrong — you want "drums → scale" to
-survive the cut and only the *scene* to change. Global routing with per-state activation
-gives both behaviours, and makes the common case (a link that persists across the whole
-song) require zero work.
+**What it used to say, and why it failed.** A State held *selections* — `sceneObjectIds`,
+`activeConnectionIds`, `activePostIds` — over one project-global pool. The reasoning was sound:
+editing a shape would update every state showing it, and no state could drift from another.
+
+It was unusable for a reason no amount of correctness could fix. Every state's objects lived in one
+pool, so **the layer stack showed all of them at once**. A five-state project presented thirty
+shapes, and switching states only changed which were hidden. There is no way to author against
+that — you cannot see what you are editing.
+
+Ownership costs the propagation. Editing a shape in one state does not change the copy in another.
+That is the correct trade: a state is now a self-contained thing, which is also what makes it
+importable, exportable and shareable — see [17-EXPRESSIVE-RANGE.md](17-EXPRESSIVE-RANGE.md) §3.
+
+*Consequence:* the entire apparatus that existed to mask a shared pool is deleted — `isVisible`,
+`isConnectionActive`, `isPostActive`, `withOverride`, `connectionOverrides`, and the question of
+which authority wins when the timeline and the editor disagree. `resolveTimeline` returns one state
+id where it used to return three sets. **The correct model was also the smaller one.**
+
+### HC-8 — Automation is project-global; a state references it
+
+**Rewritten 2026-08-07, following HC-7.**
+
+Routing is *not* global any more — a wire belongs to the state it was drawn in. But **automation
+lanes and patterns are**, and they have to be:
+
+- A stem lane is derived from project audio. It cannot belong to a state, because the audio does not.
+- Patterns are referenced by clips, including clips on stem lanes. A pattern owned by a state would
+  break the moment you switched away from it.
+
+So a state's wires reference lanes and patterns that outlive them. For **export** — a state as a
+portable artefact — that makes bundling a *collection* problem: gather the patterns and drawn lanes
+a state's wires actually reach, and leave stem-bound lanes as inputs the importer maps to their own
+audio. That is how asset packages work everywhere, and it is the right seam.
 
 ### HC-9 — One scene, one renderer
 

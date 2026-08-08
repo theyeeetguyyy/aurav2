@@ -149,3 +149,19 @@ export function cameraTransformFromQuaternion(
     'rotation.z': scratchEuler.z * RAD_TO_DEG,
   }
 }
+
+/** How far animating a camera parameter should move it, by default.
+ *
+ *  Deliberately **not** the descriptor's `min`/`max`. Those are slider bounds — position runs
+ *  ±500m so you can leave the scene and come back — and a drawn 0–1 curve mapped onto ±500 would
+ *  fling the camera into the void on its first keyframe. These are the ranges a *move* lives in:
+ *  ten metres is a real dolly, forty-five degrees is a real pan.
+ *
+ *  Centred on zero because the chain's output is **added** to the authored value, so a curve
+ *  sitting at 0.5 means "stay where I put it". Widening it afterwards is one field in the wire
+ *  inspector; starting somewhere usable is what stops the first attempt looking broken. */
+export function cameraAnimationRange(key: string): { min: number; max: number } {
+  if (key === 'fov') return { min: -20, max: 20 }
+  if (key.startsWith('rotation')) return { min: -45, max: 45 }
+  return { min: -10, max: 10 }
+}

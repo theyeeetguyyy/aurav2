@@ -1,13 +1,16 @@
-import { Music, Shapes, Sparkles, GitBranch, Camera, Film } from 'lucide-react'
+import { Music, Shapes, Sparkles, GitBranch, Camera, Film, LayoutList } from 'lucide-react'
 import { useUIStore, type WorkspacePage } from '@/store/useUIStore'
 
+/** Left to right IS the pipeline: pull automation out of the audio, build a state, refine
+ *  it, arrange states in time, write the file. The order is the explanation. */
 const TABS: { page: WorkspacePage; label: string; icon: typeof Music; shortLabel: string }[] = [
   { page: 'media-stems', label: 'Media & Stems', icon: Music, shortLabel: '1' },
   { page: 'scene-shapes', label: 'Scene & Shapes', icon: Shapes, shortLabel: '2' },
   { page: 'look', label: 'Look', icon: Sparkles, shortLabel: '3' },
   { page: 'routing', label: 'Routing', icon: GitBranch, shortLabel: '4' },
   { page: 'camera', label: 'Camera', icon: Camera, shortLabel: '5' },
-  { page: 'deliver', label: 'Deliver', icon: Film, shortLabel: '6' },
+  { page: 'timeline', label: 'Timeline', icon: LayoutList, shortLabel: '6' },
+  { page: 'deliver', label: 'Deliver', icon: Film, shortLabel: '7' },
 ]
 
 export function WorkspaceNavBar() {

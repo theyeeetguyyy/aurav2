@@ -109,10 +109,7 @@ export function CameraRigPanel() {
             className="accent-aura-accent"
           />
         </label>
-        <p className="text-[10px] text-slate-600 leading-snug">
-          Off holds the authored rotation — a locked-off shot. On tracks the target, even
-          while it moves.
-        </p>
+
       </header>
 
       {/* ─── Transform ─── */}
@@ -133,10 +130,6 @@ export function CameraRigPanel() {
             }
           />
         ))}
-        <p className="px-0.5 text-[10px] text-slate-600 leading-snug">
-          Wire any of these from a stem on Routing, or draw one as a curve on Media &amp; Stems
-          — that is a keyframed camera move.
-        </p>
       </div>
 
       <div className="flex items-center justify-between px-2 py-1.5 shrink-0">

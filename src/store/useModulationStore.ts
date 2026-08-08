@@ -1,5 +1,11 @@
 import { create } from 'zustand'
 import { recordChange } from '@/store/historyHook'
+import {
+  getProcessorBrick,
+  processorDefaults,
+  type ModulationProcessor,
+  type ProcessorKind,
+} from '@/engine/modulation/processors'
 import type { ID } from '@/types/audio'
 import type { EventTrigger, ModulationConnection, SignalChain } from '@/types/modulation'
 import { DEFAULT_EVENT_TRIGGER, DEFAULT_SIGNAL_CHAIN } from '@/types/modulation'
@@ -19,6 +25,18 @@ import { generateId } from '@/utils/stemColors'
 interface ModulationState {
   connections: ModulationConnection[]
   triggers: EventTrigger[]
+
+  /** Shared processing stages, keyed by id. Several wires may reference one, which is the whole
+   *  reason they are objects rather than more fields on a chain. */
+  processors: Record<ID, ModulationProcessor>
+
+  addProcessor: (kind: ProcessorKind) => ID
+  removeProcessor: (id: ID) => void
+  setProcessorParam: (id: ID, key: string, value: number) => void
+  setProcessorEnabled: (id: ID, enabled: boolean) => void
+  renameProcessor: (id: ID, name: string) => void
+  /** Insert or remove a processor on one wire. Order is evaluation order. */
+  toggleWireProcessor: (connectionId: ID, processorId: ID) => void
 
   connect: (source: FieldRef, target: ParamAddress, chain?: Partial<SignalChain>) => ID
   disconnect: (id: ID) => void
@@ -40,7 +58,98 @@ interface ModulationState {
 
 export const useModulationStore = create<ModulationState>((set, get) => ({
   connections: [],
+  processors: {},
   triggers: [],
+
+  addProcessor: (kind) => {
+    recordChange('Add processor', ['modulation'])
+    const id = generateId()
+    const brick = getProcessorBrick(kind)
+    set((s) => ({
+      processors: {
+        ...s.processors,
+        [id]: {
+          id,
+          kind,
+          name: brick?.label ?? kind,
+          enabled: true,
+          params: processorDefaults(kind),
+        },
+      },
+    }))
+    return id
+  },
+
+  removeProcessor: (id) => {
+    recordChange('Remove processor', ['modulation'])
+    set((s) => {
+      const { [id]: _gone, ...processors } = s.processors
+      return {
+        processors,
+        // Drop the reference from every wire that used it. Leaving a dangling id would work —
+        // the matrix skips what it cannot resolve — but the wire would keep claiming a stage it
+        // no longer has, and the graph would draw an edge to nothing.
+        connections: s.connections.map((connection) =>
+          connection.processorIds?.includes(id)
+            ? { ...connection, processorIds: connection.processorIds.filter((p) => p !== id) }
+            : connection,
+        ),
+      }
+    })
+  },
+
+  setProcessorParam: (id, key, value) => {
+    recordChange('Edit processor', ['modulation'], `proc:${id}:${key}`)
+    set((s) =>
+      s.processors[id]
+        ? {
+            processors: {
+              ...s.processors,
+              [id]: { ...s.processors[id], params: { ...s.processors[id].params, [key]: value } },
+            },
+          }
+        : s,
+    )
+  },
+
+  setProcessorEnabled: (id, enabled) => {
+    recordChange(enabled ? 'Enable processor' : 'Bypass processor', ['modulation'])
+    set((s) =>
+      s.processors[id]
+        ? { processors: { ...s.processors, [id]: { ...s.processors[id], enabled } } }
+        : s,
+    )
+  },
+
+  renameProcessor: (id, name) => {
+    recordChange('Rename processor', ['modulation'], `procName:${id}`)
+    set((s) =>
+      s.processors[id]
+        ? {
+            processors: {
+              ...s.processors,
+              [id]: { ...s.processors[id], name: name.trim() || s.processors[id].name },
+            },
+          }
+        : s,
+    )
+  },
+
+  toggleWireProcessor: (connectionId, processorId) => {
+    recordChange('Change wire processing', ['modulation'])
+    set((s) => ({
+      connections: s.connections.map((connection) => {
+        if (connection.id !== connectionId) return connection
+        const current = connection.processorIds ?? []
+        return {
+          ...connection,
+          processorIds: current.includes(processorId)
+            ? current.filter((id) => id !== processorId)
+            : [...current, processorId],
+        }
+      }),
+    }))
+  },
 
   connect: (source, target, chain) => {
     recordChange('Connect', ['modulation'])
@@ -132,6 +241,11 @@ export const useModulationStore = create<ModulationState>((set, get) => ({
 
   clear: () => {
     ModulationMatrix.reset()
-    set({ connections: [], triggers: [] })
+    set({ connections: [], triggers: [], processors: {} })
   },
 }))
+
+/** Processor lookup for the field context. Passed into the engine, never imported by it. */
+export function getProcessor(id: string): ModulationProcessor | null {
+  return useModulationStore.getState().processors[id] ?? null
+}

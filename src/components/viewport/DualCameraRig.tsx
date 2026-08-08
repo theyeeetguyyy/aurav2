@@ -4,7 +4,7 @@ import { OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import { DualCameraEngine } from '@/engine/camera/DualCameraEngine'
 import { useCameraStore } from '@/store/useCameraStore'
-import { GIZMO_LAYER } from './SceneLight'
+import { CAMERA_GIZMO_LAYER, GIZMO_LAYER } from './SceneLight'
 import { SCENE_CAMERA_NAME } from './ExportBridge'
 
 /** DualCameraRig — two real cameras, one output (docs/03-ARCHITECTURE.md HC-10).
@@ -16,7 +16,13 @@ import { SCENE_CAMERA_NAME } from './ExportBridge'
  *  render camera itself — the exact inverse of the specification — and in which
  *  OrbitControls and the WASD fly loop were both mounted at once, fighting over
  *  `camera.position` every frame. Control schemes are now mutually exclusive. */
-export function DualCameraRig() {
+export function DualCameraRig({
+  gizmos,
+  cameraGizmos,
+}: {
+  gizmos: boolean
+  cameraGizmos: boolean
+}) {
   const activeCamera = useCameraStore((s) => s.activeCamera)
   const controlMode = useCameraStore((s) => s.controlMode)
 
@@ -38,14 +44,23 @@ export function DualCameraRig() {
     if (previewCam) engine.restorePreview(previewCam)
   }, [previewCam, engine])
 
-  // Authoring gizmos — light positions, and anything else with no geometry of its own —
-  // live on their own layer. Both cameras show it while authoring so a light can be seen
-  // and clicked from either view; the exporter disables it on the Scene Camera so none of
-  // it reaches the rendered video.
+  // Authoring gizmos live on their own layers, and which of them a page shows is the page's
+  // declaration (see `ViewportSlotOptions`). Both cameras get the same answer, so switching
+  // between Scene and Preview does not change what furniture is visible.
+  //
+  // The exporter disables both on the Scene Camera regardless, so none of it reaches the file.
   useEffect(() => {
-    sceneCamRef.current?.layers.enable(GIZMO_LAYER)
-    previewCam?.layers.enable(GIZMO_LAYER)
-  }, [previewCam])
+    for (const camera of [sceneCamRef.current, previewCam]) {
+      if (!camera) continue
+      for (const [layer, on] of [
+        [GIZMO_LAYER, gizmos],
+        [CAMERA_GIZMO_LAYER, cameraGizmos],
+      ] as const) {
+        if (on) camera.layers.enable(layer)
+        else camera.layers.disable(layer)
+      }
+    }
+  }, [previewCam, gizmos, cameraGizmos])
 
   // Bind whichever camera is active as R3F's render camera, and keep aspect correct.
   // Done explicitly rather than via drei's `makeDefault` on two components, whose

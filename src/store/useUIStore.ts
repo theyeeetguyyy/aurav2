@@ -2,6 +2,7 @@ import { create } from 'zustand'
 
 /** Workspace tabs matching DaVinci Resolve page model */
 export type WorkspacePage =
+  | 'timeline'
   | 'media-stems'
   | 'scene-shapes'
   | 'look'

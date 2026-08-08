@@ -1,3 +1,5 @@
+import { Vector3, type CatmullRomCurve3 } from 'three'
+import { samplePath, samplePathAhead } from './cameraPath'
 import type { ParamDescriptor, ParamValue } from '@/types/params'
 
 /** Camera behaviours — the declarative layer over the Scene Camera (Principle 1, §4.4).
@@ -24,6 +26,9 @@ export const CAMERA_STACK_ID = '@camera'
 export interface BehaviourContext {
   /** Seconds from the active clock (HC-2). */
   time: number
+  /** The camera path, when one is defined. Passed in rather than imported, so a behaviour still
+   *  has no idea a store exists. */
+  path?: CatmullRomCurve3 | null
   /** Resolved values for this frame, base plus modulation. */
   params: Record<string, ParamValue>
   /** In/out. Behaviours ADD to the rig; they never assign. */
@@ -47,6 +52,23 @@ export interface CameraRig {
   roll: number
   /** Field of view offset, in degrees. */
   fovOffset: number
+
+  /** A behaviour that **places** the camera rather than nudging it — a path, and eventually a
+   *  constraint. Offsets still apply on top, so a handheld shake shakes a camera on a path.
+   *
+   *  Flat numbers and a flag rather than a nullable vector, to match the rest of the rig and to
+   *  keep `resetRig` allocation-free: it runs every frame. */
+  hasPlacement: boolean
+  placeX: number
+  placeY: number
+  placeZ: number
+
+  /** A point to aim at, when the camera should look where it is going rather than at its
+   *  Look-At target. */
+  hasAim: boolean
+  aimX: number
+  aimY: number
+  aimZ: number
 }
 
 export function emptyRig(): CameraRig {
@@ -59,6 +81,14 @@ export function emptyRig(): CameraRig {
     distanceScale: 1,
     roll: 0,
     fovOffset: 0,
+    hasPlacement: false,
+    placeX: 0,
+    placeY: 0,
+    placeZ: 0,
+    hasAim: false,
+    aimX: 0,
+    aimY: 0,
+    aimZ: 0,
   }
 }
 
@@ -71,6 +101,8 @@ export function resetRig(rig: CameraRig): void {
   rig.distanceScale = 1
   rig.roll = 0
   rig.fovOffset = 0
+  rig.hasPlacement = false
+  rig.hasAim = false
 }
 
 export interface BehaviourBrick {
@@ -231,7 +263,68 @@ export const zoomBehaviour: BehaviourBrick = {
   },
 }
 
+/** Scratch for the path brick. Module-level and reused, because `apply` runs every frame and
+ *  a behaviour that allocates is a behaviour that stutters. */
+const pathPoint = new Vector3()
+const pathAhead = new Vector3()
+
+/** Follow a path through space.
+ *
+ *  The path is geometry and this is the thing that reads it — `progress` says where along it the
+ *  camera is, and progress is an ordinary parameter, so it can be typed, drawn as a clip, or
+ *  driven by a stem. That split is the whole reason a camera move here can be retimed without
+ *  being redrawn.
+ *
+ *  Does nothing without a path, rather than dragging the camera to the origin: adding a behaviour
+ *  before defining what it should follow must not throw the shot away. */
+export const followPathBrick: BehaviourBrick = {
+  id: 'cam-follow-path',
+  label: 'Follow Path',
+  hint: 'Moves the camera along a path you place in space. Progress is automatable like anything else.',
+  descriptors: [
+    camParam('progress', 'Progress', 0, 1, 0, { unit: 'x' }),
+    // Aiming along the tangent is what makes a path read as a camera move rather than as a camera
+    // being slid sideways. A real boolean, not a 0–1 float: it was rendering as a numeric field
+    // reading "0.00×", which says nothing about what it does or how to turn it on.
+    {
+      key: 'aim',
+      label: 'Aim Along Path',
+      type: 'bool',
+      min: 0,
+      max: 1,
+      step: 1,
+      defaultValue: false,
+      group: 'Camera',
+      // Not a modulation target: there is nothing useful between aiming and not aiming, and a
+      // wire that flickered it would be a strobe rather than a camera move.
+      exposed: false,
+      realtime: false,
+    },
+  ],
+  apply(ctx) {
+    const curve = ctx.path
+    if (!curve) return
+
+    const progress = num(ctx.params, 'progress', 0)
+    samplePath(curve, progress, pathPoint)
+
+    ctx.rig.hasPlacement = true
+    ctx.rig.placeX = pathPoint.x
+    ctx.rig.placeY = pathPoint.y
+    ctx.rig.placeZ = pathPoint.z
+
+    if (ctx.params.aim === true) {
+      samplePathAhead(curve, progress, pathAhead)
+      ctx.rig.hasAim = true
+      ctx.rig.aimX = pathAhead.x
+      ctx.rig.aimY = pathAhead.y
+      ctx.rig.aimZ = pathAhead.z
+    }
+  },
+}
+
 export const BEHAVIOUR_BRICKS: BehaviourBrick[] = [
+  followPathBrick,
   orbitBehaviour,
   swayBehaviour,
   shakeBehaviour,

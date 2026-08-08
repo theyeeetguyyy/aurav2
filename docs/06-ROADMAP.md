@@ -245,6 +245,65 @@ can then edit. Verified in an exported file rather than asserted: mean luma esca
 
 **6 test:** one state placed three times, edited once → all three update. Overlap two strips → crossfade. Drop a `drop` marker → intensity multiplier visibly rises.
 
+## Phase 6.5 — The automation redirection 🟡
+
+Not in the original plan. It came out of using the thing: the timeline worked, and the way
+automation was authored did not.
+
+| | | |
+|---|---|---|
+| A | Pipeline skeleton — Timeline as its own page, Deliver = export only, states on Scene & Shapes, seekable transport (D-76…D-82) | ✅ |
+| B | Automation **clips over patterns** — draw once, place, drag ends, repeat, copy (D-83…D-87) | ✅ |
+| C | Stems as automation sources — per-metric lanes, selection on the stems page, curves by default (D-88…D-91) | ✅ |
+| D | Shared processors — the middle column a node graph is for (D-95, D-96) | ✅ |
+| E | Camera keyframing via clips, plus a 3D path whose timing is a parameter (D-92…D-94) | ✅ |
+
+**What changed conceptually.** A **State** is the scene plus its routing — a unit of authorship,
+not a musical section. A **stem** is a set of automation sources, not a waveform. A **lane** is the
+wireable identity, a **clip** is a placement, and a **pattern** is a shape with no length of its
+own. Those four sentences are the product's model now, and the pages are named for the steps
+between them.
+
+## Phase 6.6 — The state model correction 🟡
+
+Not planned. It came out of a user trying to author with states and finding they could not.
+
+| | | |
+|---|---|---|
+| A | **A state owns its scene** — objects, routing, post. HC-7 rewritten (D-98) | ✅ |
+| B | State selector in the top bar; the left dock returns to one job (D-99) | ✅ |
+| C | Per-page gizmo layers — the camera path was drawn on every page including the export monitor (D-101) | ✅ |
+| D | Scene Camera frustum + motion trail, Blender's answer to "where will it be" (D-102) | ✅ |
+| E | Project format v3, with migration from the selection model | ✅ |
+
+**What it deleted.** `isVisible`, `isConnectionActive`, `isPostActive`, `withOverride`,
+`connectionOverrides`, `StatePanel`, `RackPlayhead`, the REC button, and every instructional
+paragraph in the UI. `resolveTimeline` returns one state id where it returned three sets. The
+correct model was also the smaller one.
+
+## Phase 10 — Expressive range ⬜
+
+**The queue is now here.** See [17-EXPRESSIVE-RANGE.md](17-EXPRESSIVE-RANGE.md) for the argument,
+the bar and the reasoning behind the order.
+
+| | | |
+|---|---|---|
+| 10A | Colour & light authoring | 🟡 |
+| ↳ | Scene palette, slot binding, six starters, background sync (D-105) | ✅ |
+| ↳ | Palette ramp across a clone array — needs per-instance tint to become absolute rather than a multiplier | ⬜ |
+| ↳ | Hue shift as a routable float, so the drop changes the colour and not only the size | ⬜ |
+| ↳ | Rig colour derived from the palette | ⬜ |
+| 10B | Points backend — stateless, `position = f(id, t)` | ⬜ |
+| 10C | Non-lattice structure — noise, curl-flow, surface scatter, audio density | ⬜ |
+| 10D | Lines & ribbons | ⬜ |
+| 10E | SDF backend | ⬜ |
+| 10F | Text | ⬜ |
+
+**10 test — the ten-project test.** Ten projects from one stem, fifteen minutes each, built by the
+shortest path a new user would take. Passes when a stranger can tell all ten apart from one frame
+each, none is embarrassing, and **at least four distinct image families** appear. Run it after every
+sub-phase; it is the only measure that says when to stop widening.
+
 ## Phase 7 — Camera ⬜
 
 | | | |

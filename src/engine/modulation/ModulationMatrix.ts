@@ -4,6 +4,11 @@ import type { EventTrigger, ModulationConnection } from '@/types/modulation'
 import { formatAddress, type ParamAddress } from '@/types/params'
 import { SignalShaper } from './SignalShaper'
 import { evaluateField, type FieldContext } from './fields'
+import {
+  applyProcessors,
+  processorTimeOffset,
+  type ModulationProcessor,
+} from './processors'
 
 /** ModulationMatrix — the architectural core of the product
  *  (docs/04-ENGINE-SPECS.md §4.2).
@@ -38,7 +43,10 @@ class ModulationMatrixImpl {
     clock: Clock,
     connections: readonly ModulationConnection[],
     triggers: readonly EventTrigger[],
-    host: Pick<FieldContext, 'isTrackActive' | 'getGenerator' | 'getLane'>,
+    host: Pick<
+      FieldContext,
+      'isTrackActive' | 'getGenerator' | 'getLane' | 'getPatterns' | 'getProcessor'
+    >,
   ): void {
     const time = clock.time
     let dt = time - this.lastTime
@@ -58,7 +66,20 @@ class ModulationMatrixImpl {
     for (const connection of connections) {
       if (!connection.enabled) continue
 
-      const raw = evaluateField(connection.source, ctx)
+      // Processors that change WHEN the source is read — delay, sample & hold — do it by asking
+      // for a different moment rather than remembering past values. So they are resolved before
+      // the source is sampled, and the whole path stays a pure function of `t` (HC-3).
+      const stages = resolveProcessors(connection.processorIds, host.getProcessor)
+      const raw =
+        stages.length === 0
+          ? evaluateField(connection.source, ctx)
+          : applyProcessors(
+              stages,
+              evaluateField(connection.source, {
+                ...ctx,
+                time: processorTimeOffset(stages, time),
+              }),
+            )
 
       let shaper = this.shapers.get(connection.id)
       if (!shaper) {
@@ -133,4 +154,21 @@ export const ModulationMatrix = new ModulationMatrixImpl()
 export function addressKey(objectId: string, paramKey: string, effectId?: string): string {
   const address: ParamAddress = effectId ? { objectId, effectId, paramKey } : { objectId, paramKey }
   return formatAddress(address)
+}
+
+/** Look up a wire's processors, dropping any that no longer exist.
+ *
+ *  A missing processor is skipped rather than treated as a failure: deleting a shared stage should
+ *  leave the wires that used it working, not silence them. */
+function resolveProcessors(
+  ids: readonly string[] | undefined,
+  getProcessor: ((id: string) => ModulationProcessor | null) | undefined,
+): ModulationProcessor[] {
+  if (!ids || ids.length === 0 || !getProcessor) return []
+  const out: ModulationProcessor[] = []
+  for (const id of ids) {
+    const processor = getProcessor(id)
+    if (processor) out.push(processor)
+  }
+  return out
 }

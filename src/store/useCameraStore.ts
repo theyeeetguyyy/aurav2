@@ -10,6 +10,7 @@ import {
   cameraTransformFromQuaternion,
   type CameraTransformKey,
 } from '@/engine/camera/cameraTransform'
+import type { CameraWaypoint } from '@/engine/camera/cameraPath'
 import { DualCameraEngine } from '@/engine/camera/DualCameraEngine'
 import { useModulationStore } from '@/store/useModulationStore'
 import { generateId } from '@/utils/stemColors'
@@ -24,6 +25,12 @@ interface CameraState {
    *  them, which is what makes the camera keyframable without a keyframe engine. */
   transform: Record<string, number>
 
+  /** The path the Follow Path behaviour reads. Geometry only — *when* the camera is where is a
+   *  parameter, not a property of a waypoint (see `cameraPath.ts`). */
+  waypoints: CameraWaypoint[]
+  /** Whether the path loops back on itself. */
+  pathClosed: boolean
+
   /** Ordered behaviour stack on the Scene Camera — orbit, sway, shake, dolly, lens.
    *  Every behaviour is a pure function of time, so they sum and the order is cosmetic. */
   behaviours: EffectInstance[]
@@ -35,6 +42,14 @@ interface CameraState {
 
   setActiveCamera: (mode: CameraMode) => void
   setControlMode: (mode: CameraControlMode) => void
+
+  /** Add a waypoint where the preview camera is now — the fastest way to build a path is to
+   *  fly to each place you want the camera to be. */
+  addWaypointHere: () => void
+  removeWaypoint: (id: ID) => void
+  moveWaypoint: (id: ID, position: [number, number, number]) => void
+  reorderWaypoint: (id: ID, delta: number) => void
+  setPathClosed: (closed: boolean) => void
 
   setTransformParam: (key: CameraTransformKey, value: number) => void
   /** Copy the preview camera's framing onto the authored transform. */
@@ -56,12 +71,59 @@ export const useCameraStore = create<CameraState>((set) => ({
   activeCamera: 'preview',
   controlMode: 'orbit',
   transform: { ...CAMERA_TRANSFORM_DEFAULTS },
+  waypoints: [],
+  pathClosed: false,
   behaviours: [],
   lookAtId: null,
   lookAtEnabled: true,
 
   setActiveCamera: (mode) => set({ activeCamera: mode }),
   setControlMode: (mode) => set({ controlMode: mode }),
+
+  addWaypointHere: () => {
+    recordChange('Add waypoint', ['camera'])
+    const { previewPosition } = DualCameraEngine.getInstance()
+    set((s) => ({
+      waypoints: [
+        ...s.waypoints,
+        {
+          id: generateId(),
+          position: [previewPosition.x, previewPosition.y, previewPosition.z],
+        },
+      ],
+    }))
+  },
+
+  removeWaypoint: (id) => {
+    recordChange('Remove waypoint', ['camera'])
+    set((s) => ({ waypoints: s.waypoints.filter((w) => w.id !== id) }))
+  },
+
+  moveWaypoint: (id, position) => {
+    recordChange('Move waypoint', ['camera'], `waypoint:${id}`)
+    set((s) => ({
+      waypoints: s.waypoints.map((w) => (w.id === id ? { ...w, position } : w)),
+    }))
+  },
+
+  reorderWaypoint: (id, delta) => {
+    recordChange('Reorder waypoint', ['camera'])
+    set((s) => {
+      const from = s.waypoints.findIndex((w) => w.id === id)
+      if (from === -1) return s
+      const to = Math.max(0, Math.min(s.waypoints.length - 1, from + delta))
+      if (from === to) return s
+      const waypoints = [...s.waypoints]
+      const [moved] = waypoints.splice(from, 1)
+      waypoints.splice(to, 0, moved)
+      return { waypoints }
+    })
+  },
+
+  setPathClosed: (closed) => {
+    recordChange(closed ? 'Close path' : 'Open path', ['camera'])
+    set({ pathClosed: closed })
+  },
 
   setTransformParam: (key, value) => {
     // Coalesced per parameter, so dragging a field is one undo step rather than one per pixel.
@@ -158,5 +220,11 @@ export const useCameraStore = create<CameraState>((set) => ({
   },
 
   clear: () =>
-    set({ behaviours: [], transform: { ...CAMERA_TRANSFORM_DEFAULTS }, lookAtId: null }),
+    set({
+      behaviours: [],
+      transform: { ...CAMERA_TRANSFORM_DEFAULTS },
+      waypoints: [],
+      pathClosed: false,
+      lookAtId: null,
+    }),
 }))

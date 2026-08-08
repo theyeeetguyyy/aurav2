@@ -16,11 +16,26 @@ export interface ViewportSlotOptions {
   compact?: boolean
   /** Whether camera controls and object picking respond. False for a monitor. */
   interactive?: boolean
+
+  /** Authoring gizmos: light positions, selection outlines.
+   *
+   *  Off on Deliver, which shows the render and nothing else — a proof of the file, so anything
+   *  that will not be in the file has no business in it. */
+  gizmos?: boolean
+
+  /** Camera gizmos: the path, the Scene Camera's frustum, its motion trail.
+   *
+   *  Separate from `gizmos` because they answer a different question and belong on fewer pages. A
+   *  camera path drawn on the Look page is furniture from another job — it was on every page,
+   *  including the export monitor. */
+  cameraGizmos?: boolean
 }
 
 const DEFAULT_OPTIONS: Required<ViewportSlotOptions> = {
   compact: false,
   interactive: true,
+  gizmos: true,
+  cameraGizmos: false,
 }
 
 let element: HTMLElement | null = null
@@ -35,7 +50,9 @@ export function setViewportSlot(
   if (
     element === nextElement &&
     options.compact === resolved.compact &&
-    options.interactive === resolved.interactive
+    options.interactive === resolved.interactive &&
+    options.gizmos === resolved.gizmos &&
+    options.cameraGizmos === resolved.cameraGizmos
   ) {
     return
   }

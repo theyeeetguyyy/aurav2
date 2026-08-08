@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useModulationStore } from '@/store/useModulationStore'
+import { useAutomationStore } from '@/store/useAutomationStore'
 import { useUIStore } from '@/store/useUIStore'
 import { Splitter } from '@/components/common/Splitter'
 import { refreshAnchors } from './anchors'
@@ -56,7 +57,11 @@ export function Patchbay({ selectedWireId, onSelectWire, bottomLeft }: PatchbayP
       // Onset sources are percussive, so they default to a discrete fire-once trigger.
       // Everything else defaults to a continuous blend (Principle 4). The source already
       // implies the answer, so the user is not asked at drop time.
-      if (field.kind === 'audio' && field.key === 'onset') {
+      //
+      // The metric now sits behind a lane rather than on the field (D-88), so this has to look
+      // through it. Checking `field.key` alone silently stopped matching when stems started
+      // exposing lanes, which turned every onset drop into a continuous wire.
+      if (isOnsetSource(field)) {
         addTrigger(field, address)
         setHint(`Trigger → ${descriptor?.label ?? address.paramKey}`)
       } else {
@@ -185,4 +190,19 @@ function seedRange(
   const magnitude = base !== 0 ? Math.abs(base) : span * 0.05
 
   return { min: 0, max: Math.min(magnitude, descriptor.max) }
+}
+
+/** Is this source a percussive onset, however it is referenced?
+ *
+ *  Directly, on a legacy audio field, or through a lane whose metric is onset. Kept next to the
+ *  one decision that uses it rather than in the engine, because "what should a drop default to"
+ *  is an interaction question, not a signal one. */
+function isOnsetSource(field: FieldRef): boolean {
+  if (field.kind === 'audio') return field.key === 'onset'
+  if (field.kind !== 'automation' || !field.sourceId) return false
+
+  const lane = useAutomationStore
+    .getState()
+    .lanes.find((candidate: { id: string }) => candidate.id === field.sourceId)
+  return lane?.source?.metric === 'onset'
 }

@@ -2,6 +2,7 @@ import { Play, Pause, Repeat, SkipBack } from 'lucide-react'
 import { useAudioStore } from '@/store/useAudioStore'
 import { MultiTrackRack } from '@/engine/audio/MultiTrackRack'
 import { useTransportTime } from '@/hooks/useTransportTime'
+import { TransportScrubber } from './TransportScrubber'
 
 /** Format seconds to MM:SS.ms timecode string */
 function formatTime(seconds: number): string {
@@ -11,8 +12,11 @@ function formatTime(seconds: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(2, '0')}`
 }
 
-/** Persistent slim transport strip visible across all 5 workspace tabs.
- *  Per Design System v2 §1: always know where you are in the piece. */
+/** Persistent slim transport strip, on every workspace tab.
+ *
+ *  Per docs/05-DESIGN-SYSTEM.md §1: always know where you are in the piece — and, since the
+ *  scrubber landed, always be able to *go* somewhere in it. Seeking used to require being on
+ *  one of the two pages that drew a timeline. */
 export function TransportBar() {
   const isPlaying = useAudioStore((s) => s.isPlaying)
   const loopEnabled = useAudioStore((s) => s.loopEnabled)
@@ -65,6 +69,8 @@ export function TransportBar() {
       >
         {formatTime(currentTime)}
       </span>
+
+      <TransportScrubber />
 
       {/* Loop toggle */}
       <button

@@ -59,15 +59,24 @@ function capture(slices: HistorySlice[]): Snapshot {
         snapshot.modulation = {
           connections: modulation.connections,
           triggers: modulation.triggers,
+          // Processors travel with the wires that reference them. A wire names a processor by
+          // id, so undoing an edit that restored only the connections would restore a reference
+          // to a stage whose settings had already moved on.
+          processors: modulation.processors,
         }
         break
       }
       case 'generators':
         snapshot.generators = useGeneratorStore.getState().generators
         break
-      case 'lanes':
-        snapshot.lanes = useAutomationStore.getState().lanes
+      case 'lanes': {
+        // Patterns travel with the lanes. A clip references its pattern, so undoing a curve
+        // edit that only restored the lanes would restore nothing at all — the shape lives in
+        // the pattern table, and the two are one unit of history.
+        const automation = useAutomationStore.getState()
+        snapshot.lanes = { lanes: automation.lanes, patterns: automation.patterns }
         break
+      }
       case 'project':
         // States, strips and markers. Not the project *name* — renaming is not the kind
         // of thing anyone reaches for Ctrl+Z to undo.
@@ -104,10 +113,15 @@ function restore(snapshot: Snapshot): void {
     useCameraStore.setState(snapshot.camera as never)
   }
   if (snapshot.modulation) {
-    const modulation = snapshot.modulation as { connections: unknown; triggers: unknown }
+    const modulation = snapshot.modulation as {
+      connections: unknown
+      triggers: unknown
+      processors: unknown
+    }
     useModulationStore.setState({
       connections: modulation.connections as never,
       triggers: modulation.triggers as never,
+      processors: modulation.processors as never,
     })
     // Followers carry envelope memory keyed by connection id. Restoring a different set
     // of connections without dropping them leaves a resurrected wire mid-envelope, so
@@ -118,7 +132,11 @@ function restore(snapshot: Snapshot): void {
     useGeneratorStore.setState({ generators: snapshot.generators as never })
   }
   if (snapshot.lanes) {
-    useAutomationStore.setState({ lanes: snapshot.lanes as never })
+    const automation = snapshot.lanes as { lanes: unknown; patterns: unknown }
+    useAutomationStore.setState({
+      lanes: automation.lanes as never,
+      patterns: automation.patterns as never,
+    })
   }
   if (snapshot.project) {
     useProjectStore.setState({ project: snapshot.project as never })

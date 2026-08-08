@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { registerFrameSource } from '@/engine/export/types'
-import { GIZMO_LAYER } from './SceneLight'
+import { CAMERA_GIZMO_LAYER, GIZMO_LAYER } from './SceneLight'
 
 /** Publishes the live renderer to the exporter.
  *
@@ -42,6 +42,7 @@ export function ExportBridge() {
           sceneCamera.updateProjectionMatrix()
           // Authoring gizmos are viewport furniture. They must never reach the file.
           sceneCamera.layers.disable(GIZMO_LAYER)
+          sceneCamera.layers.disable(CAMERA_GIZMO_LAYER)
           set({ camera: sceneCamera })
         }
 
@@ -55,6 +56,7 @@ export function ExportBridge() {
             sceneCamera.aspect = previous.x / Math.max(1, previous.y)
             sceneCamera.updateProjectionMatrix()
             sceneCamera.layers.enable(GIZMO_LAYER)
+            sceneCamera.layers.enable(CAMERA_GIZMO_LAYER)
           }
           set({ camera: previousCamera, frameloop: previousFrameloop })
         }

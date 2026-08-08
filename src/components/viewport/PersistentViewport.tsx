@@ -6,6 +6,8 @@ import { SceneObjects } from './SceneObjects'
 import { ModulationDriver } from './ModulationDriver'
 import { TimelineDriver } from './TimelineDriver'
 import { CameraRigDriver } from './CameraRigDriver'
+import { CameraPathGizmo } from './CameraPathGizmo'
+import { SceneCameraGizmo } from './SceneCameraGizmo'
 import { PostChain } from './PostChain'
 import { ExportBridge } from './ExportBridge'
 import { ViewportHUD } from './ViewportHUD'
@@ -119,7 +121,15 @@ export function PersistentViewport() {
         <ModulationDriver />
         {/* Before DualCameraRig: it resolves the Scene Camera transform the rig copies. */}
         <CameraRigDriver />
-        <DualCameraRig />
+        <DualCameraRig gizmos={options.gizmos} cameraGizmos={options.cameraGizmos} />
+        {/* Mounted only where it belongs. The layer mask alone would be enough to hide it, but not
+            building the curve at all is cheaper and says the intent more plainly. */}
+        {options.cameraGizmos && (
+          <>
+            <CameraPathGizmo />
+            <SceneCameraGizmo />
+          </>
+        )}
         {/* Owns scene.background now — a routable gradient, not a fixed token colour. */}
         <EnvironmentRig />
         <SceneObjects />

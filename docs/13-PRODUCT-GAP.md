@@ -44,6 +44,19 @@ Most of it has still only been run in a browser a handful of times.
 
 ## Missing, ranked by what it costs
 
+### Tier 0 — **the gap that decides everything**
+
+*Added 2026-08-07, after using the software rather than reading about it.*
+
+| Missing | Why it matters | Where |
+|---|---|---|
+| **Expressive range** | Ten users, eight similar outputs. One of three declared `RenderBackend`s implemented; four of eight element families, and all four resolve to *lit mesh* or *full-frame filter*. The whole output space is `{primitive} × {deformer} × {regular array} × {accent colour} × {bloom, kaleidoscope, grade}`, and its centre of mass is the thing everyone makes. | **[17-EXPRESSIVE-RANGE.md](17-EXPRESSIVE-RANGE.md)** |
+
+Everything in Tier 2 below is a *piece* of this gap. What 17 adds is the ordering, the reason for
+it, and a falsifiable bar to stop at. Read it before picking anything from the lists that follow —
+several Tier 2 items look equivalent and are not: colour authoring changes every frame for almost no
+work, while another twelve post effects change nothing.
+
 ### Tier 1 — these make it not-a-product
 
 | # | Missing | Cost | Phase | Size |
@@ -59,9 +72,14 @@ Nothing above is blocked by anything else.
 
 ### Tier 2 — visual ceiling
 
+**Ordered by variance per unit of work in [17-EXPRESSIVE-RANGE.md](17-EXPRESSIVE-RANGE.md) §3.**
+This table is the inventory; that document is the sequence.
+
 | Missing | Why it matters | Where |
 |---|---|---|
-| **GPU particles** | Largest remaining jump in visual density. Must be **stateless** (D-49) | 10-ELEMENTS C |
+| **Colour & light authoring** | Not previously listed, and it is **first**. One colour per object from a rotating palette, over near-black, under one rig — so every scene is "an accent colour on dark", including for a user who made no colour decision. Palettes, gradients across clones, hue from signal. Cheapest change that touches every frame | 17 §3 Pass 1 |
+| **Points backend** | Doubles the medium: a cloud is not a surface. `points` is already in the type union with nothing behind it. Stateless, so D-49's objection to particle *libraries* does not apply | 10-ELEMENTS C |
+| **Non-lattice structure** | Cloners distribute on grids, radials and spirals — all regular, so multiplicity always reads as an array. Loudest "made in a toy" signal in the current output | 17 §3 Pass 3 |
 | **Morph engine** | "Transform between any to any" is in the brief, and the shared-topology work is already done | 4F |
 | **More deformers** | FFT/spectrum, curl noise, cull/dissolve, voronoi shatter, taper, spline, jelly | 14-VISUAL-IDEAS §2 |
 | **Data elements** | Spectrum bars, waveform, Lissajous — what makes a video read instantly as *music* | 10-ELEMENTS B |

@@ -4,7 +4,6 @@ import * as THREE from 'three'
 import { useSceneStore } from '@/store/useSceneStore'
 import { LightRegistry } from '@/engine/scene/lights/LightRegistry'
 import { ModulationMatrix, addressKey } from '@/engine/modulation/ModulationMatrix'
-import { isVisible } from '@/engine/timeline/liveTimeline'
 import { readToken } from '@/utils/tokens'
 import type { ParamValue } from '@/types/params'
 import type { SceneObject } from '@/types/visual'
@@ -26,6 +25,9 @@ const DEG_TO_RAD = Math.PI / 180
  *  while authoring, and the exporter disables the layer on the Scene Camera for the
  *  render. That seam is the whole reason to use layers rather than a visibility flag. */
 export const GIZMO_LAYER = 1
+/** Camera furniture — the path, the Scene Camera's frustum, its motion trail. Its own layer so a
+ *  page can show authoring gizmos without showing another job's. */
+export const CAMERA_GIZMO_LAYER = 2
 
 export function SceneLight({ object }: { object: SceneObject }) {
   const select = useSceneStore((s) => s.select)
@@ -67,8 +69,7 @@ export function SceneLight({ object }: { object: SceneObject }) {
       (rotation[2] + M.getOffset(addressKey(object.id, 'rotation.z'))) * DEG_TO_RAD,
     )
 
-    // A light that a cut switched off must stop contributing, not merely stop moving.
-    handle.light.visible = isVisible(object.id, object.visible)
+    handle.light.visible = object.visible
 
     const values = resolved.current
     for (const key in object.params) {

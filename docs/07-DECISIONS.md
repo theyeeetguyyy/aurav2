@@ -767,3 +767,361 @@ rather than tracked as a "time since last cut" accumulator. It is the **latest**
 live strips: with a background strip running under a drop, the moment the picture changed is
 when the drop came in. Confirmed in the export at 220.9 luma on a 6-second boundary against a
 38.6 baseline.
+
+**D-76 · REVERSED: auto-variations are deleted. A State is scene + routing, and nothing else
+decides one for you.**
+`generateVariations` / `planSequence` / `autoSequence` are gone, along with the Intro / Build /
+Drop / Breakdown arc. *Why:* rejected outright — *"I don't want those intro drop and everything
+pre refined states."* The implementation was fine and the premise was wrong. A **State** in this
+product means **the scene plus its routing**: what is present and what drives it. It is a unit
+of authorship, not a musical section, and generating four sections was the product guessing at
+content instead of arranging the user's. Deleted rather than adapted, because a musical-arc
+generator has no smaller correct version. *This retires D-74.* The remaining machinery — states
+as selections, strips as references — is untouched and is what the Timeline page arranges.
+
+**D-77 · The tabs ARE the pipeline, and Timeline is a page.**
+Seven workspaces, left to right: **Media & Stems** (pull automation out of the audio) →
+**Scene & Shapes** (build a state) → **Look / Routing / Camera** (refine it) → **Timeline**
+(arrange states in time — *this* is the video) → **Deliver** (write the file). *Why:* the
+timeline was half of Deliver, which made encoding look like the point when the timeline is where
+the video is actually decided. Splitting them also gives each its own answer to "what is this
+page for", which is the one-page-one-job rule (05-DESIGN-SYSTEM) applied to the two jobs that
+were sharing. Both pages still host a viewport, because the exporter drives the live renderer
+(HC-9) and a page without one renders the whole chain at 1×1 (D-67).
+
+**D-78 · States are captured where they are built.**
+The state selector moved from the timeline rail to a panel under the layer stack on Scene &
+Shapes; the timeline keeps only *Place*. *Why:* capturing on the arranging page meant leaving
+the thing you were looking at in order to record it, and it made a State read as a timeline
+feature rather than as the unit of work. Authoring and arranging are now on the pages named for
+them: Scene & Shapes has capture / edit / save / rename, the Timeline has placement.
+`editingStateId` tracks which state is loaded — deliberately **not** saved to the project, since
+it says which state you were last looking at, which is session state and not document state.
+
+**D-79 · Every picture of time is seekable.**
+A scrub bar in the transport strip, present on every page, plus click-to-seek on the stem lanes.
+*Why:* only the two pages that happened to draw a timeline could move the playhead, so hearing a
+specific moment while editing a material meant switching tabs, scrubbing, and switching back.
+The scrubber also carries the section markers, which makes it a map rather than a slider — the
+one thing on every page that says where the drop is. Drawn imperatively from `TransportClock`
+via `scaleX` (HC-1): it moves every frame, and a component that re-rendered for it would
+re-render the shell sixty times a second.
+
+**D-80 · Drawn curves are rows in the stem rack, not a dock.**
+`AutomationPanel` is deleted; `DrawnLaneRow` renders each detached lane under the stems, in the
+same shape as a stem's own curve, sharing the same left inset so every curve on the page reads
+against one time axis. *Why:* a drawn lane and a stem lane are the same kind of thing — a signal
+on this project's timeline that anything can be wired from — and the only difference is where the
+shape came from. A separate dock made it look like a separate feature and, before D25, listed
+every stem curve twice. This is the first structural step toward **stems as automation sources
+rather than waveforms**; the rest is Pass C.
+
+**D-81 · The routing strip graphs the metric you are reaching for.**
+Clicking a metric under a stem's signal strip redraws the strip for that metric. *Why:* it was
+hardwired to `envelope`, so it drew the same shape regardless of which of thirteen signals you
+were about to wire — a picture answering a question nobody asked. The preview fires on
+*pointer-down*, before the drag begins, so the shape is on screen while you aim: press-and-look
+is one gesture rather than two.
+
+**D-82 · Selection outline: a hugging shell on simple shapes, a box on dense ones.**
+Above `OUTLINE_SHELL_MAX_TRIANGLES` (600) an object's selection indicator switches from the
+inflated back-face shell to the same wireframe bounding box a cloned array gets. *Why:* the
+shell traces the silhouette exactly, which is why it is right on a cube or a cone. On a
+subdivided icosphere it is several hundred lines drawn over the art — it hides the thing it
+exists to point at, which is the same failure the per-clone shells had (D5). A box is less
+precise and always legible, and precision is not what a selection indicator is for. The box is
+sized from the geometry's own bounding sphere each frame rather than once, so a deformer's
+displaced vertices are inside it.
+
+**D-83 · Automation is clips over patterns, not one curve per lane.**
+Three objects where there was one. A **lane** is the wireable identity, a **clip** is a placement
+(start, length, repeat), and a **pattern** is the shape, stored in **normalised 0–1 time** so it
+has no length of its own. Patterns are project-global; clips reference them.
+
+*Why:* the old model — one curve per lane spanning the whole project — cannot express the thing
+people actually ask for. *"I draw a shape that takes a second and I want it to happen every
+second for ten seconds"* meant drawing it ten times, and changing your mind meant redrawing it
+ten times. It is the same Action/Strip split that already works for visual states (HC-7) and the
+same one Blender's NLA uses, arrived at for the same reason.
+
+Three consequences worth stating:
+
+1. **`repeat` is on the clip.** FL Studio would have you clone a clip ten times; Blender puts a
+   repeat count on the strip. The count wins here because dragging the clip's edge then retimes
+   every cycle at once, which a hand-copied row of clips can never do.
+2. **Duplicating shares the pattern.** Blender offers linked and unlinked duplicates; this offers
+   only linked, because "so that I don't have to remake them every time" is a request for the
+   linked one and there is no use for the other. A copy lands immediately *after* the original —
+   in place it would sit on top, and since later wins, the *original* would be the one that
+   stopped playing.
+3. **A pattern outlives the clip that made it.** Patterns are deliberately not garbage-collected
+   when their last clip goes. A shape you spent time drawing should survive deleting the clip you
+   drew it for; the cost of keeping one is a few hundred bytes.
+
+**D-84 · `LaneMode` is deleted. Clips override the analysis exactly where they cover it.**
+A lane no longer carries `analysis | edited`. `clips.length === 0` says the same thing and cannot
+disagree with the data it describes, which a flag can. More usefully, the *semantics* changed:
+where a clip covers time, the clip wins; everywhere else a stem lane resumes its analysed signal.
+So "the kick drives this, except during the drop where I want my own shape" is two objects and no
+modes — and it was previously inexpressible, because the first edit took the whole lane
+irreversibly into `edited` and silenced the analysis for the entire song. *Resetting* is now
+"delete the clips", which needs no special action beyond the one that already exists.
+
+**D-85 · One interpolator, one drawing routine.**
+`samplePoints(points, interpolation, t)` is the only place curve values come from. The clip track
+draws with it, the pattern editor draws with it, and the engine reads through it via
+`sampleClips`. There is a test asserting the track and the engine agree at the same phase. *Why:*
+the previous editor sampled per pixel through the *lane's* sampler specifically so the drawn line
+matched what ran; splitting patterns out of lanes would have quietly broken that guarantee unless
+the interpolator came with it.
+
+**D-86 · Project format v2, with a real migration.**
+`PROJECT_VERSION` is 2. A v1 lane's `points` become a pattern (via `patternFromPoints`) plus one
+clip spanning what was drawn, so an old file reopens looking and sounding the same — and its
+curve is now something that can be shortened, moved and reused. A v1 lane in `analysis` mode had
+no points and converts to a lane with no clips, which means precisely the same thing in v2. The
+bump matters in the other direction too: an older build now refuses a v2 file rather than
+half-reading it and saving over the original, which is the whole reason the field exists.
+
+**D-87 · Patterns travel with lanes through undo.**
+The `lanes` history slice snapshots `{ lanes, patterns }` together. *Why:* a clip references its
+pattern, so the shape lives in the pattern table — undoing a curve edit that restored only the
+lanes would restore nothing at all. They are one unit of history because they are one unit of
+meaning.
+
+**D-88 · A stem exposes the signals you selected, and a signal is a lane.**
+One lane per (stem, metric) pair, created by ticking that metric on the stems page. Routing lists
+lanes; it no longer lists raw metrics at all. *Why:* the analyser produces thirteen signals per
+stem and almost nobody wants thirteen — four stems meant **sixty-four rows** of things nobody was
+going to wire, with the two that mattered buried in the middle of it. TouchDesigner arrives at the
+same shape with the Select CHOP: single out the channels you want before anything downstream sees
+them. Choosing a signal and shaping it are now the same object seen from two pages, because the
+lane a metric becomes is also what clips are placed on.
+
+**Deselecting destroys the lane, its clips and its wires.** That is the honest reading of "I do
+not want this source"; keeping an orphan lane so the wires survived would mean Routing still
+listing something the stems page says is gone.
+
+**D-89 · A stem row shows its automation; the waveform is a view of it.**
+Curves by default, one row per selected signal, and a single control switches the strip to the
+waveform. Not a second disclosure button — the same strip, two views. *Why:* a stem here **is** a
+set of automation sources. The waveform is genuinely useful, since it is how you find the drop,
+but it is not what anything downstream reads, and defaulting to it put the least actionable
+picture in the most prominent place. Trim handles stay on the waveform view, because trimming is
+an audio edit and its handles belong on the audio.
+
+**D-90 · Rhythm is one group, not one per stem.**
+Beat and bar phase move out of the per-stem groups into a single Rhythm group. *Why:* they derive
+from the project's beat grid and `evaluateRhythm` never looked at `sourceId` — so listing them
+under every stem implied four different answers to a question that has one, and multiplied the
+column for nothing.
+
+**D-91 · Old wires are migrated, not kept alive by a second code path.**
+v1 connections **and triggers** whose source was `{kind: 'audio', sourceId: trackId, key: metric}`
+are rewritten to point at a lane, and the lanes they need are created during load. *Why:* nothing
+can create an audio field any more, and keeping a parallel way to reference a stem signal
+forever is the kind of thing that quietly becomes two behaviours. Migrating instead means an old
+project *gains* clips on the signals it was already using rather than merely continuing to work.
+
+Two things this nearly got wrong, both now covered by tests:
+
+- **Triggers hold a source too.** Migrating only `connections` would have left every onset trigger
+  in every existing project pointing at a kind nothing offers.
+- **The onset default stopped firing.** Dropping an onset source creates a fire-once trigger rather
+  than a continuous wire, and that check read `field.key` — which silently stopped matching once
+  the metric moved behind a lane. `isOnsetSource` now looks through the lane.
+
+*`AUDIO_FIELDS` and `evaluateAudio` stay.* They define what the `audio` kind **is**, `fieldLabel`
+reads them, and a resolver for a kind in the type union is not dead code just because no UI offers
+it — it is what stops a hand-edited or unmigrated file evaluating to silence.
+
+**D-92 · Camera keyframing IS the clip system. There is no second keyframe engine.**
+*Animate* on a camera parameter creates a lane, wires it to that parameter, and hands you the clip
+editor the stems use. *Why:* a camera move is a curve over time, and the product already has curves
+over time. Reusing them means keyframes (points in a pattern), smooth motion (interpolation,
+including `step` for a snap), reuse (one pattern placed three times, edited once) and **modulation
+by the music** — the parameter is an ordinary routing target (D-64), so a stem can drive it *as
+well*, and the two sum through the normal weighted N:1. A dedicated keyframe editor would have had
+to agree with all of that and would eventually not have.
+*Consequence:* `cameraAnimationRange()` exists because a descriptor's `min`/`max` is a **slider
+bound**, not an animation range — position runs ±500 m so you can leave the scene and come back,
+and mapping a 0–1 curve onto that would fling the camera into the void on its first keyframe. A
+move lives in ±10 m and ±45°, centred on zero because the chain's output is *added* to the authored
+value.
+
+**D-93 · A camera path is geometry; its timing is automation.**
+Waypoints say *where*; the Follow Path behaviour's `progress` parameter says *where along it*, and
+progress is an ordinary parameter, so it can be typed, drawn as a clip, or driven by a stem. *Why:*
+baking times into waypoints is what makes camera paths miserable elsewhere — retiming a move means
+editing every point, and the shape and the schedule cannot be edited independently. Blender's
+Follow Path constraint splits them the same way, for the same reason. Waypoints are **captured from
+the preview camera** rather than typed: flying somewhere and pressing a button is how anyone
+actually decides where a camera should be.
+
+Three specifics worth keeping:
+
+- **`centripetal` Catmull-Rom.** Uniform parameterisation overshoots and loops when control points
+  are unevenly spaced, which on a camera path reads as the camera lurching sideways between two
+  waypoints that looked fine.
+- **`getPointAt`, not `getPoint`.** Arc length, so progress moves the camera at a constant speed.
+  Otherwise it speeds up wherever waypoints are far apart — the opposite of what changing their
+  spacing should mean.
+- **Progress wraps rather than clamps**, so a repeating clip loops the move, and negative progress
+  from a bipolar range still resolves.
+
+**D-94 · The rig gained a *placement*, because a path places rather than nudges.**
+`CameraRig` carries `hasPlacement` + `placeX/Y/Z` and `hasAim` + `aimX/Y/Z` alongside its additive
+offsets. A placing behaviour replaces the authored position; offsets and orbit then apply on top, so
+a handheld shake still shakes a camera travelling along a path. Aiming along the path wins over the
+Look-At target — a camera told to look where it is going has been given the more specific
+instruction. Flat numbers and flags rather than nullable vectors, so `resetRig` stays
+allocation-free: it runs every frame.
+
+**D-95 · Shared processors are what a node graph is *for*, so they came first.**
+`ModulationProcessor` — Quantise, Sample & Hold, Delay — are objects with ids that **several wires
+reference**. One "quantise to 8 steps" driving six parameters is one thing to edit, not six copies
+that drift.
+
+*Why this and not a canvas.* D-34 rejected a node canvas because 8 stems × 13 metrics was 104
+potential nodes and spaghetti is a known failure mode. **Pass C deleted that objection** — sources
+are now the handful of lanes you selected (D-88) — so it was genuinely reconsiderable. But with
+computed layout a patchbay *is* a two-column node graph, and the only thing a canvas adds is a
+middle column. So the middle column is what got built; drawing it as free-floating nodes would add
+positions to save and a way to make a tangle, and buy nothing the rack does not already show.
+
+**Nothing here duplicates the chain.** Gain, curve and rise/fall are the *wire's* private trim; a
+second way to smooth a signal would be a second thing to get wrong. Stepping, holding and delaying
+are all new capability, and a test asserts the two vocabularies stay disjoint.
+
+**D-96 · Delay and Sample & Hold change WHEN the source is read, not what comes back.**
+Both are expressed as a time offset — `processorTimeOffset` composes them and the caller samples the
+source at the resulting moment. Neither has an `apply`. *Why:* every source in this system is
+already a pure function of `t`, so asking for `t - d` is exact and free; a buffer of past values
+would be state, and state in the render path cannot survive an out-of-order offline render (HC-3).
+It also means delay works while scrubbing backwards, which a buffer never could. The offset floors
+at zero, because every source is silent before the start and a delayed wire should hold its first
+value rather than dropping out for its delay length.
+
+**D-97 · The preview reads the source exactly the way the matrix does.**
+`previewConnection` resolves and applies the wire's processors. *Why:* without it the modulation
+graph draws a smooth line for a quantised wire, and **a preview that disagrees with the render is
+worse than no preview, because it is believed.** Same reasoning as D-85 for curves: one code path
+for "what does this signal do", used by everything that claims to show it.
+
+**D-98 · A State owns its scene. HC-7 is rewritten, not extended.**
+`VisualState` holds `objects`, `connections`, `post`. Switching loads; switching away saves. *Why:*
+the previous model — a state as a *selection* of ids over one project-global pool — was defensible
+on paper and unusable in fact. Every state's objects lived in one pool, so **the layer stack showed
+all of them at once**: a five-state project presented thirty shapes and switching states only changed
+which were hidden. You cannot author against a scene you cannot see.
+
+Ownership costs the propagation that selection bought — editing a shape in one state no longer
+changes the copy in another. That is the right trade, and it is the same property that makes a state
+importable, exportable and sellable, which is where the user wants this to go.
+
+*What it deleted:* `isVisible`, `isConnectionActive`, `isPostActive`, `withOverride`,
+`connectionOverrides`, the D-58 question of which authority wins, `StatePanel`. `resolveTimeline`
+returns one state id where it returned three sets. **The correct model was also the smaller one** —
+worth noticing, because the complexity was load-bearing for the wrong idea.
+
+*Automation stays project-global* (HC-8 rewritten). A stem lane derives from project audio, and
+patterns are referenced by clips on stem lanes — a pattern owned by a state would break the moment
+you switched away. Export therefore becomes a **bundling** problem: collect the patterns and drawn
+lanes a state's wires reach, leave stem lanes as inputs the importer maps. That is how asset packages
+work everywhere.
+
+**D-99 · Document-level controls live in the top bar; the left dock has one job.**
+The state selector moved from a side dock into the top bar, next to the project name. *Why:* which
+state you are editing is a property of the *document*, like Blender's Scene picker — putting it in
+the left dock gave one 280px column two unrelated jobs, and put it on one page when it applies to
+all seven. The left dock is for bringing visual elements in. Nothing else.
+
+*Also removed:* the **Load** and **Save** buttons on each state. Picking a state loads it; leaving it
+saves it. Two buttons asking the user to manage that by hand were the tell that the model underneath
+was wrong — and they survived the model, which is how you find out.
+
+**D-100 · A control with no handler is a lie, not a placeholder.**
+REC deleted. It sat in the top bar from Phase 1 wired to nothing, styled like a live feature. Third
+instance of the same class after `add-marker` and `forgetHandle`, so it is now a rule:
+**ship the control with the behaviour or do not ship the control.**
+
+**D-101 · Gizmo visibility is per-page, and it is the page's declaration.**
+Two layers — `GIZMO_LAYER` for authoring furniture, `CAMERA_GIZMO_LAYER` for the path, frustum and
+trail — and `ViewportSlotOptions` says which a page shows. *Why:* the camera path was on the general
+gizmo layer, so it was drawn on **every** page including the export monitor. Deliver now shows
+neither: it is a proof of the file, so anything that will not be in the file has no business in it.
+The exporter disables both regardless, which is belt and braces on purpose.
+
+**D-102 · The Scene Camera draws itself, and where it is going.**
+A frustum at its resolved transform, plus a dashed motion trail along its path — both in preview,
+both on the camera layer. *Why:* Blender always draws the camera object and offers a motion path, for
+the reason that while you fly the preview around, the camera that actually renders is invisible. You
+were composing a shot whose edges you could not see. The trail samples the *path*, deliberately not
+the per-frame sum: behaviour noise and audio wobble are not a trajectory, and drawing them would be
+a scribble.
+
+**D-103 · Instructional prose is a design failure with a workaround attached.**
+Every explanatory paragraph removed from the UI. *Why:* a sentence telling you how a control works is
+the control failing to say it — and several of ours appeared in two places, which is one sentence
+maintained twice. `title` attributes stay: hover help is on demand and costs no space. Empty states
+that say what a panel is *for* stay: with nothing in a list there is nothing else to read. Narrating
+a gesture goes.
+
+That I had written so many of them was the useful signal. It is recorded in
+[05-DESIGN-SYSTEM.md](05-DESIGN-SYSTEM.md) §"Where this system is still not honest" alongside the
+rest of the interaction debt.
+
+**D-104 · Range before polish, and range before more of the same.**
+The next phase is widening the medium — colour authoring, a points backend, non-lattice structure,
+lines, SDF, text — and **not** interaction craft, and **not** more post effects.
+
+*Why not polish:* it is genuinely the reason this reads as a prototype next to Notch and
+TouchDesigner. Every control here is a slider, a number field or a list row, so you manipulate
+descriptions of things rather than things. But fixing it yields a *narrow tool that is pleasant to
+operate*, and narrowness is what decides whether the tool is worth operating at all.
+
+*Why not more effects:* they add permutations inside the single image family that already exists.
+They feel like progress and move nothing.
+
+The bar is the **ten-project test** — ten projects from one stem, fifteen minutes each; a stranger
+must tell all ten apart from one frame, none embarrassing, at least four distinct image families.
+Falsifiable, cheap to run, and the thing that will say when to stop widening.
+Full reasoning: **[17-EXPRESSIVE-RANGE.md](17-EXPRESSIVE-RANGE.md)**.
+
+**D-105 · Colour is a scene-level palette, and objects bind to a slot.**
+A state owns a `Palette` — an ordered colour list plus two background stops. An object holds
+`paletteSlot: number | null` rather than a baked hex, so re-picking the palette recolours the whole
+scene at once. Slots wrap, so a four-colour palette driving nine objects cycles rather than running
+out, and shortening a palette cannot leave objects pointing at nothing. `null` is the escape hatch
+for the one object that has to differ.
+
+*Why:* every new object used to take the next entry from a rotating stem palette, over a near-black
+background, under one fixed rig. So a user who made **no colour decision** — most users, because
+nothing invited one — got the same colours as everyone else. "An accent colour on dark" was not a
+style, it was the absence of a control, and it is a large part of why ten users produced eight
+similar outputs.
+
+Six starter palettes rather than one, including a greyscale one so the control does not read as
+"pick a hue". These are not the pre-baked presets the docs reject — those decided *musical
+structure*. A palette decides nothing about structure; it is a starting point for a decision that
+was not being made at all, and one default cannot fix everyone landing on the same colours.
+
+**The background is written once, not bound live.** The environment section stays the only render
+path for it, so picking a palette *writes* `background.topColor` / `bottomColor` and then leaves
+them alone. That way you can tweak the background afterwards without the palette fighting you — a
+palette is a starting point, not a lock — and there is no second source of truth for the largest
+area of every frame.
+
+*Verified:* four palettes over identical geometry produce four visibly different pieces, sky
+included, measured on a geometry-free strip of the frame rather than by eye.
+
+**D-106 · A test that asserts the bug is worse than no test.**
+The first version of the palette suite asserted every background had mean luminance **below 60** —
+"dark enough to sit behind lit geometry". Both stops were therefore near-black, which reproduced
+*exactly* the problem the palette exists to fix, and the test locked it in. Driving the app showed
+the sky visibly changing and still reading as a void.
+
+Replaced with the property that actually matters: the horizon stays dark enough for geometry to sit
+against (`< 40`) **and the upper stop lifts the frame off the void** (`> horizon + 25`). Worth
+recording as a class of mistake, not just a fix — a test written from the implementation's
+assumptions will happily certify them.

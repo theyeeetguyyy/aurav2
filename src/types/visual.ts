@@ -50,6 +50,12 @@ export interface SceneObject {
   /** Registered material brick id, e.g. 'mat-standard', 'mat-fresnel'. */
   materialId: string
   material: MaterialParams
+  /** Which palette slot this object's colour comes from, or null to use `material.color` directly.
+   *
+   *  A slot rather than a colour so changing the palette re-colours the whole scene at once — the
+   *  edit people actually want, which previously meant visiting every object. Null is the escape
+   *  hatch for the one object that has to differ. */
+  paletteSlot: number | null
   /** Ordered effect stack, applied in sequence. */
   effects: EffectInstance[]
   visible: boolean

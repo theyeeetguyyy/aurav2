@@ -1,11 +1,9 @@
 import type { TrackFeatures } from '@/engine/audio/featureTypes'
-import type {
-  AutomationPoint,
-  LaneInterpolation,
-  LaneMode,
-  LaneSource,
-} from '@/engine/automation/lane'
+import type { CameraWaypoint } from '@/engine/camera/cameraPath'
+import type { LaneSource } from '@/engine/automation/lane'
+import type { AutomationClip, AutomationPattern } from '@/engine/automation/clips'
 import type { EventTrigger, ModulationConnection } from '@/types/modulation'
+import type { ModulationProcessor } from '@/engine/modulation/processors'
 import type { ParamValue } from '@/types/params'
 import type { EffectInstance, SceneObject } from '@/types/visual'
 import type { ID } from '@/types/audio'
@@ -26,7 +24,7 @@ import type { SectionMarker, Strip, VisualState } from '@/types/project'
  *  so adding a store is a deliberate edit to this file and a version bump — not something
  *  that silently half-works. */
 
-export const PROJECT_VERSION = 1
+export const PROJECT_VERSION = 3
 export const PROJECT_EXTENSION = '.aura.json'
 
 /** What a project remembers about a stem. Deliberately not the audio. */
@@ -58,13 +56,15 @@ export interface SerialisedFeatures {
   beatGrid: number[]
 }
 
+/** A lane: an identity wires point at, and the clips placed on it.
+ *
+ *  Clips reference patterns rather than holding them, so the patterns live in their own table
+ *  below. `points` and `mode` are gone — see `patterns` for where the shapes went. */
 export interface SerialisedLane {
   id: ID
   name: string
   color: string
-  points: AutomationPoint[]
-  interpolation: LaneInterpolation
-  mode: LaneMode
+  clips: AutomationClip[]
   /** Present on a stem lane; absent on a detached one. */
   source?: LaneSource
 }
@@ -83,6 +83,9 @@ export interface SerialisedGenerator {
 
 export interface SerialisedCamera {
   behaviours: EffectInstance[]
+  /** The camera path. Optional, so a file written before paths existed still opens. */
+  waypoints?: CameraWaypoint[]
+  pathClosed?: boolean
   lookAtId: ID | null
   lookAtEnabled: boolean
 
@@ -114,9 +117,18 @@ export interface AuraProject {
     disabled: Record<string, boolean>
   }
   camera: SerialisedCamera
-  modulation: { connections: ModulationConnection[]; triggers: EventTrigger[] }
+  modulation: {
+    connections: ModulationConnection[]
+    triggers: EventTrigger[]
+    /** Shared processing stages, keyed by id. Optional, so a file written before they
+     *  existed still opens — wires simply reference none. */
+    processors?: Record<ID, ModulationProcessor>
+  }
   generators: SerialisedGenerator[]
   lanes: SerialisedLane[]
+  /** Every automation pattern, keyed by id. Shared by the clips that reference them, so one
+   *  edit changes every placement — which is why they cannot live inside a lane. */
+  patterns?: Record<ID, AutomationPattern>
 
   /** The arrangement. Optional so a v1 file written before Phase 6 still opens — states,
    *  strips and markers are all plain data, so no migration is needed beyond a default. */
@@ -130,9 +142,13 @@ export interface AuraProject {
  *  rather than resurrecting them. */
 export interface SerialisedTimeline {
   bpm: number | null
+  /** Each state carries its own scene, routing and post chain — which is what makes one
+   *  shareable on its own (v3). */
   states: VisualState[]
   strips: Strip[]
   markers: SectionMarker[]
+  /** Which state was being edited. Restored so opening a file puts you back where you were. */
+  activeStateId?: ID | null
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

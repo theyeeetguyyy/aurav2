@@ -3,11 +3,20 @@
 **Read this first.** Where the project actually is, what runs today, what does not, and
 what to do next. Everything here is verified against the code, not aspirational.
 
-*Last verified: 2026-08-07 · `npm run check` green (typecheck · lint · 381 tests) · production
+*Last verified: 2026-08-07 · `npm run check` green (typecheck · lint · 430 tests) · production
 build clean · **driven in a real browser: every page screenshotted, and a 720p MP4 exported,
 decoded and measured for brightness and motion**  (`run-aura` skill)*
 
-> **What is missing and what it costs: [13-PRODUCT-GAP.md](13-PRODUCT-GAP.md).**
+> **Read next: [17-EXPRESSIVE-RANGE.md](17-EXPRESSIVE-RANGE.md).**
+>
+> The engine works. An mp3 goes in and a deterministic, sharp, audio-reactive MP4 comes out. But
+> **give this to ten people and eight will make the same thing** — wireframed cloned shapes, routed
+> to a stem, with a little post. One of three declared render backends is implemented, and four of
+> eight element families, and all four built ones resolve to *lit mesh* or *full-frame filter*.
+>
+> That is the only thing that matters right now. Not UI polish, not more effects.
+>
+> What else is missing and what it costs: [13-PRODUCT-GAP.md](13-PRODUCT-GAP.md).
 
 ---
 
@@ -118,10 +127,16 @@ field evaluation (audio, rhythm, generative) · discrete triggers as decaying im
 **Generators** — LFO/noise as first-class synthetic stems · **response curves** with an
 editor, **real value ranges** in the parameter's own units, and a **modulation graph**
 drawn from the real engine.
-✅ **5F automation** — **every stem owns an editable modulation curve**, drawn under its
-own waveform so the time reference is the waveform itself (D-55). Starts from the
-analysis, reshape it, reset it. Plus the signal-chain **input window** and **Normalise**
-(D-51).
+✅ **5F automation, rebuilt as clips over patterns** (D-83). A **pattern** is a shape in
+normalised time; a **clip** places it — start, length, repeat count. Draw a one-second shape and run
+it every second across ten by setting one number. Copies share the pattern, so editing either
+changes both. A stem lane with no clips *is* its analysed signal, and a clip overrides it only where
+it covers (D-84) — so "the kick drives this, except during the drop" needs no mode.
+✅ **A stem exposes the signals you selected, not all thirteen** (D-88). Selection happens on the
+stems page; Routing lists lanes. Four stems used to mean sixty-four source rows.
+✅ **Shared processors** — Quantise, Sample & Hold, Delay, referenced by id so several wires use one
+(D-95). The last two work by changing *when* the source is read, which keeps them pure (D-96).
+Plus the signal-chain **input window** and **Normalise** (D-51).
 ⬜ 5C node graph (advanced view) · 5E object-to-object routing.
 
 ### Phase 7 — Camera (partial)
@@ -132,6 +147,11 @@ with or without a behaviour (D-65).
 ✅ **7D camera behaviours** — Orbit / Sway / Handheld Shake / Dolly / Lens, each a pure
 function of clock time with every amplitude a modulation target. Additive on top of the
 authored transform rather than the only way to move (D-50).
+✅ **7A path** — waypoints define *where*, a `progress` parameter defines *where along it*, so a
+move can be retimed without being redrawn (D-93). A `Follow Path` behaviour reads it, and creating
+one also creates the progress ramp so it moves instead of sitting at zero.
+✅ **Camera gizmos** — the Scene Camera draws a frustum and its motion trail in preview, on their
+own layer so only the pages that asked for camera furniture show them and the exporter never does.
 ⬜ 7A spline — belongs as a behaviour brick reading a curve, not a parallel owner of the
 camera · 7B easing editor · 7C constraints · 7E motion trail · 7F presets.
 
@@ -197,43 +217,29 @@ break by accident:
 
 ## Next
 
-**It runs, and it exports.** An mp3 goes in and a 720p H.264/AAC MP4 comes out: bloom
-glowing, camera orbiting, ~17 % of pixels changing between sampled frames, no authoring
-furniture in the file. That is the product's whole premise, closed and measured.
+**Widen the medium. Nothing else.**
 
-Running it is also where the defects are. Thirteen of the twenty-seven logged were found by opening
-a screenshot or decoding a file — including two export resolutions that had **never once
-worked**. The `run-aura` skill automates the pass; what it cannot judge is whether the result
-looks *good*, which still needs someone sitting in front of it.
+The full argument, the falsifiable bar, and the sequence are in
+[17-EXPRESSIVE-RANGE.md](17-EXPRESSIVE-RANGE.md). In short:
 
-Then, in order: the **section-aware intensity engine** (6C), which is what turns markers from
-labels into narrative · **transitions** (6E), which is the only thing between hard cuts and
-crossfades · **GPU particles** (stateless, D-49) → the craft pass on the UI.
+| Pass | What | Why here |
+|---|---|---|
+| 1 | **Colour & light as things you author** — scene palettes, gradients across clones, hue from signal, environments that are not near-black | Cheapest, and it changes every frame. Today a user who makes no colour decision gets the same palette as everyone else |
+| 2 | **The points backend** — `points` is in the type union and nothing implements it | Doubles the medium. A cloud is not a surface. Stateless, so D-49's objection to particle *libraries* does not apply |
+| 3 | **Structure that is not a lattice** — noise, curl-flow, surface scatter | Cloners place on grids, so multiplicity always reads as an array. Loudest "toy" tell in the output |
+| 4 | **Lines & ribbons** | Third image family, cheap once points exist |
+| 5 | **The SDF backend** | Most distinctive, most work |
+| 6 | **Text** | For this audience, its absence is a hole rather than a gap |
 
-Full queue: [15-BUILD-PLAN.md](15-BUILD-PLAN.md). Library assessments first:
-[16-LIBRARIES.md](16-LIBRARIES.md).
+**The bar, run after every pass:** ten projects from one stem, fifteen minutes each. A stranger must
+tell all ten apart from a single frame, none may be embarrassing, and there must be **at least four
+distinct image families**. Today it fails the first and third and passes the second — the floor is
+fine, the room is narrow.
 
-Full queue, ranked and separated by kind: [15-BUILD-PLAN.md](15-BUILD-PLAN.md).
+**Deliberately not next:** interaction craft (gizmos, drag-to-scrub, hover, motion) and more
+post effects. The first makes a narrow tool pleasant; the second adds permutations inside the one
+image family that already exists. Both are recorded — see
+[05-DESIGN-SYSTEM.md](05-DESIGN-SYSTEM.md) §"Where this system is still not honest".
 
-Full breakdown with test criteria: [06-ROADMAP.md](06-ROADMAP.md).
-
----
-
-## Document index
-
-| Doc | Read when |
-|---|---|
-| [01-VISION](01-VISION.md) | Deciding *whether* to build something |
-| [02-PRINCIPLES](02-PRINCIPLES.md) | **Before designing any subsystem** |
-| [03-ARCHITECTURE](03-ARCHITECTURE.md) | **Before writing engine code.** Binding |
-| [04-ENGINE-SPECS](04-ENGINE-SPECS.md) | Implementing a module |
-| [05-DESIGN-SYSTEM](05-DESIGN-SYSTEM.md) | Writing UI |
-| [06-ROADMAP](06-ROADMAP.md) | Picking what is next. **Only home for phase status** |
-| [07-DECISIONS](07-DECISIONS.md) | "Why is it like this?" — every locked decision, with reasoning |
-| [08-OPEN-QUESTIONS](08-OPEN-QUESTIONS.md) | Only list of genuinely undecided things |
-| [09-BRICK-REGISTRY](09-BRICK-REGISTRY.md) | Operator catalogue |
-| [10-ELEMENTS](10-ELEMENTS.md) | **What to build next.** Element families + build order |
-| [11-ROUTING-UX](11-ROUTING-UX.md) | Patchbay routing redesign |
-| [CODEBASE_MAP](CODEBASE_MAP.md) | Where a file lives and what it owns |
-| [AUDIT-2026-07-27](AUDIT-2026-07-27.md) | How the current architecture was arrived at |
-| `research/` | Frozen source material. Never edit |
+Full queue: [15-BUILD-PLAN.md](15-BUILD-PLAN.md) · breakdown with test criteria:
+[06-ROADMAP.md](06-ROADMAP.md).

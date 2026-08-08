@@ -30,6 +30,7 @@ function lightObject(brickId: string): SceneObject {
     effects: [],
     visible: true,
     locked: false,
+  paletteSlot: null,
   }
 }
 

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Volume2, VolumeX, Headphones, Trash2, ChevronDown, ChevronRight, Activity } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Volume2, VolumeX, Headphones, Trash2, Activity, AudioWaveform } from 'lucide-react'
 import { useAudioStore } from '@/store/useAudioStore'
 import { WaveformCanvas } from './WaveformCanvas'
 import { TrimHandles } from './TrimHandles'
@@ -8,7 +8,8 @@ import { RealtimeAnalyser } from '@/engine/audio/RealtimeAnalyser'
 import { AudioFeatures } from '@/engine/audio/AudioFeatures'
 import { platform } from '@/engine/platform/PlatformAdapter'
 import { useAutomationStore } from '@/store/useAutomationStore'
-import { StemAutomation } from '@/components/automation/StemAutomation'
+import { StemLaneRow } from '@/components/automation/StemLaneRow'
+import { MetricPicker } from './MetricPicker'
 import type { Track } from '@/types/audio'
 
 interface TrackRowProps {
@@ -17,12 +18,27 @@ interface TrackRowProps {
   projectDuration: number
 }
 
-/** Single track row in the stem rack.
- *  Stem colour, name, solo/mute, volume, waveform with trim handles, delete. */
+/** One stem in the rack.
+ *
+ *  **A stem is a set of automation sources, not a waveform.** So the row shows its curves by
+ *  default and the waveform is a *view* of the same strip, switched with one control rather than
+ *  revealed by a second one. The waveform is genuinely useful — it is how you find the drop — but
+ *  it is not what anything downstream reads, and defaulting to it put the least actionable
+ *  picture in the most prominent place.
+ *
+ *  One row per selected signal, chosen with the picker. Trimming stays on the waveform view,
+ *  because trimming is an audio edit and the handles belong on the audio. */
 export function TrackRow({ track, projectDuration }: TrackRowProps) {
-  const [showAutomation, setShowAutomation] = useState(false)
+  const [showWaveform, setShowWaveform] = useState(false)
   const removeLanesForTrack = useAutomationStore((s) => s.removeLanesForTrack)
-  const lane = useAutomationStore((s) => s.lanes.find((l) => l.source?.trackId === track.id))
+  const allLanes = useAutomationStore((s) => s.lanes)
+  // Filtered outside the selector: one that built an array would return a fresh reference every
+  // call and re-render forever (D9).
+  const lanes = useMemo(
+    () => allLanes.filter((l) => l.source?.trackId === track.id),
+    [allLanes, track.id],
+  )
+  const beatGrid = useMemo(() => AudioFeatures.getBeatGrid(track.id), [track.id])
   const toggleSolo = useAudioStore((s) => s.toggleSolo)
   const toggleMute = useAudioStore((s) => s.toggleMute)
   const setVolume = useAudioStore((s) => s.setVolume)
@@ -121,9 +137,27 @@ export function TrackRow({ track, projectDuration }: TrackRowProps) {
       />
 
       {/* Waveform + trim handles. `data-stem-lane` is what the rack playhead measures
-          against, so the line stays aligned without anyone hardcoding a control width. */}
-      <div data-stem-lane className="flex-1 min-w-0 relative">
-        {track.buffer ? (
+          against, so the line stays aligned without anyone hardcoding a control width.
+          Clicking it seeks: it is a picture of time, so it should behave like one. The trim
+          handles sit above and stop propagation, so grabbing an edge still trims. */}
+      <MetricPicker track={track} />
+
+      {/* One control, two views of the same strip. `data-stem-lane` is what the rack playhead
+          measures against, so it stays on whichever view is showing. */}
+      <div
+        data-stem-lane
+        onPointerDown={(e) => {
+          const box = e.currentTarget.getBoundingClientRect()
+          if (box.width === 0 || projectDuration <= 0) return
+          const fraction = Math.min(1, Math.max(0, (e.clientX - box.left) / box.width))
+          MultiTrackRack.getInstance().seek(fraction * projectDuration)
+        }}
+        title="Click to seek"
+        className="flex-1 min-w-0 relative cursor-pointer"
+      >
+        {!track.buffer ? (
+          <div className="h-8 bg-aura-base rounded animate-pulse" />
+        ) : showWaveform ? (
           <>
             <WaveformCanvas
               buffer={track.buffer}
@@ -131,6 +165,7 @@ export function TrackRow({ track, projectDuration }: TrackRowProps) {
               height={32}
               duration={projectDuration}
             />
+            {/* Trimming is an audio edit, so its handles live on the audio view. */}
             <TrimHandles
               duration={projectDuration}
               trimBounds={track.trimBounds}
@@ -140,26 +175,24 @@ export function TrackRow({ track, projectDuration }: TrackRowProps) {
             />
           </>
         ) : (
-          <div className="h-8 bg-aura-base rounded animate-pulse" />
+          <div className="h-8 flex items-center">
+            <span className="text-[10px] text-slate-600">
+              {lanes.length === 0
+                ? 'No signals selected — pick one to the left'
+                : `${lanes.length} signal${lanes.length === 1 ? '' : 's'} below`}
+            </span>
+          </div>
         )}
       </div>
 
-      {/* Automation toggle. The curve belongs to this stem, so it lives on this row. */}
       <button
-        onClick={() => setShowAutomation((v) => !v)}
-        className={`shrink-0 flex items-center gap-0.5 transition-colors ${
-          showAutomation || lane?.mode === 'edited'
-            ? 'text-aura-accent'
-            : 'text-slate-600 hover:text-slate-300'
+        onClick={() => setShowWaveform((v) => !v)}
+        className={`shrink-0 transition-colors ${
+          showWaveform ? 'text-aura-accent' : 'text-slate-600 hover:text-slate-300'
         }`}
-        title="Show this stem's modulation curve"
+        title={showWaveform ? 'Hide the waveform' : 'Show the waveform and trim handles'}
       >
-        {showAutomation ? (
-          <ChevronDown className="w-3 h-3" />
-        ) : (
-          <ChevronRight className="w-3 h-3" />
-        )}
-        <Activity className="w-3 h-3" />
+        {showWaveform ? <AudioWaveform className="w-3 h-3" /> : <Activity className="w-3 h-3" />}
       </button>
 
       {/* Delete button */}
@@ -172,13 +205,18 @@ export function TrackRow({ track, projectDuration }: TrackRowProps) {
       </button>
       </div>
 
-      {/* Aligned with the lane above by the same left padding, so the curve sits under
-          the waveform it came from rather than merely near it. */}
-      {showAutomation && (
-        <div className="border-t border-aura-line pl-[196px] pr-3 pt-1">
-          <StemAutomation track={track} duration={projectDuration} />
+      {/* One row per selected signal, aligned to the same left inset so every curve on the
+          page reads against one time axis. */}
+      {lanes.map((lane) => (
+        <div key={lane.id} className="border-t border-aura-line pl-[196px] pr-3 pt-1">
+          <StemLaneRow
+            lane={lane}
+            track={track}
+            duration={projectDuration}
+            beatGrid={beatGrid}
+          />
         </div>
-      )}
+      ))}
     </div>
   )
 }

@@ -71,7 +71,7 @@ frame 12 and still produce exactly what was previewed.
 | `visual.ts` | `SceneObject`, `RenderBackend`, `MeshKind`, `Transform3D`, `MaterialParams`, `EffectInstance`, `POST_STACK_ID` (HC-4). `MaterialParams` is an open record now, not a fixed struct (D-43) | current |
 | `modulation.ts` | `ModulationConnection`, `SignalChain`, `EventTrigger`, defaults | current — both ends are `FieldRef` / `ParamAddress`; the closed unions are gone (HC-5) |
 | `camera.ts` | `SceneCamera`, `PreviewCamera`, `CameraKeyframe`, `SplineWaypoint`, `CameraConstraint` | current |
-| `project.ts` | `VisualState`, `Strip`, `SectionMarker`, `Project` | ⚠️ needs `activeConnectionIds` / `connectionOverrides` (HC-8) — Phase 6A |
+| `project.ts` | `VisualState`, `Strip`, `SectionMarker`, `Project`. A state owns `objects` / `connections` / `post` — the id-selection fields it used to carry are gone (D-98) | built |
 
 ## `src/store/` — Zustand
 
@@ -86,7 +86,7 @@ frame 12 and still produce exactly what was previewed.
 | `useGeneratorStore.ts` | Synthetic stems — LFOs and noise (D-37). Own store, not folded into `useAudioStore`, which would mean a dozen permanently-null fields |
 | `useSceneStore.ts` | **the SceneObject layer stack** — array order *is* layer order; param writes by address | exports `useSelectedObject()` |
 | `usePostStore.ts` | The project-global post chain. Array order is evaluation order; owns the master bypass (D-42) |
-| `useAutomationStore.ts` | One lane per stem plus any detached ones. `ensureStemLane` on import, `materialise` on first edit, `resetToAnalysis`. Exports `getLane()` for the field context — passed into the engine, never imported by it |
+| `useAutomationStore.ts` | One lane per **selected metric** per stem, plus drawn ones (D-88). Lanes hold clips; clips reference project-global patterns (D-83). Exports `getLane()` and `getPatterns()` for the field context — passed into the engine, never imported by it |
 | `useEnvironmentStore.ts` | Background, fog, lighting, reflections, grid — one flat record per section (D-44) |
 
 > No store may hold an `AudioBuffer`, a `THREE.Object3D`, a GPU handle, or a DOM node.
@@ -117,6 +117,7 @@ frame 12 and still produce exactly what was previewed.
 | File | Role |
 |---|---|
 | `SignalShaper.ts` | One connection's chain: Gain → Rise/Fall → Min/Max → Weight. The only stateful part of modulation; reset on clock jumps. |
+| `processors.ts` | Quantise, Sample & Hold, Delay — shared stages several wires can reference (D-95). The last two work by changing *when* the source is read, which is what keeps them pure (D-96) |
 | `fields.ts` | `evaluateField()` + the source catalogue. Every field is a **pure function of time**. Takes a `FieldContext` rather than importing a store, which is how the engine boundary is kept. |
 | `curve.ts` | Response curves — points + per-segment exponential tension, presets, `evaluateCurve()` (D-39) |
 | `preview.ts` | Runs the real shaper over the real timeline for the drawn curve (D-41), and `reachableRange()` — the span the parameter ACTUALLY reaches given the signal that exists, as opposed to the span the settings allow |
@@ -177,7 +178,8 @@ frame 12 and still produce exactly what was previewed.
 
 | File | Role |
 |---|---|
-| `lane.ts` | `sampleLane()`, `decimate()` and the edit primitives. A lane in `analysis` mode holds no points and defers to the feature timeline (D-55). Holds end values outside the drawn range (Blender NLA's `hold`) — a lane drawn over the chorus must not mute the parameter everywhere else |
+| `lane.ts` | `samplePoints()` — the one interpolator in the system (D-85) — plus `decimate()`, the edit primitives, and the starting shapes. A lane is now just an identity and a list of clips; `LaneMode` is gone (D-84) |
+| `clips.ts` | The clip model: `sampleClips()`, `clipPhase()` with its repeat arithmetic, `resizeClip()`, `holdValue()`. A pattern is a shape in 0–1 time; a clip is a placement of one (D-83) |
 
 ### `engine/commands/` — undo (3F)
 
@@ -219,6 +221,7 @@ frame 12 and still produce exactly what was previewed.
 
 | File | Role |
 |---|---|
+| `cameraPath.ts` | Waypoints to a centripetal Catmull-Rom curve, sampled by arc length so progress means constant speed (D-93). Geometry only — the timing is a parameter |
 | `cameraTransform.ts` | The Scene Camera's own transform as parameter descriptors — position, rotation in degrees, fov — under `@camera` with no effect id. Makes the camera typeable, wireable and drawable, so an automation lane *is* a keyframed move (D-64). Also the `YXZ` Euler ↔ quaternion conversion *Align to this view* needs |
 | `behaviours.ts` | Orbit / Sway / Shake / Dolly / Lens. Pure functions of clock time, summed into a `CameraRig` (D-50). Additive **on top of** the authored transform |
 | `DualCameraEngine.ts` | Authoritative transforms for both cameras. Separates the **authored** `baseScene*` from the **resolved** `scene*` — behaviours are additive, so writing onto the authored value would accumulate. Owns `alignSceneToPreview()`. Fly movement, mouse-look, reference-counted input attach with text-field guards and key-release-on-blur. |
@@ -227,9 +230,8 @@ frame 12 and still produce exactly what was previewed.
 
 | File | Role |
 |---|---|
-| `StateResolver.ts` | `findFreeSlot()` for unaimed placement (D-71), and `resolveTimeline()` — which objects, wires and effects are live at time `t`. Pure function of the clock (HC-3), so the exporter can ask for frame 5000 before frame 12. An empty timeline or a gap returns `EVERYTHING`, the shared all-null constant (D-59). Higher lanes win a conflict, key by key. Also `withOverride()` and `snapToGrid()` |
-| `variations.ts` | `generateVariations()` — Intro / Build / Drop / Breakdown as subsets of the current scene — and `planSequence()`, which lays them across the song, letting section markers pick the variation by type (D-74). Pure functions over id lists, which is only possible because a state selects rather than owns (HC-7) |
-| `liveTimeline.ts` | Module state holding the frame's resolved timeline, plus `isVisible` / `isConnectionActive` / `isPostActive` — each takes the authored toggle and replaces it while a strip is live (D-58). Not a store, because it is republished 60×/s and read imperatively (HC-1). `subscribeToCuts` notifies the one consumer that needs a rebuild rather than a flag |
+| `StateResolver.ts` | `resolveTimeline()` — which **state** is live at `t`, plus `cutTime`. Returns one id where it used to return three sets of ids, because a state owns its scene now (D-98). Also `findFreeSlot()` — which objects, wires and effects are live at time `t`. Pure function of the clock (HC-3), so the exporter can ask for frame 5000 before frame 12. An empty timeline or a gap returns `EVERYTHING`, the shared all-null constant (D-59). Higher lanes win a conflict, key by key. Also `withOverride()` and `snapToGrid()` |
+| `liveTimeline.ts` | Module state holding the frame's resolved timeline. Not a store, because it is republished 60×/s and read imperatively (HC-1). The three `is*` authority checks are gone with the selection model (D-98) |
 
 ### `engine/shortcuts/`
 
@@ -281,14 +283,23 @@ frame 12 and still produce exactly what was previewed.
 | `routing/CurveEditor.tsx` | SVG response-curve editor. Drag points, drag segments to bend, double-click add, Alt-click remove |
 | `routing/ModulationGraph.tsx` | The parameter's real value over time, plus a ghost of the raw signal. Canvas, imperative |
 | `routing/patchbay/StemSignalStrip.tsx` | Each stem's own signal over time — the shape everything wired from it inherits |
+| `routing/ProcessorRack.tsx` | Shared stages and which of them a wire uses, with a count of how many wires share each. The middle column a node graph would have been for (D-95) |
 | `routing/ChainEditor.tsx` | Per-connection signal chain, presented in evaluation order |
-| `automation/LaneEditor.tsx` | The draw surface. Canvas, sampled per pixel so the drawn line matches what the engine reads; painting replaces what is under the stroke rather than overlaying it |
-| `automation/StemAutomation.tsx` | One stem's curve, under its own waveform, with a metric picker, an `edited` marker and Reset. The primary path (D-55) |
-| `automation/AutomationPanel.tsx` | Detached lanes — the exception, for a shape the music does not contain |
 | `topbar/TopBar.tsx` | Brand, editable project name, undo/redo, save/open, shortcut settings. The name is the saved filename and the exported video's, so it is a field rather than a label (D-63) |
+| `routing/patchbay/SourceColumn.tsx` | Every wireable Field. A stem lists the lanes it has, not all thirteen metrics (D-88); Rhythm is one group rather than one per stem (D-90). The signal strip graphs whichever row is selected (D-81) |
 | `viewport/TimelineDriver.tsx` | Resolves the timeline once per frame and publishes it. Mounted ahead of every reader |
-| `viewport/useTimelineCut.ts` | `useSyncExternalStore` over the live strip set, for the one consumer that must rebuild at a cut rather than read a flag (D-61) |
+| `camera/CameraTrack.tsx` | *Animate* a camera parameter: creates a lane, wires it, and shows the clip editor. Keyframing with no keyframe engine (D-92) |
+| `camera/CameraPathPanel.tsx` | The waypoint list, captured from the preview camera. No times — those are a parameter |
+| `viewport/CameraPathGizmo.tsx` | The path drawn in the scene, from the same `buildPath` the behaviour samples. On `GIZMO_LAYER`, so it never reaches the file |
 | `camera/CameraRigPanel.tsx` | The Scene Camera: transform fields, Look-At target, Align-to-view and reset, then the behaviour stack that offsets them |
+| `shell/TransportScrubber.tsx` | The always-there scrub bar. Seekable on every page, carries the section markers, drawn imperatively via `scaleX` (D-79) |
+| `audio/MetricPicker.tsx` | Which of a stem's thirteen signals you want. Selecting one creates its lane, which is what makes it a source (D-88) |
+| `automation/StemLaneRow.tsx` | One selected signal of one stem, as a row under it. With no clips the row *is* the analysed signal |
+| `automation/ClipTrack.tsx` | The surface clips live on. Canvas for the signal and the curves, DOM for the clip boxes — the boxes need pointer capture, edge handles and hover, and hand-rolling those over a canvas would be the same code with more bugs |
+| `automation/ClipLane.tsx` | A clip track plus the editor for the selected clip. Shared by stem and drawn lanes, because at this level they are the same thing |
+| `automation/PatternEditor.tsx` | Draws one cycle, in 0–1 time. Its playhead tracks the *cycle*, so a pattern repeated eight times still shows which pass you are hearing |
+| `automation/DrawnLaneRow.tsx` | A drawn curve as a row in the stem rack, shaped like a stem's own row (D-80) |
+| `automation/interpolations.ts` | The three sampler modes and why each exists. Shared, so the vocabulary cannot drift between the two curve editors |
 | `timeline/Timeline.tsx` | The NLE surface. State library and section list in the left rail, ruler with beat grid and marker flags, three lanes of drag/resize strips, imperative playhead, Ctrl+wheel zoom anchored under the pointer. Snapping is to the detected beat grid plus every marker (D-60) |
 | `routing/targetInfo.ts` | Resolves any target address — SceneObject, post chain or world — to descriptor, base value and labels. Lives here rather than in `ParamRegistry` because it reads stores, and `engine/` may not |
 
@@ -317,7 +328,6 @@ frame 12 and still produce exactly what was previewed.
 | `audio/TrackRow.tsx` | Stem row: colour, name, solo, mute, volume, waveform, delete |
 | `audio/WaveformCanvas.tsx` | Two static canvas layers + clip-path progress. **Never repaints during playback**. Drawn against the PROJECT duration, so every stem shares one time scale |
 | `audio/TrimHandles.tsx` | Draggable trim in/out with pointer capture |
-| `audio/RackPlayhead.tsx` | ONE playhead for the whole rack, measured off a real lane element rather than a hardcoded control width |
 
 ### Pages
 
@@ -328,7 +338,8 @@ frame 12 and still produce exactly what was previewed.
 | `pages/LookPage.tsx` | 3 · Look | built — world & lighting ∣ viewport ∣ post chain |
 | `pages/NodeGraphPage.tsx` | 4 · Routing | built — patchbay |
 | `pages/CameraPage.tsx` | 5 · Camera | built — transform + behaviours ∣ viewport |
-| `pages/DeliverPage.tsx` | 6 · Deliver | built — monitor + timeline ∣ export settings. The monitor is load-bearing: the exporter drives the live renderer, so this page must host it (D-67) |
+| `pages/TimelinePage.tsx` | 6 · Timeline | built — monitor over the NLE timeline (D-77) |
+| `pages/DeliverPage.tsx` | 7 · Deliver | built — monitor ∣ export settings. One job: write the file. The monitor is load-bearing, not decoration: the exporter drives the live renderer, so the page must host it (D-67) |
 
 ## `src/project/`
 
@@ -371,3 +382,27 @@ this owns the wiring.
 | Skill | Role |
 |---|---|
 | `run-aura` | Launches the dev server and drives the app in headless Chromium: the SwiftShader flags WebGL needs, the stable selectors, how to get audio past the platform adapter, and how to judge an exported MP4 (structure, then pixels, then motion). Ten of the logged defects were found this way and none of them by a test |
+
+## `src/engine/scene/buildObject.ts`
+
+The SceneObject factory, extracted so two callers can share it: adding a shape to the live scene, and
+building the default scene a new **state** starts from (D-98). A store could not own it —
+`useProjectStore` reaching into `useSceneStore` to construct an object it is about to store elsewhere
+would be a cycle for no reason.
+
+## New in the state-model correction
+
+| File | Role |
+|---|---|
+| `topbar/StateSelector.tsx` | Which state you are editing, in the document bar. Click to switch, type to rename — one control, because a state's name is not a different kind of thing from the state (D-99) |
+| `viewport/SceneCameraGizmo.tsx` | The Scene Camera's frustum and motion trail, in preview. Blender draws the camera object; we drew nothing (D-102) |
+| `viewport/CameraPathGizmo.tsx` | The path, from the same `buildPath` the behaviour samples. On `CAMERA_GIZMO_LAYER`, which only Camera and Timeline enable (D-101) |
+| `camera/CameraPathPanel.tsx` | Waypoints, captured from the preview camera. *Follow this path* also creates the progress ramp, or the behaviour would sit at zero looking broken |
+| `camera/CameraTrack.tsx` | *Animate* a camera parameter: creates a lane, wires it, shows the clip editor. Keyframing with no keyframe engine (D-92) |
+
+## Colour (Pass 10A)
+
+| File | Role |
+|---|---|
+| `engine/scene/palette.ts` | `Palette`, six starters, `paletteAt()` (wrapping slot lookup) and `paletteRamp()` (position along the palette, clamped not wrapped). Owned by the state, so a shared state carries the colours it was designed in (D-105) |
+| `components/scene/PalettePanel.tsx` | Top of the Look page, because the palette is upstream of the background, the rig and every material. Starters are swatch rows — a dropdown of names would make you pick a palette without seeing it |

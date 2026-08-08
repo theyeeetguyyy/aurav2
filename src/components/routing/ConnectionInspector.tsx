@@ -1,8 +1,8 @@
 import { Activity, Maximize2, Power, Trash2 } from 'lucide-react'
 import { useAudioStore, isTrackVisuallyActive } from '@/store/useAudioStore'
-import { useModulationStore } from '@/store/useModulationStore'
+import { useModulationStore, getProcessor } from '@/store/useModulationStore'
 import { useGeneratorStore, getGenerator } from '@/store/useGeneratorStore'
-import { getLane } from '@/store/useAutomationStore'
+import { getLane, getPatterns } from '@/store/useAutomationStore'
 import { useTargetInfo } from './targetInfo'
 import { fieldLabel } from '@/engine/modulation/fields'
 import { connectionRange, measureField, reachableRange } from '@/engine/modulation/preview'
@@ -11,6 +11,7 @@ import { CURVE_PRESETS, isLinear } from '@/engine/modulation/curve'
 import { CurveEditor } from './CurveEditor'
 import { ModulationGraph } from './ModulationGraph'
 import { ChainEditor } from './ChainEditor'
+import { ProcessorRack } from './ProcessorRack'
 import { ScrubField } from '@/components/common/ScrubField'
 import { unitSuffix } from '@/utils/units'
 
@@ -67,6 +68,8 @@ export function ConnectionInspector({ id, onClear }: { id: string; onClear: () =
       isTrackActive: isTrackVisuallyActive,
       getGenerator,
       getLane,
+      getPatterns,
+      getProcessor,
     }) ?? connectionRange(connection, baseValue)
   const decimals = descriptor && descriptor.step >= 1 ? 0 : 2
 
@@ -126,6 +129,8 @@ export function ConnectionInspector({ id, onClear }: { id: string; onClear: () =
                   isTrackActive: isTrackVisuallyActive,
                   getGenerator,
                   getLane,
+                  getPatterns,
+                  getProcessor,
                 })
                 if (measured) {
                   updateChain(id, { inputMin: measured.low, inputMax: measured.high })
@@ -203,6 +208,12 @@ export function ConnectionInspector({ id, onClear }: { id: string; onClear: () =
         </section>
 
         <ChainEditor connectionId={id} />
+
+        {/* After the chain, because that is the order the signal travels: the wire's own trim,
+            then the shared stages. */}
+        <section className="p-2 border-t border-aura-line">
+          <ProcessorRack connection={connection} />
+        </section>
       </div>
     </div>
   )

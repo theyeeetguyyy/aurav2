@@ -12,9 +12,11 @@ import { useModulationStore } from '@/store/useModulationStore'
 import { usePostStore } from '@/store/usePostStore'
 import { useSceneStore } from '@/store/useSceneStore'
 import { findFreeSlot } from '@/engine/timeline/StateResolver'
-import { generateVariations, planSequence } from '@/engine/timeline/variations'
-import { useAudioStore, projectDuration } from '@/store/useAudioStore'
 import { generateId, paletteColor } from '@/utils/stemColors'
+import { buildObject } from '@/engine/scene/buildObject'
+import { DEFAULT_PALETTE } from '@/engine/scene/palette'
+import { ModulationMatrix } from '@/engine/modulation/ModulationMatrix'
+import type { SceneObject } from '@/types/visual'
 
 /** States, strips and markers.
  *
@@ -26,24 +28,31 @@ import { generateId, paletteColor } from '@/utils/stemColors'
 interface ProjectState {
   project: Project
 
-  /** Snapshot what is currently visible and wired into a new named state. */
-  captureState: (name?: string) => ID
-  /** Re-record an existing state from the current scene. */
-  recaptureState: (id: ID) => void
-  /** Make the scene match a state, so it can be edited. */
-  applyState: (id: ID) => void
-  removeState: (id: ID) => void
-  /** Rename or recolour. Never rewrites the selection — that is `recaptureState`. */
-  updateState: (id: ID, patch: Partial<VisualState>) => void
+  /** The state currently loaded into the scene. Everything you edit edits this one. */
+  activeStateId: ID | null
 
-  /** Place a state on the timeline. Omit `lane` to have a free one chosen. */
+  /** Create a state from the default scene and switch to it. */
+  newState: (name?: string) => ID
+  /** Create a state that starts as a copy of an existing one, and switch to it. */
+  duplicateState: (id: ID) => ID | null
+  /** Save the current scene into the active state, then load `id`. */
+  switchState: (id: ID) => void
+  removeState: (id: ID) => void
+  renameState: (id: ID, name: string) => void
+  /** Write the live scene back into the active state. Called before anything reads states. */
+  commitActiveState: () => void
+  /** Make sure something is loaded. A project with no state has no scene, which is not a state
+   *  the app should ever be in — so this is called at startup and after opening a file. */
+  ensureState: () => void
+  /** Switch because the *timeline* said so, not because the user asked.
+   *
+   *  Identical to `switchState` minus the history entry: playing across four cuts must not leave
+   *  four things to undo, and undoing "the playhead moved" is not a coherent request. */
+  activateState: (id: ID) => void
+
   placeStrip: (stateId: ID, startTime: number, duration: number, lane?: number) => ID
   removeStrip: (id: ID) => void
   updateStrip: (id: ID, patch: Partial<Strip>) => void
-
-  /** Derive a set of states from the current scene and sequence them across the song.
-   *  Returns how many strips were laid down, or 0 when there was nothing to work with. */
-  autoSequence: () => number
 
   placeMarker: (time: number, type: SectionMarker['type']) => ID
   removeMarker: (id: ID) => void
@@ -51,6 +60,17 @@ interface ProjectState {
 
   setProjectName: (name: string) => void
   setBpm: (bpm: number | null) => void
+}
+
+/** What a new state starts as: one sphere, lit by the default rig, nothing else.
+ *
+ *  A blank scene is a worse starting point than it sounds — an empty viewport gives you nothing
+ *  to judge a material or a light against, so the first thing anyone does is add a sphere. Doing
+ *  it for them costs nothing and means *New state* lands somewhere you can immediately work. */
+function defaultScene(): SceneObject[] {
+  // `proc-sphere`, the morphable one — it can become any of the other procedural shapes without
+  // being replaced, so the starting object is the one with the most room to become something else.
+  return [buildObject('proc-sphere')]
 }
 
 const EMPTY_PROJECT: Project = {
@@ -61,96 +81,158 @@ const EMPTY_PROJECT: Project = {
   markers: [],
 }
 
-/** What is on and wired right now, as a selection rather than a copy (HC-7/HC-8). */
-function currentSelection(): Pick<
-  VisualState,
-  'sceneObjectIds' | 'activeConnectionIds' | 'activePostIds' | 'connectionOverrides'
-> {
+/** Put a state's scene on screen. The one place that writes the three stores at once. */
+function loadState(state: VisualState): void {
+  useSceneStore.setState({ objects: state.objects, palette: state.palette, selectedId: null })
+  useModulationStore.setState({ connections: state.connections })
+  usePostStore.setState({ effects: state.post, bypassed: state.postBypassed, selectedId: null })
+  // Followers carry envelope memory keyed by connection id. Restoring a different set of wires
+  // without dropping them leaves a resurrected wire mid-envelope, so the first frame would be
+  // wrong (same reason the undo path resets).
+  ModulationMatrix.reset()
+}
+
+/** An independent copy of a state: new ids throughout, so editing one cannot reach the other. */
+function cloneState(source: VisualState, id: ID, name: string): VisualState {
+  const objectIds = new Map<ID, ID>()
+  const objects = source.objects.map((object) => {
+    const newId = generateId()
+    objectIds.set(object.id, newId)
+    return { ...object, id: newId, effects: object.effects.map((e) => ({ ...e })) }
+  })
+
   return {
-    sceneObjectIds: useSceneStore
-      .getState()
-      .objects.filter((o) => o.visible)
-      .map((o) => o.id),
-    activeConnectionIds: useModulationStore
-      .getState()
-      .connections.filter((c) => c.enabled)
-      .map((c) => c.id),
-    activePostIds: usePostStore
-      .getState()
-      .effects.filter((e) => e.enabled)
-      .map((e) => e.id),
-    connectionOverrides: {},
+    id,
+    name,
+    color: source.color,
+    objects,
+    // Wires whose target object was copied are re-pointed at the copy. One aimed at something
+    // outside this state's scene — the camera, the world — keeps its address, because those are
+    // project-global and the copy should drive them too.
+    connections: source.connections.map((connection) => ({
+      ...connection,
+      id: generateId(),
+      target: {
+        ...connection.target,
+        objectId: objectIds.get(connection.target.objectId) ?? connection.target.objectId,
+      },
+    })),
+    post: source.post.map((effect) => ({ ...effect, id: generateId() })),
+    postBypassed: source.postBypassed,
+    // Copied by value: a duplicate that shared its palette would recolour the original.
+    palette: { ...source.palette, colors: [...source.palette.colors] },
   }
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
   project: EMPTY_PROJECT,
+  activeStateId: null,
 
-  captureState: (name) => {
-    recordChange('Capture state', ['project'])
+  newState: (name) => {
+    recordChange('New state', ['project', 'scene', 'modulation', 'post'])
+    get().commitActiveState()
+
     const id = generateId()
+    const state: VisualState = {
+      id,
+      name: name ?? `State ${Object.keys(get().project.statesLibrary).length + 1}`,
+      color: paletteColor(Object.keys(get().project.statesLibrary).length),
+      objects: defaultScene(),
+      connections: [],
+      post: [],
+      postBypassed: false,
+      palette: DEFAULT_PALETTE,
+    }
+
+    set((s) => ({
+      project: { ...s.project, statesLibrary: { ...s.project.statesLibrary, [id]: state } },
+      activeStateId: id,
+    }))
+    loadState(state)
+    return id
+  },
+
+  duplicateState: (id) => {
+    get().commitActiveState()
+    const source = get().project.statesLibrary[id]
+    if (!source) return null
+
+    recordChange('Duplicate state', ['project', 'scene', 'modulation', 'post'])
+    const newId = generateId()
+
+    // Deep enough to be independent: ids are regenerated for objects and wires, so editing the
+    // copy cannot reach back into the original. A shallow copy would share object identity, and
+    // the two states would silently be one.
+    const state = cloneState(source, newId, `${source.name} copy`)
+
+    set((s) => ({
+      project: { ...s.project, statesLibrary: { ...s.project.statesLibrary, [newId]: state } },
+      activeStateId: newId,
+    }))
+    loadState(state)
+    return newId
+  },
+
+  switchState: (id) => {
+    if (get().activeStateId === id) return
+    const target = get().project.statesLibrary[id]
+    if (!target) return
+
+    recordChange('Switch state', ['project', 'scene', 'modulation', 'post'])
+    get().commitActiveState()
+    set({ activeStateId: id })
+    loadState(target)
+  },
+
+  activateState: (id) => {
+    const target = get().project.statesLibrary[id]
+    if (!target || get().activeStateId === id) return
+    get().commitActiveState()
+    set({ activeStateId: id })
+    loadState(target)
+  },
+
+  ensureState: () => {
+    const { activeStateId, project } = get()
+    if (activeStateId && project.statesLibrary[activeStateId]) return
+
+    const existing = Object.values(project.statesLibrary)[0]
+    if (existing) {
+      set({ activeStateId: existing.id })
+      loadState(existing)
+      return
+    }
+    get().newState('State 1')
+  },
+
+  commitActiveState: () => {
+    const id = get().activeStateId
+    if (!id || !get().project.statesLibrary[id]) return
+
+    const scene = useSceneStore.getState()
+    const modulation = useModulationStore.getState()
+    const post = usePostStore.getState()
+
     set((s) => ({
       project: {
         ...s.project,
         statesLibrary: {
           ...s.project.statesLibrary,
           [id]: {
-            id,
-            name: name ?? `State ${Object.keys(s.project.statesLibrary).length + 1}`,
-            // Indexed by how many states exist rather than drawn from the stem rotation,
-            // which belongs to stems alone.
-            color: paletteColor(Object.keys(s.project.statesLibrary).length),
-            ...currentSelection(),
+            ...s.project.statesLibrary[id],
+            objects: scene.objects,
+            connections: modulation.connections,
+            post: post.effects,
+            postBypassed: post.bypassed,
+            palette: scene.palette,
           },
         },
       },
     }))
-    return id
-  },
-
-  recaptureState: (id) => {
-    recordChange('Re-capture state', ['project'])
-    set((s) => {
-      const existing = s.project.statesLibrary[id]
-      if (!existing) return s
-      return {
-        project: {
-          ...s.project,
-          statesLibrary: {
-            ...s.project.statesLibrary,
-            [id]: { ...existing, ...currentSelection() },
-          },
-        },
-      }
-    })
-  },
-
-  applyState: (id) => {
-    const state = get().project.statesLibrary[id]
-    if (!state) return
-
-    // Writes visibility and enablement, never the objects or wires themselves — a state
-    // selects, it does not own.
-    recordChange('Apply state', ['scene', 'modulation', 'post'])
-
-    const visible = new Set(state.sceneObjectIds)
-    useSceneStore.setState((s) => ({
-      objects: s.objects.map((o) => ({ ...o, visible: visible.has(o.id) })),
-    }))
-
-    const live = new Set(state.activeConnectionIds)
-    useModulationStore.setState((s) => ({
-      connections: s.connections.map((c) => ({ ...c, enabled: live.has(c.id) })),
-    }))
-
-    const post = new Set(state.activePostIds)
-    usePostStore.setState((s) => ({
-      effects: s.effects.map((e) => ({ ...e, enabled: post.has(e.id) })),
-    }))
   },
 
   removeState: (id) => {
-    recordChange('Delete state', ['project'])
+    recordChange('Delete state', ['project', 'scene', 'modulation', 'post'])
     set((s) => {
       const { [id]: _removed, ...rest } = s.project.statesLibrary
       return {
@@ -162,17 +244,29 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         },
       }
     })
+
+    // Deleting what you were editing has to leave you somewhere, not in a scene belonging to
+    // nothing. The next remaining state, or a fresh one.
+    if (get().activeStateId === id) {
+      const next = Object.values(get().project.statesLibrary)[0]
+      if (next) {
+        set({ activeStateId: next.id })
+        loadState(next)
+      } else {
+        set({ activeStateId: null })
+        get().newState()
+      }
+    }
   },
 
-  updateState: (id, patch) => {
-    // Coalesced per state: renaming is typing, and one undo step per character is useless.
-    recordChange('Update state', ['project'], `state:${id}`)
+  renameState: (id, name) => {
+    recordChange('Rename state', ['project'], `state:${id}`)
     set((s) => ({
       project: {
         ...s.project,
         statesLibrary: {
           ...s.project.statesLibrary,
-          [id]: { ...s.project.statesLibrary[id], ...patch },
+          [id]: { ...s.project.statesLibrary[id], name: name.trim() || s.project.statesLibrary[id].name },
         },
       },
     }))
@@ -229,68 +323,6 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         ),
       },
     }))
-  },
-
-  autoSequence: () => {
-    const objects = useSceneStore.getState().objects
-    const variations = generateVariations({
-      // Only what is currently visible: an object the user switched off is one they have
-      // already said they do not want, and a generated sequence should not overrule that.
-      shapeIds: objects.filter((o) => o.visible && o.type !== 'light').map((o) => o.id),
-      lightIds: objects.filter((o) => o.visible && o.type === 'light').map((o) => o.id),
-      postIds: usePostStore.getState().effects.map((e) => e.id),
-      connectionIds: useModulationStore.getState().connections.map((c) => c.id),
-    })
-    if (variations.length === 0) return 0
-
-    const plan = planSequence(
-      variations,
-      get().project.markers,
-      projectDuration(useAudioStore.getState().tracks),
-    )
-    if (plan.length === 0) return 0
-
-    // One history entry for the whole operation. Undoing a generated sequence strip by strip
-    // would be twelve presses to get back to where you were.
-    recordChange('Auto-sequence', ['project'])
-
-    set((s) => {
-      const statesLibrary = { ...s.project.statesLibrary }
-      const base = Object.keys(statesLibrary).length
-
-      const ids = variations.map((variation, i) => {
-        const id = generateId()
-        statesLibrary[id] = {
-          id,
-          name: variation.name,
-          color: paletteColor(base + i),
-          sceneObjectIds: variation.sceneObjectIds,
-          activeConnectionIds: variation.activeConnectionIds,
-          activePostIds: variation.activePostIds,
-          connectionOverrides: {},
-        }
-        return id
-      })
-
-      return {
-        project: {
-          ...s.project,
-          statesLibrary,
-          // Replaces the timeline rather than adding to it. Layering a generated sequence
-          // over hand-placed strips would bury one under the other, and which survives
-          // would depend on lane order rather than on intent.
-          timelineStrips: plan.map((strip) => ({
-            id: generateId(),
-            stateId: ids[strip.variationIndex],
-            startTime: strip.startTime,
-            duration: strip.duration,
-            lane: 0,
-          })),
-        },
-      }
-    })
-
-    return plan.length
   },
 
   placeMarker: (time, type) => {

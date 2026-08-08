@@ -1,40 +1,55 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { sampleLane, writePoint, type AutomationPoint, type LaneData } from '@/engine/automation/lane'
+import {
+  samplePoints,
+  writePoint,
+  type AutomationPoint,
+  type LaneInterpolation,
+} from '@/engine/automation/lane'
 import { TransportClock } from '@/engine/time/TransportClock'
 import { readToken } from '@/utils/tokens'
 
-/** Draw a signal by hand.
+/** Draw a pattern by hand.
  *
- *  The gesture is FL's: press and drag to paint, and the curve follows the pointer.
- *  Painting *replaces* whatever was under the stroke rather than overlaying it, which is
- *  the behaviour that makes a second pass a correction instead of a mess.
+ *  The gesture is FL's: press and drag to paint, and the curve follows the pointer. Painting
+ *  *replaces* whatever was under the stroke rather than overlaying it, which is what makes a
+ *  second pass a correction instead of a mess.
+ *
+ *  The domain is **0–1**, not seconds. A pattern has no length of its own — the clip that
+ *  places it decides that — so this editor draws one cycle and the clip track shows what it
+ *  looks like stretched and repeated. It replaces an editor that worked in absolute project
+ *  time, which could only ever describe one placement.
  *
  *  Canvas rather than SVG, and the playhead is drawn imperatively from `TransportClock`
- *  (HC-1): a lane can be several hundred points and the playhead moves every frame, so
+ *  (HC-1): a pattern can be several hundred points and the playhead moves every frame, so
  *  neither belongs in React's render path. */
-export function LaneEditor({
-  lane,
-  duration,
+export function PatternEditor({
+  points,
+  interpolation,
   color,
   onChange,
   ghost,
+  phaseAt,
   height = 120,
 }: {
-  lane: LaneData
-  duration: number
+  points: AutomationPoint[]
+  interpolation: LaneInterpolation
   color: string
   onChange: (points: AutomationPoint[]) => void
-  /** The signal this curve started from, drawn faintly behind it. Shows an edit as a
-   *  departure from what the analyser heard rather than as an unanchored shape. */
-  ghost?: (t: number) => number
+  /** The signal this pattern started from, drawn faintly behind it, in pattern time. Shows an
+   *  edit as a departure from what the analyser heard rather than as an unanchored shape. */
+  ghost?: (phase: number) => number
+  /** Where in the pattern the transport currently is, 0–1, or null when it is outside the clip.
+   *  This is what makes drawing against the music possible: the playhead tracks the *cycle*,
+   *  so a pattern repeated eight times still shows you which pass you are hearing. */
+  phaseAt?: (time: number) => number | null
   height?: number
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const playheadRef = useRef<HTMLDivElement>(null)
 
-  // The stroke in progress. A ref, because a paint gesture emits far more moves than
-  // React should ever see.
+  // The stroke in progress. A ref, because a paint gesture emits far more moves than React
+  // should ever see.
   const stroke = useRef<{ points: AutomationPoint[]; lastT: number } | null>(null)
 
   const draw = useCallback(() => {
@@ -52,8 +67,8 @@ export function LaneEditor({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, width, height)
 
-    // Reference lines at 0, ½ and 1 — a drawn curve is meaningless without knowing
-    // where the middle is.
+    // Reference lines at 0, ½ and 1 — a drawn curve is meaningless without knowing where the
+    // middle is.
     ctx.strokeStyle = readToken('--color-aura-line', 'rgba(255,255,255,.07)')
     ctx.lineWidth = 1
     for (const fraction of [0, 0.5, 1]) {
@@ -64,13 +79,12 @@ export function LaneEditor({
       ctx.stroke()
     }
 
-    const span = Math.max(1e-6, duration)
-    const live = stroke.current ? { ...lane, points: stroke.current.points } : lane
+    const live = stroke.current ? stroke.current.points : points
 
     if (ghost) {
       ctx.beginPath()
       for (let x = 0; x < width; x++) {
-        const y = height - Math.min(1, Math.max(0, ghost((x / width) * span))) * height
+        const y = height - Math.min(1, Math.max(0, ghost(x / width))) * height
         if (x === 0) ctx.moveTo(x, y)
         else ctx.lineTo(x, y)
       }
@@ -79,12 +93,11 @@ export function LaneEditor({
       ctx.stroke()
     }
 
-    // Sample per pixel rather than joining the points: the drawn line then matches the
-    // value the engine will actually read, including the interpolation mode.
+    // Sample per pixel rather than joining the points: the drawn line then matches the value
+    // the engine will actually read, including the interpolation mode.
     ctx.beginPath()
     for (let x = 0; x < width; x++) {
-      const value = sampleLane(live, (x / width) * span)
-      const y = height - value * height
+      const y = height - samplePoints(live, interpolation, x / width) * height
       if (x === 0) ctx.moveTo(x, y)
       else ctx.lineTo(x, y)
     }
@@ -100,14 +113,12 @@ export function LaneEditor({
 
     // Points, so it is obvious the curve is editable and where its anchors are.
     ctx.fillStyle = color
-    for (const point of live.points) {
-      const x = (point.t / span) * width
-      const y = height - point.v * height
+    for (const point of live) {
       ctx.beginPath()
-      ctx.arc(x, y, 2, 0, Math.PI * 2)
+      ctx.arc(point.t * width, height - point.v * height, 2, 0, Math.PI * 2)
       ctx.fill()
     }
-  }, [lane, duration, color, height, ghost])
+  }, [points, interpolation, color, height, ghost])
 
   useEffect(() => {
     draw()
@@ -118,35 +129,38 @@ export function LaneEditor({
     return () => observer.disconnect()
   }, [draw])
 
-  // Playhead, imperative. Lets you draw against what you are hearing.
+  // Playhead, imperative, in pattern phase.
   useEffect(() => {
     const line = playheadRef.current
     const container = containerRef.current
     if (!line || !container) return
 
     const apply = (time: number) => {
-      const progress = duration > 0 ? Math.min(Math.max(time / duration, 0), 1) : 0
-      line.style.transform = `translateX(${progress * container.clientWidth}px)`
+      const phase = phaseAt?.(time) ?? null
+      line.style.opacity = phase === null ? '0' : '1'
+      if (phase !== null) {
+        line.style.transform = `translateX(${phase * container.clientWidth}px)`
+      }
     }
     apply(TransportClock.time)
     return TransportClock.subscribe(apply)
-  }, [duration])
+  }, [phaseAt])
 
-  const pointFromEvent = (event: React.PointerEvent | PointerEvent): AutomationPoint => {
-    const container = containerRef.current!
-    const box = container.getBoundingClientRect()
+  const pointFromEvent = (event: React.PointerEvent): AutomationPoint => {
+    const box = containerRef.current!.getBoundingClientRect()
     const x = Math.min(Math.max(event.clientX - box.left, 0), box.width)
     const y = Math.min(Math.max(event.clientY - box.top, 0), box.height)
     return {
-      t: (x / Math.max(1, box.width)) * Math.max(1e-6, duration),
+      t: x / Math.max(1, box.width),
       v: 1 - y / Math.max(1, box.height),
     }
   }
 
   const handlePointerDown = (event: React.PointerEvent) => {
+    event.stopPropagation()
     event.currentTarget.setPointerCapture(event.pointerId)
     const point = pointFromEvent(event)
-    stroke.current = { points: writePoint(lane.points, point.t, point.v), lastT: point.t }
+    stroke.current = { points: writePoint(points, point.t, point.v, 0.01, 1), lastT: point.t }
     draw()
   }
 
@@ -161,7 +175,7 @@ export function LaneEditor({
     const high = Math.max(active.lastT, point.t)
     const kept = active.points.filter((p) => p.t < low - 1e-6 || p.t > high + 1e-6)
 
-    active.points = writePoint(kept, point.t, point.v)
+    active.points = writePoint(kept, point.t, point.v, 0.01, 1)
     active.lastT = point.t
     draw()
   }
@@ -188,7 +202,7 @@ export function LaneEditor({
       <div
         ref={playheadRef}
         className="absolute top-0 bottom-0 left-0 w-px pointer-events-none"
-        style={{ backgroundColor: readToken('--color-aura-playhead', '#f1f5f9') }}
+        style={{ backgroundColor: readToken('--color-aura-playhead', '#f1f5f9'), opacity: 0 }}
       />
     </div>
   )

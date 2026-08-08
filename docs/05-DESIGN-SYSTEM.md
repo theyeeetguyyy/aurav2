@@ -10,7 +10,10 @@
 | **Flat, opaque surfaces. No glassmorphism.** | Blender, Resolve, Ableton and TouchDesigner all use opaque crisp surfaces. Background blur burns GPU budget the viewport needs and hurts legibility of dense numeric data. Flat opaque reads as an instrument panel, not a SaaS dashboard. **`backdrop-blur` is banned outright.** |
 | **Node category ≠ stem identity** | Node headers and handles are coloured by *category* so wiring validity is readable at a glance. Stem identity appears as a secondary badge dot inside the node. Conflating them makes both unreadable. |
 | **Tokens are enforced** | All colours and fonts are registered in `index.css` via Tailwind v4 `@theme`. Arbitrary values (`bg-[#121215]`) in components are forbidden — including inside `style={{}}`. |
-| **Persistent transport, page-local timeline** | A slim transport strip lives in the shell across every tab so you always know where you are in the piece. The full NLE timeline stays in Deliver. |
+| **Persistent transport, dedicated timeline page** | A slim transport strip lives in the shell across every tab — with a scrub bar, so you can always *go* somewhere in the piece and not merely know where you are (D-79). The full NLE timeline has its own workspace (D-77). |
+| **Document-level controls live in the top bar** | Which project, and which state. A control that acts on the *contents* of a state belongs in that state's workspace; putting the state selector in a side dock gave one 280px column two unrelated jobs, and put it on one page when it applies to all of them. Blender puts its Scene picker in the same place, for the same reason (D-77). |
+| **A button with no handler is not a placeholder, it is a lie** | REC sat in the top bar from Phase 1 wired to nothing. It read as a feature and was a picture of one. Ship the control with the behaviour or do not ship the control. |
+| **No instructional prose in the UI** | A paragraph explaining how a control works is a design failure with a workaround attached — and several of ours appeared in two places, which is the same sentence maintained twice. `title` attributes are fine: hover help is on demand and costs no space. Empty states that say what a panel is *for* are fine: with nothing in a list there is nothing else to read. Narrating a gesture is not. |
 | **One page, one job** | A page's docks serve a single question. When Scene & Shapes' left dock accumulated the layer stack, the shape library, world settings *and* the post chain, each got a sliver and the fixed-size library overflowed onto the rows beneath. Look was split out for that reason, and it is the standing rule: a new concern gets a home, not a corner of an existing one. |
 | **Tabular figures, pointer-lock scrubbing** | `tabular-nums` on every live readout stops digit jitter. `requestPointerLock()` on scrub gives infinite travel without hitting screen edges. |
 
@@ -24,8 +27,9 @@ Fixed shell: 260px left dock · centre · 320px right dock, consistent across ev
 | **2 · Scene & Shapes** | Layer stack + brick library | 3D viewport | Transform / material / effect stack | built |
 | **3 · Look** | World: background, fog, lighting rig, reflections, grid | 3D viewport | Post chain | built |
 | **4 · Routing** | Available Fields (drag to wire) | Patchbay ⟷ node graph | Connection signal chain | patchbay built, graph unbuilt |
-| **5 · Camera** | Keyframe / waypoint list | 3D viewport + spline gizmo | Constraint stack, influence sliders | viewport only |
-| **6 · Deliver** | Section markers | NLE timeline, full width | Export settings | unbuilt |
+| **5 · Camera** | Transform + behaviour stack (where it IS) | 3D viewport, camera gizmos + path | Path waypoints, animate-over-time (how it MOVES) | built |
+| **6 · Timeline** | States + section markers | Monitor above the NLE timeline | — | built |
+| **7 · Deliver** | — | Monitor | Export settings | built |
 
 - **Splitters** — 1px, `border-aura-line`, hover indicator. Drag to resize (200–480px), double-click to collapse.
 - **Immersive view (`H`)** — hides left/right/bottom docks for a full-bleed viewport. Restores the *previous* dock state on exit, not a default state.
@@ -112,3 +116,31 @@ never drift.
 - [ ] Focus rings `:focus-visible`; motion respects `prefers-reduced-motion`
 - [ ] Glow reserved for viewport content, never chrome
 - [ ] Command palette entries resolve to real `ActionID`s
+
+---
+
+## Where this system is still not honest
+
+Written 2026-08-07, after using the software rather than reading it.
+
+**Every control in the app is a slider, a number field, or a row in a list.** That is why panels
+read as forms: a form is the shape of the *data*, exposed directly, which is what you build before
+deciding how a thing should be operated. A rotation is not a text field. A colour is not three
+numbers. An ordering is not a pair of ▲▼ buttons.
+
+Concretely missing, against every reference this document names:
+
+| To do this | Here | Blender · Notch · TouchDesigner |
+|---|---|---|
+| Move an object | type into X/Y/Z rows in a side dock | drag a gizmo on the object |
+| Move a path waypoint | delete it, fly there, re-add it | drag the point in 3D |
+| Nudge a value | click, select, type, Enter | drag on the number and it scrubs |
+| Reorder a stack | ▲ / ▼ buttons | drag the row |
+| Know what you are about to hit | nothing | it highlights on hover |
+
+Plus: nothing eases. Panels appear instantly, states swap instantly. Instant reads as cheap.
+
+**This is deliberately not the next thing.** It makes a narrow tool pleasant, and narrowness is the
+problem that decides whether the tool is worth operating at all — see
+[17-EXPRESSIVE-RANGE.md](17-EXPRESSIVE-RANGE.md) §4. Recorded here so it is a known debt with a
+diagnosis, not a vague sense that something is off.

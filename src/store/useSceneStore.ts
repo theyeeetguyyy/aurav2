@@ -3,14 +3,15 @@ import { recordChange } from '@/store/historyHook'
 import type { ID } from '@/types/audio'
 import { formatAddress, type ParamAddress, type ParamValue } from '@/types/params'
 import type { EffectInstance, MaterialParams, SceneObject, SceneObjectType } from '@/types/visual'
-import { DEFAULT_TRANSFORM } from '@/types/visual'
 import { BrickRegistry } from '@/engine/scene/BrickRegistry'
 import { EffectRegistry } from '@/engine/scene/EffectRegistry'
-import { DEFAULT_MATERIAL_ID, MaterialRegistry } from '@/engine/scene/materials/MaterialRegistry'
-import { LightRegistry } from '@/engine/scene/lights/LightRegistry'
+import { MaterialRegistry } from '@/engine/scene/materials/MaterialRegistry'
+import { buildObject, uniqueName } from '@/engine/scene/buildObject'
+import { DEFAULT_PALETTE, type Palette } from '@/engine/scene/palette'
 import { axisIndex } from '@/engine/params/ParamRegistry'
 import { useModulationStore } from '@/store/useModulationStore'
-import { generateId, paletteColor } from '@/utils/stemColors'
+import { useEnvironmentStore } from '@/store/useEnvironmentStore'
+import { generateId } from '@/utils/stemColors'
 
 /** useSceneStore — the open SceneObject layer stack (docs/03-ARCHITECTURE.md).
  *
@@ -26,6 +27,9 @@ interface SceneState {
    *  drift out of sync. */
   objects: SceneObject[]
   selectedId: ID | null
+  /** The active state's colours. Lives here while loaded because the render path reads it every
+   *  frame; `useProjectStore` owns it as part of the state and swaps it on a switch. */
+  palette: Palette
 
   /** Type is inferred from which registry knows the brick — a caller should not have
    *  to know that 'light-spot' is a light. */
@@ -54,16 +58,14 @@ interface SceneState {
   /** Move an effect within the stack. Order is evaluation order. */
   reorderEffect: (id: ID, effectId: ID, delta: number) => void
 
-  clear: () => void
-}
 
-/** "Sphere", "Sphere 2", "Sphere 3" — never a duplicate name in the outliner. */
-function uniqueName(objects: SceneObject[], base: string): string {
-  const taken = new Set(objects.map((o) => o.name))
-  if (!taken.has(base)) return base
-  let n = 2
-  while (taken.has(`${base} ${n}`)) n++
-  return `${base} ${n}`
+  setPalette: (palette: Palette) => void
+  setPaletteColor: (slot: number, color: string) => void
+  setPaletteBackground: (start: string, end: string) => void
+  /** Bind an object to a palette slot, or null to let it keep its own colour. */
+  setPaletteSlot: (id: ID, slot: number | null) => void
+
+  clear: () => void
 }
 
 /** Apply a parameter write to an object, returning a new object.
@@ -111,59 +113,14 @@ function writeParam(object: SceneObject, address: ParamAddress, value: ParamValu
 
 export const useSceneStore = create<SceneState>((set, get) => ({
   objects: [],
+  palette: DEFAULT_PALETTE,
   selectedId: null,
 
   addObject: (brickId, type) => {
     recordChange('Add object', ['scene'])
-    const lightBrick = LightRegistry.get(brickId)
-    const geometryBrick = lightBrick ? null : BrickRegistry.get(brickId)
-    const resolvedType: SceneObjectType = type ?? (lightBrick ? 'light' : 'shape')
-    const id = generateId()
-
-    // A light lands at eye height and slightly off-axis rather than at the origin: a
-    // light inside the object it is meant to light is the least useful default there is.
-    const position: [number, number, number] = lightBrick
-      ? [12, 14, 12]
-      : [...DEFAULT_TRANSFORM.position]
-
-    set((s) => ({
-      objects: [
-        ...s.objects,
-        {
-          id,
-          name: uniqueName(s.objects, lightBrick?.label ?? geometryBrick?.label ?? 'Object'),
-          type: resolvedType,
-          backend: geometryBrick?.backend ?? 'mesh',
-          meshKind: geometryBrick?.meshKind,
-          brickId,
-          transform: {
-            position,
-            rotation: [...DEFAULT_TRANSFORM.rotation],
-            scale: [...DEFAULT_TRANSFORM.scale],
-          },
-          params: lightBrick
-            ? LightRegistry.defaultParams(brickId)
-            : BrickRegistry.defaultParams(brickId),
-          materialId: DEFAULT_MATERIAL_ID,
-          material: {
-            ...MaterialRegistry.defaultParams(DEFAULT_MATERIAL_ID),
-            // Rotated by how many shapes exist, so the second shape does not arrive the same
-            // colour as the first. A scene of one repeated material reads as unfinished no
-            // matter how good the geometry is, and picking a colour per object is the single
-            // most common first edit — starting varied skips it.
-            ...(lightBrick
-              ? {}
-              : { color: paletteColor(s.objects.filter((o) => o.type !== 'light').length) }),
-          },
-          effects: [],
-          visible: true,
-          locked: false,
-        },
-      ],
-      selectedId: id,
-    }))
-
-    return id
+    const object = buildObject(brickId, { type, siblings: get().objects })
+    set((s) => ({ objects: [...s.objects, object], selectedId: object.id }))
+    return object.id
   },
 
   removeObject: (id) => {
@@ -372,7 +329,46 @@ export const useSceneStore = create<SceneState>((set, get) => ({
     }))
   },
 
-  clear: () => set({ objects: [], selectedId: null }),
+  setPalette: (palette) => {
+    recordChange('Change palette', ['scene', 'environment'])
+    set({ palette })
+
+    // The background is drawn by the environment section, and that stays the one render path for
+    // it. So a palette *writes* its background once, when chosen, rather than binding to it live —
+    // which means you can tweak the background afterwards without the palette fighting you. A
+    // palette is a starting point, not a lock.
+    const env = useEnvironmentStore.getState()
+    env.setParam('background', 'topColor', palette.backgroundEnd)
+    env.setParam('background', 'bottomColor', palette.background)
+  },
+
+  setPaletteBackground: (start, end) => {
+    recordChange('Edit background', ['scene', 'environment'], 'palette:bg')
+    set((s) => ({ palette: { ...s.palette, background: start, backgroundEnd: end } }))
+    const env = useEnvironmentStore.getState()
+    env.setParam('background', 'topColor', end)
+    env.setParam('background', 'bottomColor', start)
+  },
+
+  setPaletteColor: (slot, color) => {
+    // Coalesced per slot: dragging a colour picker is one undo step.
+    recordChange('Edit palette', ['scene'], `palette:${slot}`)
+    set((s) => {
+      const colors = [...s.palette.colors]
+      if (slot < 0 || slot >= colors.length) return s
+      colors[slot] = color
+      return { palette: { ...s.palette, colors } }
+    })
+  },
+
+  setPaletteSlot: (id, slot) => {
+    recordChange('Change object colour', ['scene'])
+    set((s) => ({
+      objects: s.objects.map((o) => (o.id === id ? { ...o, paletteSlot: slot } : o)),
+    }))
+  },
+
+  clear: () => set({ objects: [], palette: DEFAULT_PALETTE, selectedId: null }),
 }))
 
 /** Convenience selector for the currently selected object. */

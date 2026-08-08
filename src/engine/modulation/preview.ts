@@ -3,6 +3,11 @@ import type { FieldRef } from '@/types/params'
 import { SignalShaper } from './SignalShaper'
 import { evaluateField, type FieldContext } from './fields'
 import { evaluateCurve } from './curve'
+import {
+  applyProcessors,
+  processorTimeOffset,
+  type ModulationProcessor,
+} from './processors'
 
 /** Modulation preview — the actual curve a connection produces over time.
  *
@@ -47,12 +52,27 @@ export function previewConnection(
   // or scrubbing would change the drawn curve.
   const shaper = new SignalShaper()
 
+  // The wire's shared processing stages, read the same way the matrix reads them. Without this
+  // the graph would draw a smooth line for a quantised wire — a preview that disagrees with the
+  // render is worse than no preview, because it is believed.
+  const stages = (connection.processorIds ?? [])
+    .map((id) => ctx.getProcessor?.(id) ?? null)
+    .filter((processor): processor is ModulationProcessor => processor !== null)
+
+  const sourceAt = (t: number) =>
+    stages.length === 0
+      ? evaluateField(connection.source, { ...ctx, time: t })
+      : applyProcessors(
+          stages,
+          evaluateField(connection.source, { ...ctx, time: processorTimeOffset(stages, t) }),
+        )
+
   // Warm-up pass so the envelope is settled at the window's left edge instead of
   // ramping up from zero inside the visible range.
   const warmup = Math.min(60, samples)
   for (let i = warmup; i > 0; i--) {
     const t = from - i * dt
-    shaper.process(evaluateField(connection.source, { ...ctx, time: t }), connection.chain, dt)
+    shaper.process(sourceAt(t), connection.chain, dt)
   }
 
   let min = Infinity
@@ -60,7 +80,7 @@ export function previewConnection(
 
   for (let i = 0; i < samples; i++) {
     const t = from + i * dt
-    const input = evaluateField(connection.source, { ...ctx, time: t })
+    const input = sourceAt(t)
     const offset = shaper.process(input, connection.chain, dt)
     const value = baseValue + offset
 

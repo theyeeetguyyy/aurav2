@@ -15,23 +15,21 @@ import { projectFileName } from '@/engine/project/projectFile'
 import { useAudioStore, projectDuration } from '@/store/useAudioStore'
 import { useProjectStore } from '@/store/useProjectStore'
 import { useUIStore } from '@/store/useUIStore'
-import { Timeline } from '@/components/timeline/Timeline'
 import { ViewportSlot } from '@/components/viewport/ViewportSlot'
 
-/** Workspace 6 — Deliver: arrange in time, then write the file.
+/** Workspace 7 — Deliver. One job: write the file.
  *
- *  Two halves of one job, laid out as docs/05-DESIGN-SYSTEM.md specifies — timeline across
- *  the width, export settings in a right rail. They share a page because they share the one
- *  question this page answers: what is the finished video?
+ *  Arranging moved to its own page. Encoding and editing are different work, and sharing a
+ *  page made the encoder look like the point when the timeline is where the video is decided.
+ *  What is left is a settings form and the frame it will render.
  *
  *  Sequencing is optional. A project with no strips is one continuous scene, and rendering
  *  that is the same job as rendering a sequenced one.
  *
- *  The monitor above the timeline is **not decoration**. The exporter drives the live
- *  renderer (HC-9), so this page has to host the viewport. Without a slot here the canvas
- *  had no on-screen box, R3F reported a 1×1 size, and every post-processing render target
- *  was allocated one pixel wide and upscaled into the file. It is also the only way to see
- *  what a cut looks like while placing it. */
+ *  The monitor is **not decoration**. The exporter drives the live renderer (HC-9), so this
+ *  page has to host the viewport. Without a slot here the canvas had no on-screen box, R3F
+ *  reported a 1×1 size, and every post-processing render target was allocated one pixel wide
+ *  and upscaled into the file (D-67). It is also the frame you are about to commit to. */
 export function DeliverPage() {
   const tracks = useAudioStore((s) => s.tracks)
   const projectName = useProjectStore((s) => s.project.name)
@@ -131,21 +129,15 @@ export function DeliverPage() {
 
   return (
     <div className="w-full h-full flex min-h-0">
-      <div className="flex-1 min-w-0 min-h-0 flex flex-col">
-        {/* The picture gets the room. Non-interactive: dragging in a monitor while placing
-            strips would move the preview camera, which is never what the gesture meant. */}
-        <div className="flex-1 min-h-[180px] border-b border-aura-line">
-          <ViewportSlot compact interactive={false} />
-        </div>
-
-        {/* Fixed height, like every NLE. Given the rest of the column the lanes floated in
-            a few hundred pixels of empty track. */}
-        <div className="h-[268px] shrink-0">
-          <Timeline />
-        </div>
+      {/* Non-interactive: this is a proof, not a viewfinder. Dragging here would fly the
+          preview camera and change nothing about the render. */}
+      <div className="flex-1 min-w-0 min-h-0">
+        {/* No gizmos of any kind: this is a proof of the file, so anything that will not be in
+            the file has no business in it. */}
+        <ViewportSlot compact interactive={false} gizmos={false} />
       </div>
 
-      <aside className="w-72 shrink-0 border-l border-aura-line overflow-y-auto p-3 space-y-4">
+      <aside className="w-80 shrink-0 border-l border-aura-line overflow-y-auto p-4 space-y-4">
         <header>
           <h1 className="text-sm font-medium text-slate-200">Export</h1>
           <p className="text-[11px] text-slate-500 leading-snug mt-0.5">

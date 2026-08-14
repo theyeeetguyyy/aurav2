@@ -57,6 +57,23 @@ export function matParam(
   }
 }
 
+/** Hue shift — the one material parameter every shading model gets, whatever its colours are called.
+ *
+ *  It is here rather than in each brick because it is not a property of a shading model: it rotates
+ *  whatever colours the model resolved, so the Gradient's two stops and the Fresnel's rim move
+ *  together and a model swap keeps the value. Registered onto every brick by `MaterialRegistry`.
+ *
+ *  **Why it earns a place.** Colour was authorable but static — the palette decides the scene's
+ *  colours and nothing could change them *during* the piece. Wiring a stem here means the drop
+ *  changes the colour of the work rather than only its size, which is the one thing Pass 1 of
+ *  [17-EXPRESSIVE-RANGE](../../../../docs/17-EXPRESSIVE-RANGE.md) still had open.
+ *
+ *  Degrees, and it wraps: ±180 covers the wheel in both directions and a routed signal that
+ *  overshoots lands somewhere sensible rather than clamping to magenta. */
+export function hueShiftDescriptor(): ParamDescriptor {
+  return matParam('hueShift', 'Hue Shift', -180, 180, 0, { unit: 'deg' })
+}
+
 export function matColour(key: string, label: string, defaultValue: string): ParamDescriptor {
   return {
     key: `material.${key}`,

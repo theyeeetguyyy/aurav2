@@ -77,3 +77,35 @@ export function vertexRandom(index: number): number {
   const n = Math.sin(index * 12.9898) * 43758.5453
   return n - Math.floor(n)
 }
+
+/** Curl of a noise-derived vector potential — a flow field that never converges.
+ *
+ *  `curl(F)` is divergence-free by construction, which is the whole reason to bother: a plain noise
+ *  offset pushes everything it moves towards wherever the noise happens to point, so a set of
+ *  positions *bunches into blobs and leaves holes*. A divergence-free field cannot compress, so
+ *  things slide past each other in streams and whatever density existed survives. It is how every
+ *  fluid-looking particle system does this, and it is a dozen lines rather than a solver.
+ *
+ *  Lives here rather than beside its first caller because there are now two: the Flow effector
+ *  samples it to displace clones, and the Flow line integrates along it to draw a strand. One field
+ *  means the two compose — a flow line and a flowed array follow the same current. */
+export function curl3(x: number, y: number, z: number, out: [number, number, number]): void {
+  const e = 0.35
+
+  // ∂/∂y and ∂/∂z of one potential component, and so on around the cycle. Two noise samples per
+  // partial derivative, six per axis pair.
+  const dpdy = (noise3(x, y + e, z) - noise3(x, y - e, z)) / (2 * e)
+  const dpdz = (noise3(x, y, z + e) - noise3(x, y, z - e)) / (2 * e)
+
+  const qx = x + 31.416
+  const dqdz = (noise3(qx, y, z + e) - noise3(qx, y, z - e)) / (2 * e)
+  const dqdx = (noise3(qx + e, y, z) - noise3(qx - e, y, z)) / (2 * e)
+
+  const rx = x - 17.213
+  const drdx = (noise3(rx + e, y, z) - noise3(rx - e, y, z)) / (2 * e)
+  const drdy = (noise3(rx, y + e, z) - noise3(rx, y - e, z)) / (2 * e)
+
+  out[0] = drdy - dqdz
+  out[1] = dpdz - drdx
+  out[2] = dqdx - dpdy
+}

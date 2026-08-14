@@ -89,10 +89,71 @@ Useful handles, all stable because they are titles rather than text:
 | Place a strip | `button[title^="Place it on the timeline"]` |
 | Resolution | `page.selectOption('select', { value: '720p' })` |
 | Auto-sequence | `button:has-text("Auto")` in the Deliver states rail |
+| Surface / Points | `button:has-text("Points")` in the inspector header (only on a mesh brick) |
+| Remove an effect | `[title="Remove"]` — visible without hovering, unlike the reorder arrows |
 
 **Never use a bare `header >> button`.** It resolves to the topbar's *undo* arrow, which
 silently reverts the edit you just made — an earlier run spent a whole cycle chasing "the
 object is missing from the export" that was this selector undoing the add.
+
+### Read the state instead of guessing at pixels
+
+Development builds expose a read-only `window.aura` (`src/devBridge.ts`). Use it. A screenshot
+cannot tell *the feature is broken* from *the click missed the button*, and three wrong turns in one
+afternoon came from that ambiguity.
+
+```js
+await page.evaluate(() => window.aura.objects())   // + selection, palette, connections, states, strips, post, time
+```
+
+### Setting a numeric parameter
+
+Every number in the inspector is a `ScrubField`: a `div`, not an `input`. `fill()` finds nothing and
+`type=range` does not exist. Double-click to enter edit mode, then type:
+
+```js
+const f = page.locator('div[title^="Angle "]').last()   // title is `${label} — drag to scrub…`
+await f.dblclick()
+await page.keyboard.press('Control+a')
+await page.keyboard.type('220')
+await page.keyboard.press('Enter')
+```
+
+### Adding an effect proves nothing on its own
+
+**Deformers rest at zero by design** — modulation is `base + Σ offsets`, so a bass-driven bulge must
+start unbulged (D-111). Add a Twist and *nothing changes*, correctly. A check that adds an effect and
+diffs the screenshot will report the whole feature dead; one did, and the conclusion was wrong.
+Always drive the brick's `driver` parameter before comparing. The **at rest** badge in the effect
+stack is the app telling you this.
+
+Watch the mirror-image trap too: `DeformRuntime.resolve()` calls `computeVertexNormals()`, so merely
+adding a deformer *does* shift a lit mesh's shading by a pixel or two. On a mesh, "the image changed"
+is not evidence the deformer did anything.
+
+### You cannot read the viewport's pixels from inside the page
+
+`drawImage(canvas, …)` into a 2D context returns **blank**, and so does `gl.readPixels` after
+compositing — the drawing buffer is not preserved. A colour check written that way reports "no lit
+pixels" for a viewport that is plainly full of them, which reads as the feature being dead. It is the
+instrument. Use `page.screenshot()` and measure the PNG, or decode the exported MP4.
+
+### Screenshots block on fonts
+
+`page.screenshot()` waits for `document.fonts.ready` and intermittently times out there mid-run,
+which looks like the app hanging. Await it once after load and give the screenshots a real timeout:
+
+```js
+await page.evaluate(() => document.fonts.ready)
+await page.screenshot({ clip: CLIP, timeout: 60000 })
+```
+
+### Do not judge sub-10-pixel detail
+
+Two limits compound. R3F renders at `dpr` (capped at 2), so a Playwright `deviceScaleFactor: 4`
+screenshot **upscales** the canvas rather than rendering more pixels. And headless SwiftShader draws
+small point sprites as hard squares that a real GPU may well draw round (open question in D-112).
+Verify sizes, counts, colours and motion here; take dot and edge quality to real hardware.
 
 ### Importing audio
 

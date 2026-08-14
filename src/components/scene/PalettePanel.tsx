@@ -16,6 +16,9 @@ export function PalettePanel() {
   const setPalette = useSceneStore((s) => s.setPalette)
   const setPaletteColor = useSceneStore((s) => s.setPaletteColor)
   const setPaletteBackground = useSceneStore((s) => s.setPaletteBackground)
+  const setPaletteSlot = useSceneStore((s) => s.setPaletteSlot)
+  const selectedId = useSceneStore((s) => s.selectedId)
+  const selected = objects.find((o) => o.id === selectedId) ?? null
 
   /** How many shapes each slot currently colours, so the swatch says what editing it will move. */
   const usage = palette.colors.map(
@@ -78,27 +81,42 @@ export function PalettePanel() {
 
         {/* The live palette, editable. Native colour inputs: the OS picker is better than anything
             worth building here, and it is the control people already know. */}
-        <div className="flex items-center gap-1">
-          {palette.colors.map((colour, slot) => (
-            <label
-              key={slot}
-              className="relative flex-1"
-              title={`Slot ${slot + 1} — ${usage[slot]} object${usage[slot] === 1 ? '' : 's'}`}
-            >
-              <input
-                type="color"
-                value={colour}
-                onChange={(e) => setPaletteColor(slot, e.target.value)}
-                aria-label={`Palette slot ${slot + 1}`}
-                className="w-full h-7 bg-transparent border border-aura-line rounded cursor-pointer"
-              />
-              {usage[slot] > 0 && (
-                <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-aura-base border border-aura-line text-[8px] font-mono leading-[13px] text-center text-slate-400">
-                  {usage[slot]}
-                </span>
-              )}
-            </label>
-          ))}
+        <div className="flex items-center gap-1 pb-2">
+          {palette.colors.map((colour, slot) => {
+            const bound = selected?.paletteSlot === slot
+            return (
+              <div key={slot} className="relative flex-1">
+                <input
+                  type="color"
+                  value={colour}
+                  onChange={(e) => setPaletteColor(slot, e.target.value)}
+                  aria-label={`Palette slot ${slot + 1}`}
+                  title={`Slot ${slot + 1} — used by ${usage[slot]} object${usage[slot] === 1 ? '' : 's'}`}
+                  className={`w-full h-7 bg-transparent border rounded cursor-pointer ${
+                    bound ? 'border-aura-accent' : 'border-aura-line'
+                  }`}
+                />
+
+                {/* The way back. Picking a colour by hand releases the slot, so without this an
+                    object could leave the palette and never rejoin it. */}
+                {selected && selected.type !== 'light' && !bound && (
+                  <button
+                    onClick={() => setPaletteSlot(selected.id, slot)}
+                    title={`Use this slot for ${selected.name}`}
+                    className="absolute inset-x-0 -bottom-2 mx-auto w-4 h-3 rounded-sm bg-aura-base border border-aura-line text-[8px] leading-[10px] text-slate-500 hover:text-aura-accent hover:border-aura-accent transition-colors"
+                  >
+                    ←
+                  </button>
+                )}
+
+                {usage[slot] > 0 && (
+                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-aura-base border border-aura-line text-[8px] font-mono leading-[13px] text-center text-slate-400">
+                    {usage[slot]}
+                  </span>
+                )}
+              </div>
+            )
+          })}
         </div>
 
         <div className="flex items-center gap-1">

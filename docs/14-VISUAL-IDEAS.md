@@ -9,10 +9,14 @@
 
 ## Benchmark
 
-Notch ships **70+ deformer nodes** and **20+ cloner nodes**. AURA has 15 deformers,
-14 post effects, 7 materials, 3 cloners and 4 effectors. That gap is a roadmap, not a verdict — Notch is a decade old, and about
-half of its list is things AURA should never build (face tracking, MDD import, fertilizer
-times). The half worth taking is below.
+Notch ships **70+ deformer nodes** and **20+ cloner nodes**. AURA has 15 deformers, 14 post effects,
+9 materials, 5 cloners and 6 effectors, across three render backends. That gap is a roadmap, not a
+verdict — Notch is a decade old, and about half of its list is things AURA should never build (face
+tracking, MDD import, fertilizer times). The half worth taking is below.
+
+**Read [20-OPPORTUNITIES.md](20-OPPORTUNITIES.md) alongside this.** This document is the visual
+vocabulary; that one is what the 2026-08 market and technology scan says is worth building, and its
+top three entries are not on this list at all.
 
 ---
 
@@ -245,6 +249,50 @@ Not effects. Things a screenshot showed that a test never would.
   engine can actually deliver — frame rates, material models, cloner counts.
 
 ---
+
+## Part 7d — What the points and lines backends just made cheap
+
+*Written 2026-08-14, after Pass 4 shipped and after the [2026-08 landscape scan](19-RESEARCH-2026.md).
+Same principle as 7b: these are ideas the architecture is now shaped to accept.*
+
+`curves.ts` established a contract that turns out to be worth more than the four paths built on it:
+**a strand is written by a function that may integrate, once, at build time, deterministically from a
+seed.** Anything expressible that way is now roughly a day's work and arrives with fifteen deformers,
+the palette, the modulation matrix and the exporter already attached.
+
+| Idea | What it is | Why it fits the contract exactly |
+|---|---|---|
+| **Strange attractors** — Lorenz, Aizawa, Thomas, Halvorsen | Integrate a chaotic system; the trajectory *is* the drawing | It is the flow line with a different `dx/dt`. Twenty lines of arithmetic each, and nothing else in the product looks remotely like them |
+| **Differential growth** | Points on a closed curve repel their neighbours; the curve subdivides where it stretches. Coral, brain folds, lichen | Iterative and stateful — which is fine, because build time is where state is allowed |
+| **Isolines of a spectrogram** | Marching squares over a 2D scalar field, and a spectrogram is one | Contours of the audio itself, as line art. The most literal possible answer to "the audio is never the shape" |
+| **L-systems, space colonisation** | Branching structures grown by rules | Same shape again: grow once, draw the edges |
+| **Trails** | A stroke whose vertices are one object's positions at successive past times | The one that does *not* fit — it needs modulation evaluated at `t − k` per vertex, so it is a pass rather than a brick |
+
+**The blocker underneath the best of them.** A waveform, an oscilloscope trace and a spectrum are all
+polylines whose *shape parameter* changes every frame, and [D-31](07-DECISIONS.md) forbids that
+because rebuilding geometry at frame rate re-tessellates a mesh. A 512-point polyline is not a mesh.
+The proposed relaxation — `rebuildCost: 'cheap'` — is in [20 §C1](20-OPPORTUNITIES.md), and it is
+what stands between the product and its own most on-brand element family.
+
+## Part 7e — Ideas from the 2026-08 scan that are not effects
+
+The four below are worth more than any deformer on the list above, and three of them are barely
+graphics work at all. Full reasoning, cost and risk in [20-OPPORTUNITIES.md](20-OPPORTUNITIES.md).
+
+- **Silence as a signal.** Every visualiser reacts to loudness; nothing reacts to *absence*. The bar
+  before the drop, where everything stops, is the most important visual moment in this genre, and it
+  is currently inexpressible. An inverted gated envelope over a whole-file timeline costs almost
+  nothing and can only be computed offline — a live tap cannot tell "silent" from "not started".
+- **Anticipation on any wire.** The Time Delay effector can read `t + lookahead`; nothing else can.
+  Editing craft says a cut landing *just before* the beat creates tension where one landing on it
+  merely confirms. A negative delay in the signal chain gives every parameter that, in two lines.
+- **Colour from harmony.** A chromagram per stem — twelve bins off the FFT that already runs —
+  compared against key profiles gives the chord. Wire it to the hue shift that landed in D-116 and
+  *the colour changes when the chord changes*. Scriabin drew this map in 1910; nobody in the
+  competitive set ships it.
+- **The 1-bit family** — dither, halftone, ASCII, posterise. Four post bricks, and the one place
+  where "another post effect" is a different *kind* of image rather than another glow: it is the
+  fastest way for output to stop reading as smooth generated WebGL.
 
 ## Part 8 — What I would actually build, in order
 

@@ -56,6 +56,7 @@ export const DEFORMER_BRICKS: DeformerBrick[] = [
     id: 'def-explode',
     label: 'Explode',
     family: 'geometry',
+    driver: 'strength',
     hint: 'Vertices burst outward along their original normals. The kick deformer.',
     descriptors: [deformParam('strength', 'Strength', -20, 20, 0), deformParam('spread', 'Spread', 0, 1, 0.35)],
     apply({ positions, directions, vertexCount, params }) {
@@ -81,6 +82,7 @@ export const DEFORMER_BRICKS: DeformerBrick[] = [
     id: 'def-spike',
     label: 'Spike / Protrude',
     family: 'geometry',
+    driver: 'amount',
     hint: 'Elongates along one axis. Sharpness narrows it from a bulge to a needle.',
     descriptors: [
       deformParam('amount', 'Amount', -30, 30, 0),
@@ -112,6 +114,7 @@ export const DEFORMER_BRICKS: DeformerBrick[] = [
     id: 'def-noise',
     label: 'Noise Wave',
     family: 'geometry',
+    driver: 'amount',
     hint: 'Organic turbulence along the normals. Wire Amount to sub-bass, Phase to an LFO.',
     descriptors: [
       deformParam('amount', 'Amount', -20, 20, 0),
@@ -147,6 +150,7 @@ export const DEFORMER_BRICKS: DeformerBrick[] = [
     id: 'def-twist',
     label: 'Twist',
     family: 'geometry',
+    driver: 'angle',
     hint: 'Corkscrew shear — rotation grows along an axis.',
     descriptors: [
       deformParam('angle', 'Angle', -720, 720, 0, { unit: 'deg' }),
@@ -174,6 +178,7 @@ export const DEFORMER_BRICKS: DeformerBrick[] = [
     id: 'def-vortex',
     label: 'Vortex',
     family: 'geometry',
+    driver: 'angle',
     hint: 'Whirlpool — the centre spins hardest and the edges trail behind.',
     descriptors: [
       deformParam('angle', 'Angle', -720, 720, 0, { unit: 'deg' }),
@@ -204,6 +209,7 @@ export const DEFORMER_BRICKS: DeformerBrick[] = [
     id: 'def-wave',
     label: 'Wave',
     family: 'geometry',
+    driver: 'amount',
     hint: 'Sine ripple across an axis. Wire Phase to a saw LFO to make it travel.',
     descriptors: [
       deformParam('amount', 'Amount', -20, 20, 0),
@@ -233,6 +239,7 @@ export const DEFORMER_BRICKS: DeformerBrick[] = [
     id: 'def-shockwave',
     label: 'Shockwave',
     family: 'geometry',
+    driver: 'amount',
     hint: 'A ring of displacement at a given distance. Wire Radius to an envelope for a blast.',
     descriptors: [
       deformParam('amount', 'Amount', -20, 20, 0),
@@ -266,6 +273,7 @@ export const DEFORMER_BRICKS: DeformerBrick[] = [
     id: 'def-fracture',
     label: 'Fracture',
     family: 'geometry',
+    driver: 'amount',
     hint: 'Breaks the surface into cells that fly apart as rigid chunks, each with its own spin.',
     descriptors: [
       deformParam('amount', 'Amount', 0, 30, 0),
@@ -315,6 +323,7 @@ export const DEFORMER_BRICKS: DeformerBrick[] = [
     id: 'def-melt',
     label: 'Melt',
     family: 'geometry',
+    driver: 'amount',
     hint: 'Sags under gravity and pools outward at a floor. Asymmetric, unlike everything else here.',
     descriptors: [
       deformParam('amount', 'Amount', 0, 40, 0),
@@ -348,6 +357,7 @@ export const DEFORMER_BRICKS: DeformerBrick[] = [
     id: 'def-bend',
     label: 'Bend',
     family: 'geometry',
+    driver: 'angle',
     hint: 'Curls the whole shape around an arc. A space warp, not a displacement.',
     descriptors: [
       deformParam('angle', 'Angle', -360, 360, 0, { unit: 'deg' }),
@@ -377,6 +387,7 @@ export const DEFORMER_BRICKS: DeformerBrick[] = [
     id: 'def-bulge',
     label: 'Bulge / Pinch',
     family: 'geometry',
+    driver: 'amount',
     hint: 'Fattens or squeezes a band. Positive bulges, negative pinches.',
     descriptors: [
       deformParam('amount', 'Amount', -2, 2, 0),
@@ -408,6 +419,7 @@ export const DEFORMER_BRICKS: DeformerBrick[] = [
     id: 'def-squash',
     label: 'Squash & Stretch',
     family: 'geometry',
+    driver: 'amount',
     hint: 'Volume-preserving: squash one axis and the others fatten. The bounce primitive.',
     descriptors: [deformParam('amount', 'Amount', -0.9, 4, 0), axisParam()],
     apply({ positions, vertexCount, params }) {
@@ -436,6 +448,7 @@ export const DEFORMER_BRICKS: DeformerBrick[] = [
     id: 'def-quantize',
     label: 'Quantize',
     family: 'geometry',
+    driver: 'amount',
     hint: 'Snaps vertices to a grid. Digital, blocky, and unlike any smooth deformer here.',
     descriptors: [
       deformParam('amount', 'Amount', 0, 1, 0),
@@ -464,6 +477,7 @@ export const DEFORMER_BRICKS: DeformerBrick[] = [
     id: 'def-attract',
     label: 'Attract / Repel',
     family: 'geometry',
+    driver: 'amount',
     hint: 'Pulls toward (or pushes from) a movable point. Wire its position to drag the shape around.',
     descriptors: [
       deformParam('amount', 'Amount', -2, 1, 0),
@@ -503,6 +517,7 @@ export const DEFORMER_BRICKS: DeformerBrick[] = [
     id: 'def-spherify',
     label: 'Spherify',
     family: 'geometry',
+    driver: 'amount',
     hint: 'Rounds any shape toward a sphere. Negative exaggerates its corners instead.',
     descriptors: [
       deformParam('amount', 'Amount', -1, 1, 0),

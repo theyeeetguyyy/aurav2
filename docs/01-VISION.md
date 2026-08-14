@@ -52,6 +52,16 @@ one-click tools. What follows from that audience:
 finished mixed MP3 need AI source separation (Demucs-class) — a genuinely harder,
 different problem, deliberately deferred.
 
+> **Revised 2026-08-14 — this rule has expired.** Demucs v4 exported to ONNX now runs **entirely in a
+> browser tab**, separating a four-minute song in three to five minutes with no server and no upload
+> ([19 §3](19-RESEARCH-2026.md)). It is an offline analysis step of exactly the shape the MIR worker
+> already is, not a different problem. Meanwhile a competitor separates into eight stems and maps
+> them to visual controls, which is this document's own sentence.
+>
+> The deferral was correct when written and is now the product's largest onboarding barrier: the
+> thesis is per-stem routing, and it currently asks the user to arrive already holding stems. See
+> [20 §S1](20-OPPORTUNITIES.md).
+
 ## Secondary audiences (not v1)
 
 Bedroom/live electronic producers · streamers and DJs (would want a live session mode) ·
@@ -65,14 +75,32 @@ church/worship AV (completely unserved, but an entirely different sales motion).
 - **"You direct it. Nothing auto-generates for you."** Academic virtual-cinematography
   research is moving toward AI-automated camera control, which makes deliberate manual
   authorship close to contrarian in 2026 — worth stating outright, not downplaying.
+- **Updated 2026-08-14 — it is no longer contrarian, it is a trend.** Dither-effect interest is up
+  ~900 % year on year and the trend writing states the reason outright: 1-bit and hand-made
+  aesthetics are **a deliberate counter-move to perfect-resolution AI imagery**. Motion-design
+  surveys for 2026 lead with *authenticity over polish*. The founding principle and the market
+  moved into alignment without the principle changing ([19 §4](19-RESEARCH-2026.md)).
+- **The competitors' reviewers write our positioning for us.** The recurring criticism of the AI
+  tools is sync precision and control — "a vibe match rather than precise beat synchronisation",
+  "hits a ceiling quickly", "limited customization for users who want fine-grained control over
+  every frame". Those are the three axes a deterministic, per-parameter, per-stem tool wins on.
 
 ## Pricing signals
 
-Indie audio-structural AI video tools: **$20–$50/month**. Premium tiers: **$200+/month**.
-TrackAura (bootstrapped, DAW-inspired, pitched at producers "without the steep learning
-curve of video editing software"): **$19.99 flat** — small, but it validates *"make video
-creation feel like my DAW"* as a sellable pitch.
+*Revised from the 2026-08 scan ([19 §1](19-RESEARCH-2026.md)); the previous figures were one tier
+too high for the volume end of this market.*
+
+| Comparable | Price | What it says |
+|---|---|---|
+| **Specterr** Pro | **$9.99/mo** ($99.99/yr) | The template floor. Free tier: 3 videos/month, watermarked, 720p |
+| **Vizzy** | free, no watermark, no cap | There is a zero-price competitor. Do not compete on price |
+| AI music-video tools | $20–50/mo | Where the "generated" category sits |
+| **Gumroad AE/FL template packs** | **$5–35** each · **$240** bundles | The market already pays this for *one look*. That is what a portable AURA state is worth (see [20 §D1](20-OPPORTUNITIES.md)) |
+| DAWs — the mental model this audience prices against | **$200–600** perpetual, or $10–40/mo | AURA is closer to an instrument than to a generator, and should be priced like one |
+| TrackAura (bootstrapped, DAW-inspired) | $19.99 flat | Small, but it validates *"make video creation feel like my DAW"* as a sellable pitch |
 
 ---
 
-*Source material: `research/01-market-research-and-positioning.md`.*
+*Source material: `research/01-market-research-and-positioning.md` (2026-07, frozen) and
+[19-RESEARCH-2026.md](19-RESEARCH-2026.md) (2026-08, current — supersedes the frozen scan wherever
+they disagree).*

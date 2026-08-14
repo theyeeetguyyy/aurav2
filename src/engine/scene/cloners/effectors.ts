@@ -1,6 +1,8 @@
 import { AudioFeatures } from '@/engine/audio/AudioFeatures'
 import { FEATURE_KEYS, type FeatureKey } from '@/engine/audio/featureTypes'
 import type { ParamDescriptor } from '@/types/params'
+import { paletteRamp } from '../palette'
+import { curl3 } from '../effects/noise'
 import {
   cloneChoice,
   cloneParam,
@@ -275,9 +277,128 @@ function hash(index: number, seed: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296
 }
 
+/** Ramp the scene palette across the array.
+ *
+ *  The reason the colour channel exists. Without it, a cloner produces N objects that are the same
+ *  shape AND the same colour, arranged regularly — which reads as an array of copies rather than as
+ *  a form, and is the loudest "made in a toy" signal in the output.
+ *
+ *  Writes **absolute** colour, unlike every other effector here: the rest add a weighted delta to a
+ *  brightness multiplier, which can only lighten or darken what is already there. A ramp has to be
+ *  able to say "this one is teal and that one is chartreuse", and that is a value, not a scaling.
+ *
+ *  Ends land exactly on palette entries, so the array begins and finishes on colours the user chose
+ *  (see `paletteRamp`). Anything else and a gradient across a palette reads as a smear. */
+export const paletteRampEffector: EffectorBrick = {
+  id: 'eff-palette-ramp',
+  label: 'Palette Ramp',
+  family: 'instancing',
+  hint: 'Spreads the scene palette across the clones, so an array reads as composed rather than repeated.',
+  descriptors: [
+    cloneParam('spread', 'Spread', 0, 1, 1, { unit: 'x' }),
+    cloneParam('offset', 'Offset', -1, 1, 0, { unit: 'x' }),
+    cloneParam('bias', 'Bias', 0.1, 5, 1),
+    cloneChoice('reverse', 'Reverse', false),
+    cloneChoice('pingPong', 'Ping-Pong', false),
+  ],
+  affect(ctx) {
+    const palette = ctx.palette
+    // No palette means nothing to ramp. Silently doing nothing beats inventing colours.
+    if (!palette) return
+
+    const count = ctx.clones.count
+    const color = ctx.clones.color
+    const spread = num(ctx.params, 'spread', 1)
+    const offset = num(ctx.params, 'offset', 0)
+    const bias = Math.max(0.01, num(ctx.params, 'bias', 1))
+    const reverse = ctx.params.reverse === true
+    const pingPong = ctx.params.pingPong === true
+    const divisor = Math.max(1, count - 1)
+
+    for (let i = 0; i < count; i++) {
+      let t = i / divisor
+      if (reverse) t = 1 - t
+      // Ping-pong makes a closed array — a ring or a loop — meet itself at the seam rather than
+      // jumping from the last palette entry back to the first.
+      if (pingPong) t = t < 0.5 ? t * 2 : (1 - t) * 2
+      const position = Math.pow(Math.min(1, Math.max(0, t)), bias) * spread + offset
+
+      const hex = paletteRamp(palette, position)
+      // Parsed straight into the buffer. `THREE.Color` would allocate per clone per frame, and this
+      // runs count× at frame rate.
+      const value = Number.parseInt(hex.slice(1), 16)
+      const o = i * 3
+      // sRGB → linear, because the renderer works in linear space and the material colour it is
+      // replacing went through the same conversion. Skipping it makes every ramp read washed out.
+      color[o] = srgbToLinear(((value >> 16) & 255) / 255)
+      color[o + 1] = srgbToLinear(((value >> 8) & 255) / 255)
+      color[o + 2] = srgbToLinear((value & 255) / 255)
+    }
+  },
+}
+
+/** sRGB to linear, the same transfer function Three applies to a material colour. */
+function srgbToLinear(c: number): number {
+  return c < 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+}
+
+/** The flow field itself is `curl3` in `effects/noise.ts`, shared with the Flow line brick so the
+ *  two follow the same current.
+ *
+ *  Sampled here, never integrated: the offset is a function of the clone's own position, so
+ *  scrubbing backwards reproduces it exactly (HC-3). Wire Phase to a saw LFO for travel. */
+export const flowEffector: EffectorBrick = {
+  id: 'eff-flow',
+  label: 'Flow Effector',
+  family: 'instancing',
+  hint: 'Pushes every clone along a swirling field. Turns any layout into a current — wire Phase to travel.',
+  // Rests at zero like every other effector, and says so in the stack (D-111). Strength is the gate.
+  driver: 'strength',
+  descriptors: [
+    cloneParam('strength', 'Strength', 0, 40, 0, { unit: 'm' }),
+    // Scale is the single most expressive control here: large is a slow global swirl, small is
+    // turbulence, and the same array reads as smoke or as static depending only on this.
+    cloneParam('scale', 'Field Scale', 0.005, 0.4, 0.05),
+    cloneParam('phase', 'Phase', 0, 1, 0, { step: 0.001 }),
+    cloneChoice('swirl', 'Rotate With Flow', false),
+  ],
+  affect(ctx) {
+    const strength = num(ctx.params, 'strength', 8)
+    if (strength === 0) return
+
+    const scale = Math.max(1e-4, num(ctx.params, 'scale', 0.05))
+    // The phase travels the field through the fourth dimension by offsetting the sample point, so
+    // there is no accumulator to desynchronise between preview and export.
+    const drift = num(ctx.params, 'phase', 0) * 20
+    const swirl = ctx.params.swirl === true
+
+    const { position, rotation } = ctx.clones
+    const count = ctx.clones.count
+    const v: [number, number, number] = [0, 0, 0]
+
+    for (let i = 0; i < count; i++) {
+      const o = i * 3
+      curl3(position[o] * scale + drift, position[o + 1] * scale, position[o + 2] * scale + drift, v)
+
+      position[o] += v[0] * strength
+      position[o + 1] += v[1] * strength
+      position[o + 2] += v[2] * strength
+
+      // Aligning each copy to its own flow direction is what turns a swarm of identical objects into
+      // something that reads as moving, even in a still frame.
+      if (swirl) {
+        rotation[o] += Math.atan2(v[1], Math.hypot(v[0], v[2]) || 1e-6)
+        rotation[o + 1] += Math.atan2(v[0], v[2] || 1e-6)
+      }
+    }
+  },
+}
+
 export const EFFECTOR_BRICKS: EffectorBrick[] = [
+  paletteRampEffector,
   stepEffector,
   randomEffector,
   waveEffector,
+  flowEffector,
   delayEffector,
 ]

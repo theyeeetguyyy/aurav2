@@ -49,6 +49,32 @@ describe('deformers are inert at defaults', () => {
   })
 })
 
+describe('every deformer declares the parameter that gates it', () => {
+  // The "at rest" badge in the effect stack is computed from `driver`. If a brick names the wrong
+  // parameter the badge lies in one of two ways: it hides while the deformer really is inert, which
+  // is the misreading that wasted an afternoon here, or it claims inert while the shape is deformed.
+  // Both are worse than no badge, so the claim is tested rather than trusted.
+  it.each(DEFORMER_BRICKS.map((b) => [b.id, b.driver] as const))(
+    '%s is gated by %s',
+    (id, driver) => {
+      const brick = byId(id)
+      expect(brick.descriptors.map((d) => d.key)).toContain(driver)
+      expect(brick.descriptors.find((d) => d.key === driver)!.defaultValue).toBe(0)
+
+      // Zero: inert, whatever else is set.
+      const rest = makeContext({ ...defaultsOf(id), [driver]: 0 })
+      const before = Array.from(rest.positions)
+      brick.apply(rest)
+      expect(Array.from(rest.positions), `${id} moved at rest`).toEqual(before)
+
+      // Non-zero: something must move, or the parameter is not the gate.
+      const driven = makeContext({ ...defaultsOf(id), [driver]: driver === 'angle' ? 90 : 2 })
+      brick.apply(driven)
+      expect(Array.from(driven.positions), `${id} inert when driven`).not.toEqual(before)
+    },
+  )
+})
+
 describe('deformers cannot animate on their own (D-36)', () => {
   // The contract has no `time`, so a deformer is a pure function of its parameters.
   // All motion must arrive through modulation — a stem, an LFO, a Generator. This test

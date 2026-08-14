@@ -105,6 +105,12 @@ export function PersistentViewport() {
     >
       <Canvas
         gl={{ antialias: true, powerPreference: 'high-performance', alpha: false }}
+        // R3F renders at 1 device pixel per CSS pixel unless told otherwise, so on any HiDPI screen
+        // the viewport was the one soft, aliased panel in an otherwise crisp interface — and thin
+        // geometry paid for it most: a point sprite four CSS pixels across had four pixels to be a
+        // circle in, and became a square. Capped at 2 because the fourth pixel of a 4× display buys
+        // nothing visible and costs sixteen times the fragments.
+        dpr={[1, 2]}
         // 'percentage' = PCFShadowMap. R3F's default (`shadows` / 'soft') maps to
         // PCFSoftShadowMap, which Three has deprecated.
         shadows="percentage"

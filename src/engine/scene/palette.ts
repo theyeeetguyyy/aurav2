@@ -119,6 +119,54 @@ export function paletteRamp(palette: Palette, position: number): string {
   return mixHex(colors[low], colors[high], scaled - low)
 }
 
+/** Rotate a colour's hue by `degrees`, keeping its saturation and lightness.
+ *
+ *  The operation behind "the drop changes the colour of the piece". It rotates rather than replaces
+ *  so a palette stays recognisable under it: shifting an Ember scene by 40° is still an Ember scene,
+ *  where writing an absolute hue would throw away the decision the palette records.
+ *
+ *  A grey is unchanged at any angle, which is correct and worth knowing — a Mono palette cannot be
+ *  driven this way, and no amount of signal will make it move.
+ *
+ *  Hand-rolled rather than `THREE.Color.offsetHSL` because this file is colour authoring and has no
+ *  reason to pull in the renderer; the conversion is fifteen lines and exact. */
+export function shiftHue(hex: string, degrees: number): string {
+  if (degrees === 0 || !Number.isFinite(degrees)) return hex
+
+  const [r, g, b] = parseHex(hex).map((c) => c / 255)
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const lightness = (max + min) / 2
+  const delta = max - min
+  if (delta === 0) return hex
+
+  const saturation = lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min)
+
+  let hue: number
+  if (max === r) hue = ((g - b) / delta + (g < b ? 6 : 0)) / 6
+  else if (max === g) hue = ((b - r) / delta + 2) / 6
+  else hue = ((r - g) / delta + 4) / 6
+
+  // Wraps, so a routed signal that overshoots lands somewhere sensible instead of clamping.
+  hue = (((hue + degrees / 360) % 1) + 1) % 1
+
+  const q = lightness < 0.5 ? lightness * (1 + saturation) : lightness + saturation - lightness * saturation
+  const p = 2 * lightness - q
+  return toHex(
+    Math.round(hueToChannel(p, q, hue + 1 / 3) * 255),
+    Math.round(hueToChannel(p, q, hue) * 255),
+    Math.round(hueToChannel(p, q, hue - 1 / 3) * 255),
+  )
+}
+
+function hueToChannel(p: number, q: number, t: number): number {
+  const wrapped = ((t % 1) + 1) % 1
+  if (wrapped < 1 / 6) return p + (q - p) * 6 * wrapped
+  if (wrapped < 1 / 2) return q
+  if (wrapped < 2 / 3) return p + (q - p) * (2 / 3 - wrapped) * 6
+  return p
+}
+
 /** Linear mix of two `#rrggbb` strings. Returns hex, because that is what the material stores. */
 export function mixHex(a: string, b: string, t: number): string {
   const [ar, ag, ab] = parseHex(a)

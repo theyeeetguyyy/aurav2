@@ -48,6 +48,57 @@ Noted for later: the Slug algorithm entered the public domain in March 2026, and
 Neither changes the recommendation today; both are worth revisiting if text becomes a
 headline feature.
 
+### `onnxruntime-web` + Demucs v4 — **planned**, for stem separation ([20 §S1](20-OPPORTUNITIES.md))
+
+*Assessed 2026-08-14.* HT-Demucs exported to ONNX runs entirely client-side under WebAssembly, with
+WebGPU acceleration where available: **a four-minute song separates in three to five minutes, with no
+server and no upload.** Published models cover four stems (`htdemucs`, `htdemucs_ft`) and six
+(`htdemucs_6s`, adding guitar and piano).
+
+*Why it fits:* it is an offline analysis step of exactly the shape the MIR worker already has. It
+touches no invariant — the output is four ordinary decoded stems in the rack.
+
+*The real cost is not code.* A model is hundreds of megabytes and has to be fetched once and cached,
+which makes it an **optional download** rather than a bundle, and probably one offered *after* a user's
+first export rather than before their first import. It is also the first operation in this product
+that takes minutes and can fail, so it needs progress, cancellation, and a "or drop your own stems"
+path that stays first-class.
+
+### `@huggingface/transformers` (Whisper) — **candidate**, for lyric alignment ([20 §S3](20-OPPORTUNITIES.md))
+
+Whisper-base runs in-browser at **5–8× real time** with WebGPU, and WhisperX-style forced alignment
+produces **sub-100 ms word timestamps** — enough for karaoke-grade word timing.
+
+*Why it is a candidate rather than planned:* it is worth nothing until the text element exists, and
+it should transcribe the **separated vocal stem** rather than the mix, which makes it dependent on the
+entry above. Sequenced behind both.
+
+### `Line2` / `LineSegments2` / `LineMaterial` (three addons) — **rejected for the default stroke, kept as an option**
+
+*Assessed 2026-08-14, after the lines backend shipped.* They give real line width, in pixels or world
+units, with round caps and joins — everything `LineBasicMaterial` cannot do.
+
+**Rejected because of what the width costs.** Their geometry is *instanced* — `instanceStart` and
+`instanceEnd` rather than `position` — so a deformer writing positions does nothing at all, and
+"every deformer works on a stroke unmodified" is the property the whole backend was built around
+(D-114). Performance also degrades past roughly a thousand segments, and a dense figure is the case
+strokes are best at.
+
+**Kept as an option** for a second stroke material that rebuilds the instanced buffer from the
+deformed positions each frame: one copy per frame, and it buys width. `Line2NodeMaterial` is the
+WebGPU equivalent if that migration ever happens.
+
+### An Oklab colour utility — **planned**, and small enough to hand-roll ([20 §A2](20-OPPORTUNITIES.md))
+
+`paletteRamp` already documents that its sRGB mixing is wrong, and `shiftHue` (D-116) has the same
+flaw somewhere more visible: rotating hue in HSL changes apparent brightness as it turns, so a stem
+wired to hue pumps in lightness as well as colour.
+
+OKLCH is the current standard for exactly this — equal lightness numbers look equally bright, and
+interpolation gives a vivid midpoint where sRGB gives mud. `culori` is the obvious dependency, but
+the sRGB↔Oklab pair is about forty lines of matrix arithmetic and this codebase already hand-rolls
+its FFT for the same reason. **Hand-roll it in `palette.ts`.**
+
 ### LYGIA — **planned**, for the SDF backend (4K) and further post effects
 
 An include-based GLSL library. Adds no runtime, only shader source, so it composes with
@@ -126,7 +177,8 @@ resources is a memory disaster.
 
 | Library | Where |
 |---|---|
-| `postprocessing` (pmndrs) | Adopted — 4I |
+| `postprocessing` (pmndrs) | Adopted — 4I. **Note (2026-08): it is WebGL-only.** The WebGPU path is three's own TSL post-processing, a different API — so a renderer migration is a post-chain rewrite, not the one-line swap the guides advertise ([20 §C2](20-OPPORTUNITIES.md)) |
+| `GaussianSplats3D` / splat viewers | **Rejected.** Mature in the browser in 2026 and the wrong shape: a splat is captured reality, and nothing in this product's model knows what to do with content it cannot deform, route or recolour |
 | `@xyflow/react` | Planned — 5C node graph |
 | `mp4-muxer` + WebCodecs | Planned — 8B |
 | Meyda | Live tap only; modulation reads the offline worker (HC-3) |

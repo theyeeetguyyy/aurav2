@@ -3,18 +3,29 @@
 **Read this first.** Where the project actually is, what runs today, what does not, and
 what to do next. Everything here is verified against the code, not aspirational.
 
-*Last verified: 2026-08-07 · `npm run check` green (typecheck · lint · 430 tests) · production
-build clean · **driven in a real browser: every page screenshotted, and a 720p MP4 exported,
-decoded and measured for brightness and motion**  (`run-aura` skill)*
+*Last verified: 2026-08-13 · `npm run check` green (typecheck · lint · **534 tests**) · production
+build clean · **driven in a real browser: every new brick screenshotted, and a 720p MP4 of a deformed
+stroke with bloom and a camera orbit exported, decoded and measured for brightness and motion**
+(`run-aura` skill) · 47 of 70 sub-phases, 4 partial*
 
 > **Read next: [17-EXPRESSIVE-RANGE.md](17-EXPRESSIVE-RANGE.md).**
 >
-> The engine works. An mp3 goes in and a deterministic, sharp, audio-reactive MP4 comes out. But
-> **give this to ten people and eight will make the same thing** — wireframed cloned shapes, routed
-> to a stem, with a little post. One of three declared render backends is implemented, and four of
-> eight element families, and all four built ones resolve to *lit mesh* or *full-frame filter*.
+> The engine works. An mp3 goes in and a deterministic, sharp, audio-reactive MP4 comes out. The
+> open question was whether **ten people would all make the same thing** — wireframed cloned shapes,
+> routed to a stem, with a little post.
 >
-> That is the only thing that matters right now. Not UI polish, not more effects.
+> **Passes 1, 2 and 4 are in, and 3 is most of the way.** Three of four render backends, six of
+> eight element families: a scene palette every object binds to with a routable hue shift, five
+> scatter bricks, a switch that draws any mesh as a cloud of its own vertices, Scatter and Surface
+> layouts with a curl-noise Flow effector — and now **strokes**: five path bricks drawn as indexed
+> line segments, two stroke materials, and two ribbon bricks sweeping the same paths into real
+> meshes. All fifteen deformers work on a surface, a cloud and a stroke with no backend-specific
+> code.
+>
+> **The next action is not a build.** The ten-project test has not been run since Pass 2, and it is
+> the only thing that says whether four kinds of image produce ten distinguishable projects. The
+> protocol is **[18-TEN-PROJECT-TEST.md](18-TEN-PROJECT-TEST.md)** — three hours, ten stills, and a
+> friction log that outranks the score. Run it before starting SDF, text, or anything in §Next.
 >
 > What else is missing and what it costs: [13-PRODUCT-GAP.md](13-PRODUCT-GAP.md).
 
@@ -33,7 +44,7 @@ visual states on a timeline, render a video. Nothing auto-generates — see
 aura/
 ├── aurav2/          the application — React 19 · TS strict · Vite · R3F · Zustand
 │   ├── docs/        source of truth (you are here)
-│   └── src/         101 files
+│   └── src/         195 files (27 of them tests)
 └── legacy/aura-v1/  frozen vanilla-JS v1, 64 mode files. Parts donor, never shipped.
 ```
 
@@ -58,8 +69,10 @@ This is the whole product in miniature, and it runs end to end:
 
 1. **Media & Stems** — drag in MP3/WAV stems. Each decodes, appears in the rack with a
    waveform and trim handles, and is analysed once in a worker.
-2. **Scene & Shapes** — add a shape from the library. Layer stack on the left, viewport in
-   the middle, descriptor-driven inspector on the right. Drag any numeric field to scrub it.
+2. **Scene & Shapes** — add something from the library: a **surface**, a **cloud**, a **stroke** or
+   a **ribbon**, in seven folding groups. Layer stack on the left, viewport in the middle,
+   descriptor-driven inspector on the right. Drag any numeric field to scrub it. Every object binds
+   to a palette slot, so re-picking the palette recolours the whole scene at once.
 3. **Routing** — add a **Generator** (LFO/noise) if you want motion that isn't in your
    stems, then **drag** a source dot (say your drum stem's *Envelope*) onto a parameter
    (say *Scale*, or *Explode · Strength*). One gesture. A wire appears and pulses with the
@@ -113,11 +126,17 @@ effects merged into one fullscreen pass.
 Fresnel Rim, Toon, Normal). `MaterialParams` is open, not a fixed struct.
 ✅ **4M environment** — gradient background, fog, three-point rig with drivable intensity
 and angle, procedural image-based reflections, grid. All routable.
-✅ **4H cloners** — radial/linear/grid layouts + Step/Random/Wave/**Time Delay** effectors,
-GPU instanced, clone count drivable at frame rate.
+✅ **4H cloners** — radial/linear/grid/**scatter**/**surface** layouts + Step/Random/Wave/
+**Time Delay**/**Flow**/**Palette Ramp** effectors, GPU instanced, clone count drivable at frame
+rate. The last two layouts are the ones that are not lattices (D-113).
 ✅ **4N lights** — 5 light types as scene objects with routable intensity, per-light
 shadows and an authoring gizmo layer. Strobe-on-hit needed no code: it is an onset
 trigger into intensity (D-48).
+✅ **4O lines** — a third render backend. Five path bricks (Lissajous · Spiral · Rosette · Flow
+Lines · Web) as indexed `LineSegments`, so every deformer works on a stroke unmodified and a web of
+links is the same buffer with a different index. Two stroke materials; **no width control, because
+WebGL has none** — weight comes from the two ribbon bricks, which sweep the same paths into ordinary
+meshes (D-114).
 ⬜ 4F morph · 4J GLTF · 4K SDF backend.
 
 ### Phase 5 — Modulation (partial)
@@ -182,7 +201,9 @@ cut land rather than merely happen.
 | ~~1~~ | ~~No undo~~ | ✅ 3F | Ctrl+Z / Ctrl+Y, or the top-bar buttons. A slider drag is one step |
 | ~~2~~ | ~~Camera page is viewport only~~ | ✅ D-64 | Transform fields, routing targets and lane-drawn moves. Spline paths still to come |
 | ~~3~~ | ~~Deliver has export but no timeline~~ | ✅ 6A/6B | Timeline across the width, export in the right rail. Sequencing is optional — an empty timeline is one continuous scene (D-59) |
-| 4 | **Geometry params are not modulation targets** | `realtime: false` | Intentional (D-31) — wiring a kick to `radius` would re-tessellate 60×/sec. `scale.uniform` covers the common case; deformers (4G) are the real answer |
+| 4 | **Geometry params are not modulation targets** | `realtime: false` | Intentional (D-31) — wiring a kick to `radius` would re-tessellate 60×/sec. `scale.uniform` covers the common case; deformers (4G) are the real answer. Same rule keeps a path's Strands and Resolution off the patchbay — a stroke animates through deformers, like everything else |
+| 7 | **A stroke is always one pixel wide** | WebGL | Not fixable in the material: `LineBasicMaterial.linewidth` is ignored by every WebGL renderer. Weight comes from the ribbon bricks, which sweep a real section (D-114) |
+| 8 | **Cloners are refused on clouds and strokes** | `EffectStack` | Cloning draws an `InstancedMesh`; neither backend is one. Both carry their own multiplicity — point count, strand count — so the loss is smaller than it sounds |
 | 5 | ~~No project save/load~~ | ✅ 8E | Save/Open/Relink in the top bar. Stems are referenced, so a reopened project needs its audio re-picked — analysis is cached, so it does not re-run |
 | 6 | **Root is not a git repo** | — | `aurav2/` and `legacy/aura-v1/` have separate histories; nothing spans the workspace |
 
@@ -217,29 +238,59 @@ break by accident:
 
 ## Next
 
-**Widen the medium. Nothing else.**
+**Measure the widening, then finish it.**
 
 The full argument, the falsifiable bar, and the sequence are in
 [17-EXPRESSIVE-RANGE.md](17-EXPRESSIVE-RANGE.md). In short:
 
-| Pass | What | Why here |
-|---|---|---|
-| 1 | **Colour & light as things you author** — scene palettes, gradients across clones, hue from signal, environments that are not near-black | Cheapest, and it changes every frame. Today a user who makes no colour decision gets the same palette as everyone else |
-| 2 | **The points backend** — `points` is in the type union and nothing implements it | Doubles the medium. A cloud is not a surface. Stateless, so D-49's objection to particle *libraries* does not apply |
-| 3 | **Structure that is not a lattice** — noise, curl-flow, surface scatter | Cloners place on grids, so multiplicity always reads as an array. Loudest "toy" tell in the output |
-| 4 | **Lines & ribbons** | Third image family, cheap once points exist |
-| 5 | **The SDF backend** | Most distinctive, most work |
-| 6 | **Text** | For this audience, its absence is a hole rather than a gap |
+| Pass | What | Why here | |
+|---|---|---|---|
+| 1 | **Colour & light as things you author** — scene palettes, gradients across clones, hue from signal, environments that are not near-black | Cheapest, and it changes every frame | 🟡 |
+| 2 | **The points backend** | Doubles the medium. A cloud is not a surface | ✅ |
+| 3 | **Structure that is not a lattice** — noise, curl-flow, surface scatter | Cloners place on grids, so multiplicity always reads as an array | 🟡 |
+| 4 | **Lines & ribbons** | Third image family, cheap once points exist | ✅ |
+| 5 | **The SDF backend** | Most distinctive, most work | ⬜ |
+| 6 | **Text** | For this audience, its absence is a hole rather than a gap | ⬜ |
 
 **The bar, run after every pass:** ten projects from one stem, fifteen minutes each. A stranger must
 tell all ten apart from a single frame, none may be embarrassing, and there must be **at least four
-distinct image families**. Today it fails the first and third and passes the second — the floor is
-fine, the room is narrow.
+distinct image families**. There are now four backends' worth of vocabulary — lit surface, cloud,
+stroke, swept band — so the *third* criterion is reachable for the first time. **Run it.** Nothing
+below is worth starting until someone has sat down and made ten of them.
+
+**What is left inside the passes already landed**, none of it blocking and all of it cheap:
+
+| Left over | Pass | Note |
+|---|---|---|
+| Rig colour derived from the palette | 1 | The background and the objects follow the palette; the three-point rig is still one fixed white rig |
+| Per-point and per-strand colour from the palette | 2 / 4 | `vertexColors` is wired on the point material and never fed. A cloud or a bundle that ramps across the palette is one attribute away |
+| Clone count as an audio-driven target | 3 | The descriptor is already `realtime`; what is missing is the demonstration that a drop *adds copies* |
+| Trails | 4 | A stroke whose vertices are one object's positions at successive past times. Needs modulation evaluated at `t − k` per vertex — a pass of its own, not a leftover |
 
 **Deliberately not next:** interaction craft (gizmos, drag-to-scrub, hover, motion) and more
-post effects. The first makes a narrow tool pleasant; the second adds permutations inside the one
-image family that already exists. Both are recorded — see
+post effects. The first makes a narrow tool pleasant; the second adds permutations inside an image
+family that already exists. Both are recorded — see
 [05-DESIGN-SYSTEM.md](05-DESIGN-SYSTEM.md) §"Where this system is still not honest".
+
+**Outside the widening, and now the oldest debts:** the section-aware intensity engine (6C) so a
+`drop` marker is a force rather than a label; transitions (6E) so a change of look can be a swell
+rather than a cut; and the performance audit (9C), which has been deferred long enough that the
+per-frame CPU vertex budget has doubled twice under it.
+
+**And, from the 2026-08 landscape scan** — [19-RESEARCH-2026.md](19-RESEARCH-2026.md) for the facts,
+[20-OPPORTUNITIES.md](20-OPPORTUNITIES.md) for what to do about them. Three of its findings change
+what is worth building, and none of them is a visual effect:
+
+1. **Stem separation now runs in a browser tab.** Demucs v4 via ONNX, three to five minutes for a
+   four-minute song, no server. 01-VISION deferred this as "a genuinely harder problem"; that is no
+   longer true, and it is currently the product's largest onboarding barrier — the whole thesis is
+   per-stem routing and the user has to arrive already holding stems.
+2. **Spotify Canvas is an unserved, specified, recurring need** — 9:16, 3–8 s, no audio, loops
+   forever, one per track. A tool built entirely from pure functions of `t` can guarantee a seamless
+   loop; one built on accumulators cannot.
+3. **Lyrics are geometry.** Whisper runs in-browser at 5–8× real time with sub-100 ms word timings,
+   the AI tools are reviewed badly for having no lyric sync, and kinetic typography is a named 2026
+   style. Text plus an aligner turns the whole existing timeline into a lyric engine.
 
 Full queue: [15-BUILD-PLAN.md](15-BUILD-PLAN.md) · breakdown with test criteria:
 [06-ROADMAP.md](06-ROADMAP.md).

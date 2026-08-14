@@ -42,6 +42,14 @@ export interface DeformerBrick {
   family: EffectFamily
   /** One-line explanation shown in the effect picker. */
   hint: string
+  /** The parameter that gates the whole deformer — the one whose zero makes `apply` a no-op.
+   *
+   *  Deformers rest at zero on purpose: modulation is `base + Σ offsets` (03-ARCHITECTURE §6), so
+   *  a bass-driven bulge has to start unbulged or it is permanently inflated. The cost is that a
+   *  freshly added deformer changes nothing, which reads exactly like a broken feature — that
+   *  misreading cost real debugging time here. Naming the gate lets the UI say "at rest" instead of
+   *  looking dead, and gives a wire an obvious default target. */
+  driver: string
   descriptors: ParamDescriptor[]
   apply(ctx: DeformContext): void
 }

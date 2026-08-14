@@ -18,21 +18,25 @@ Not because the vocabulary is small. Because it has **one mode**.
 ### There is exactly one way to put a pixel on screen
 
 ```ts
-export type RenderBackend = 'mesh' | 'sdf' | 'points'
+export type RenderBackend = 'mesh' | 'sdf' | 'points' | 'lines'
 ```
 
-Three declared. **One implemented.** Every visual in the product is a lit triangle mesh, optionally
-duplicated, optionally filtered on the way out.
+Three declared. **One implemented** when this was written; **three now** — `points` shipped in Pass 2
+below and any mesh can be switched to a cloud of its own vertices (D-110), and `lines` shipped in
+Pass 4 (D-114). The union has grown by one rather than shrunk: `sdf` is the only unbuilt path.
+Before any of it, every visual in the product was a lit triangle mesh, optionally duplicated,
+optionally filtered on the way out.
 
-[10-ELEMENTS.md](10-ELEMENTS.md) designs eight element families. Four exist — geometry,
-environment, light, post — and all four resolve to *lit mesh* or *full-frame filter*. The four
-missing ones are precisely the ones that would produce a **different kind of image**:
+[10-ELEMENTS.md](10-ELEMENTS.md) designs eight element families. When this was written five existed
+— geometry, particles, environment, light, post — and every one of them resolved to *lit mesh* or
+*full-frame filter*. Two of the missing four have since landed, and both produce a **different kind
+of image**, which was the whole test:
 
 | Family | Status | What its absence costs |
 |---|---|---|
-| A · Geometry | ✅ 10 primitives, 7 materials, deformers, cloners | — |
+| A · Geometry | ✅ 10 primitives, 7 materials, 15 deformers, 5 cloners — **plus 5 stroke paths and 2 swept ribbons** (D-114) | — |
 | B · Data-driven geometry | ⬜ | No spectrum, no waveform-as-form. The audio is never *the shape* |
-| C · Particles | ⬜ | No clouds, no swarms, no dissolve. Multiplicity only ever reads as an array |
+| C · Particles | ✅ 5 scatter bricks, 2 point materials, any mesh as a cloud | — |
 | D · Fields / raymarched | ⬜ | No metaballs, tunnels, infinite repetition. Nothing that is not a surface |
 | E · Environment | ✅ | — |
 | F · Light | ✅ | — |
@@ -41,25 +45,28 @@ missing ones are precisely the ones that would produce a **different kind of ima
 
 ### The output space, written out
 
-Everything anyone can currently make is a point in:
+When this was written, everything anyone could make was a point in:
 
 ```
 {10 primitives} × {deformers} × {regular array} × {one accent colour} × {bloom, kaleidoscope, grade}
 ```
 
-Four observations about that space:
+Four observations about that space, and where each stands now:
 
-1. **Multiplicity is always a lattice.** Cloners distribute on grids, radials and spirals. Every
-   one is regular, so an array always reads as an array — which is the single loudest "made in a
-   toy" signal there is.
+1. **Multiplicity is always a lattice.** Cloners distributed on grids, radials and spirals. Every
+   one regular, so an array always read as an array — the single loudest "made in a toy" signal
+   there is. *Scatter and Surface layouts and the Flow effector close most of this (D-113).*
 2. **Colour is incidental, not authored.** One colour per object from a rotating palette, over a
-   near-black background, under one default rig. Every scene is therefore *an accent colour on
-   dark*, and the palette rotation makes that true even when the user has made no colour decision
-   at all.
-3. **Three post effects dominate.** Bloom, kaleidoscope and grade are the three that read best, so
-   they are the three everyone will reach for. The other twelve are variations nobody arrives at.
+   near-black background, under one default rig — true even for a user who made no colour decision
+   at all. *A state-owned palette, ramps across an array and a routable hue shift close most of this
+   (D-105, D-109, D-116). The rig is still one rig.*
+3. **Three post effects dominate.** Bloom, kaleidoscope and grade read best, so they are the three
+   everyone reaches for. The other twelve are variations nobody arrives at. *Unchanged, and
+   deliberately — more post effects are permutations inside one image family.*
 4. **The centre of mass of that space is exactly the predicted output.** "Wireframed cloned shapes
-   with a bit of post" is not a failure of the space — it *is* the space, described.
+   with a bit of post" was not a failure of the space — it *was* the space, described. *There are
+   now four kinds of image rather than one: lit surface, cloud, stroke, swept band. Whether the
+   centre of mass has actually moved is what §2 measures, and it has not been re-run.*
 
 ### The claim in the docs that is wrong
 
@@ -87,11 +94,23 @@ corrected in place; this document replaces its argument.
 > 2. **None embarrassing** — every one is something its author would post.
 > 3. **At least four distinct image families** across the ten — not ten variations of one look.
 
-Today it fails (1) and (3), and passes (2) — which is the honest shape of the situation. The
-floor is fine. There is barely a ceiling, and the room is narrow.
+When this was written it failed (1) and (3) and passed (2) — the honest shape of the situation. The
+floor was fine; there was barely a ceiling and the room was narrow.
+
+**It has not been run since.** Passes 1, 2 and 4 have landed and 3 is most of the way, so the
+vocabulary now spans four kinds of image and criterion (3) is *reachable* — but reachable is not
+passed, and the only thing that can say otherwise is somebody sitting down and making ten of them.
+That is the next thing to do, ahead of Pass 5.
 
 Run it after every pass below. It is cheap, it is the only measure that matters, and it is the
 thing that will say when to stop widening and start polishing.
+
+**The protocol is [18-TEN-PROJECT-TEST.md](18-TEN-PROJECT-TEST.md)** — how to run it, five constraint
+cards, a record sheet, and where each finding goes. It makes one refinement to the bar above and the
+refinement matters: the ten split into a **free five** and a **constrained five**, with criterion 3
+judged on the free five *alone*. Four image families that appear only when a card demands them mean
+the software has range but no **pull**, which is a defaults problem rather than a backend problem —
+and the version of the test written here could not tell those two apart.
 
 ---
 
@@ -112,8 +131,10 @@ What it needs:
   people actually want to make.
 - **Gradients across multiplicity.** A cloner array should be able to ramp across the palette. This
   alone turns a lattice from "the same object repeated" into something composed.
-- **Colour from signal.** Hue and emission as routing targets, so the drop changes the colour of
-  the piece and not merely its size.
+- **Colour from signal.** ✅ Every material carries `hueShift` in degrees, rotating whatever colours
+  it and the palette resolved — one control for a Gradient's two stops, surviving a change of
+  shading model, and an ordinary routing target (D-116). The drop changes the colour of the piece
+  and not merely its size.
 - **Environments that are not near-black.** Gradient skies, two-tone rigs, coloured fog. The
   background is the largest area of every frame and it is currently the least authored.
 
@@ -143,10 +164,24 @@ seeing a lattice and starts seeing a form.
 
 *How we will know:* an array of 200 objects no longer looks like an array of 200 objects.
 
-### Pass 4 · Lines and ribbons
+### Pass 4 · Lines and ribbons ✅
 
 Cheap once points exist: trails, contours, connections between neighbours, wire-as-content rather
 than wire-as-debug-view. A third image family for a fraction of the second one's cost.
+
+**Shipped** (D-114). `lines` is a real backend — indexed `LineSegments`, so every deformer works on a
+stroke exactly as it does on a cloud, and a *web of links between scattered nodes* is the same buffer
+with a different index. Five paths: Lissajous, Spiral, Rosette, Flow Lines, Web. Two stroke materials;
+additive is the one that matters, because strands cross constantly and brightness accumulates where
+the figure is dense.
+
+Ribbons ship as *separate* bricks rather than as a width slider on a stroke: a one-pixel line is a
+drawing and a lit twisting band is an object, and as an ordinary mesh a ribbon inherits all seven
+materials, shadows and cloners.
+
+*What is left in this pass:* per-strand colour from the palette, which is the same gap the point
+backend has, and trails — a stroke whose vertices are one object's positions at successive past
+times. The second needs modulation evaluated at `t − k` per vertex and is a pass of its own.
 
 ### Pass 5 · The SDF backend
 
@@ -203,14 +238,14 @@ The engine is not the problem. **The vocabulary is.**
 
 ## 6 · Sequencing
 
-| Pass | What | Why here |
-|---|---|---|
-| 1 | Colour & light authoring | Cheapest, touches every frame |
-| 2 | Points backend | Second image family; the biggest jump in kind |
-| 3 | Non-lattice structure | Removes the loudest "toy" tell |
-| 4 | Lines & ribbons | Third family, cheap after points |
-| 5 | SDF backend | Most distinctive, most work |
-| 6 | Text | Unmet need for the audience |
-| — | Ten-project test | After every pass, without exception |
-| 7 | Interaction craft | Once the room is wide enough to be worth furnishing |
-| 8 | Shareable states | Once two shared states can differ in kind |
+| Pass | What | Why here | Status |
+|---|---|---|---|
+| 1 | Colour & light authoring | Cheapest, touches every frame | 🟡 palette shipped |
+| 2 | Points backend | Second image family; the biggest jump in kind | ✅ |
+| 3 | Non-lattice structure | Removes the loudest "toy" tell | 🟡 scatter, surface, flow in |
+| 4 | Lines & ribbons | Third family, cheap after points | ✅ |
+| 5 | SDF backend | Most distinctive, most work | ⬜ |
+| 6 | Text | Unmet need for the audience | ⬜ |
+| — | Ten-project test | After every pass, without exception | — |
+| 7 | Interaction craft | Once the room is wide enough to be worth furnishing | ⬜ |
+| 8 | Shareable states | Once two shared states can differ in kind | ⬜ |

@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Plus, Trash2, Power, ChevronUp, ChevronDown, Waves } from 'lucide-react'
 import { useSceneStore } from '@/store/useSceneStore'
+import { useModulationStore } from '@/store/useModulationStore'
 import { EffectRegistry, type EffectBrick } from '@/engine/scene/EffectRegistry'
 import { isCloner, isEffector } from '@/engine/scene/cloners/types'
 import { ParamField } from './ParamField'
-import type { SceneObject } from '@/types/visual'
+import type { EffectInstance, SceneObject } from '@/types/visual'
 
 /** Stackable effects on an object — deformers today, cloners and post-process later.
  *
@@ -17,7 +18,19 @@ export function EffectStack({ object }: { object: SceneObject }) {
   const updateEffect = useSceneStore((s) => s.updateEffect)
   const reorderEffect = useSceneStore((s) => s.reorderEffect)
   const setParam = useSceneStore((s) => s.setParam)
+  const connections = useModulationStore((s) => s.connections)
   const [picking, setPicking] = useState(false)
+
+  // Which params on this object something is driving. Narrowed here rather than in the selector:
+  // a selector that builds an array returns a new reference every frame and re-renders forever.
+  const driven = useMemo(() => {
+    const keys = new Set<string>()
+    for (const c of connections) {
+      if (!c.enabled || c.target.objectId !== object.id || !c.target.effectId) continue
+      keys.add(`${c.target.effectId}:${c.target.paramKey}`)
+    }
+    return keys
+  }, [connections, object.id])
 
   const deformers = EffectRegistry.listByFamily('geometry')
   const instancing = EffectRegistry.listByFamily('instancing')
@@ -26,6 +39,11 @@ export function EffectStack({ object }: { object: SceneObject }) {
   const hasCloner = object.effects.some(
     (e) => e.enabled && isCloner(EffectRegistry.get(e.effectId) ?? {}),
   )
+  // Cloning draws an `InstancedMesh`. A cloud draws as `THREE.Points` and a stroke as
+  // `THREE.LineSegments`, so a cloner stacked on either would sit in the list looking active while
+  // changing nothing. Both already carry their own multiplicity — point count, and strand count.
+  const uninstanced = object.backend === 'points' || object.backend === 'lines'
+  const uninstancedNote = object.backend === 'points' ? 'Not for point clouds' : 'Not for lines'
 
   return (
     <section>
@@ -54,8 +72,10 @@ export function EffectStack({ object }: { object: SceneObject }) {
             title="Cloners"
             // One layout per object: a second would simply overwrite the first's clone
             // placement, so it is disabled rather than allowed to silently do nothing.
-            note={hasCloner ? 'One cloner per object' : undefined}
-            disabled={hasCloner}
+            note={
+              uninstanced ? uninstancedNote : hasCloner ? 'One cloner per object' : undefined
+            }
+            disabled={hasCloner || uninstanced}
             bricks={cloners}
             onPick={(id) => {
               addEffectBrick(object.id, id)
@@ -64,7 +84,7 @@ export function EffectStack({ object }: { object: SceneObject }) {
           />
           <BrickGroup
             title="Effectors"
-            note={hasCloner ? undefined : 'Add a cloner first'}
+            note={hasCloner ? undefined : uninstanced ? uninstancedNote : 'Add a cloner first'}
             disabled={!hasCloner}
             bricks={effectors}
             onPick={(id) => {
@@ -73,13 +93,6 @@ export function EffectStack({ object }: { object: SceneObject }) {
             }}
           />
         </div>
-      )}
-
-      {object.effects.length === 0 && !picking && (
-        <p className="text-[10px] text-slate-600 leading-snug py-1">
-          Nothing stacked. Deformers make a shape explode, spike and ripple; a cloner
-          repeats it and effectors vary each copy. All of it is drivable at frame rate.
-        </p>
       )}
 
       <div className="space-y-1">
@@ -96,6 +109,14 @@ export function EffectStack({ object }: { object: SceneObject }) {
                 <span className="flex-1 min-w-0 truncate text-[11px] text-slate-200">
                   {effect.name}
                 </span>
+                {atRest(brick, effect, driven) && (
+                  <span
+                    title={`${driverLabel(brick)} is 0, so this changes nothing yet. Drag it, or wire a stem to it.`}
+                    className="shrink-0 px-1 rounded text-[9px] uppercase tracking-wider text-amber-500/80 bg-amber-500/10"
+                  >
+                    at rest
+                  </span>
+                )}
 
                 <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
@@ -161,6 +182,25 @@ export function EffectStack({ object }: { object: SceneObject }) {
   )
 }
 
+
+/** Is this effect present but doing nothing?
+ *
+ *  True when its gating parameter sits at zero and no wire is driving it. A deformer resting at zero
+ *  is correct — modulation adds to the base, so a bass-driven bulge must start unbulged — but from
+ *  the outside it is indistinguishable from a broken feature. This is the one-word difference.
+ *
+ *  Cloners and effectors have no gate and are never marked: a cloner with count 1 is still visibly
+ *  doing its job. */
+function atRest(brick: EffectBrick, effect: EffectInstance, driven: Set<string>): boolean {
+  if (!('driver' in brick) || typeof brick.driver !== 'string') return false
+  if (driven.has(`${effect.id}:${brick.driver}`)) return false
+  return effect.params[brick.driver] === 0
+}
+
+function driverLabel(brick: EffectBrick): string {
+  const key = 'driver' in brick && typeof brick.driver === 'string' ? brick.driver : ''
+  return brick.descriptors.find((d) => d.key === key)?.label ?? 'Amount'
+}
 
 /** One group in the effect picker. Grouping matters here more than it looks: a cloner
  *  and an effector are stacked the same way but mean different things, and an effector

@@ -31,6 +31,9 @@ reference.
 | 15 | [Build Plan](15-BUILD-PLAN.md) | Inventory of defects, structure, craft and features. **No longer the priority order** — that is 17. |
 | 16 | [Library Assessment](16-LIBRARIES.md) | Before building anything substantial. What to buy, what to reject, and why. |
 | 17 | [Expressive Range](17-EXPRESSIVE-RANGE.md) | **Second, always — the current priority.** Why ten users make eight similar things, the falsifiable bar for fixing it, and the sequence. |
+| 18 | [The Ten-Project Test](18-TEN-PROJECT-TEST.md) | **Running the bar in 17.** Protocol, constraint cards, record sheet, and where each finding goes afterwards. |
+| 19 | [Landscape Scan 2026-08](19-RESEARCH-2026.md) | External facts, dated: competitors and their prices, platform specs, what the browser can now do. Re-scan before any strategic call after early 2027. |
+| 20 | [Opportunities](20-OPPORTUNITIES.md) | **What to do about 19.** Ranked bets with cost, architectural fit and how each could be wrong — the pool the next passes are picked from. |
 | — | [Codebase Map](CODEBASE_MAP.md) | Finding where something lives. File-by-file registry. |
 | — | [Audit 2026-07-27](AUDIT-2026-07-27.md) | Historical record of the full-codebase audit that produced this doc set. |
 

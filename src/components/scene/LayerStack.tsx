@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import {
+  Sparkles,
   Eye,
   EyeOff,
   Lock,
@@ -10,9 +11,12 @@ import {
   ChevronDown,
   Box,
   Lightbulb,
+  Spline,
+  Waves,
 } from 'lucide-react'
 import { useSceneStore } from '@/store/useSceneStore'
 import { BrickRegistry } from '@/engine/scene/BrickRegistry'
+import { brickGroups } from '@/engine/scene/brickGroups'
 import { LightRegistry } from '@/engine/scene/lights/LightRegistry'
 
 /** Layer stack — the scene outliner (Figma/Blender model).
@@ -205,38 +209,49 @@ function IconButton({
   )
 }
 
-/** Brick picker. Grouped by morph family, because that grouping is the single most
- *  important thing to understand before choosing a shape (docs HC-4). */
+/** Brick picker. Grouped by kind of image, which is the choice actually being made — and the
+ *  grouping is shared with the inspector's swap dropdown so the two can never disagree.
+ *
+ *  Groups fold. With four groups the whole library fitted the panel; with seven it does not, and the
+ *  one that fell off the bottom was Lights — a whole element family reachable only by scrolling a
+ *  container whose scrollbar you have to find first. Folding the ones you are not using is the
+ *  cheapest fix and it stays correct as the SDF and text families land. */
 function ShapeLibrary() {
   const addObject = useSceneStore((s) => s.addObject)
-  const bricks = BrickRegistry.list()
+  const [folded, setFolded] = useState<Record<string, boolean>>({})
 
-  const procedural = bricks.filter((b) => b.meshKind === 'procedural')
-  const primitive = bricks.filter((b) => b.meshKind === 'primitive')
+  const groups = [
+    ...brickGroups(),
+    {
+      title: 'Lights',
+      hint: 'Intensity and colour are modulation targets — an onset trigger into intensity is a strobe',
+      bricks: LightRegistry.list(),
+    },
+  ]
 
   return (
     <div className="border-b border-aura-line shrink-0 max-h-[55%] overflow-y-auto">
-      <BrickGroup
-        title="Morphable"
-        hint="One shared topology — any of these can morph into any other"
-        bricks={procedural}
-        onAdd={addObject}
-      />
-      <BrickGroup
-        title="Primitives"
-        hint="True topology and UVs — swap only, no vertex morph"
-        bricks={primitive}
-        onAdd={addObject}
-      />
-      <BrickGroup
-        title="Lights"
-        hint="Intensity and colour are modulation targets — an onset trigger into intensity is a strobe"
-        bricks={LightRegistry.list()}
-        icon={Lightbulb}
-        onAdd={addObject}
-      />
+      {groups.map((group) => (
+        <BrickGroup
+          key={group.title}
+          title={group.title}
+          hint={group.hint}
+          bricks={group.bricks}
+          icon={GROUP_ICONS[group.title] ?? Box}
+          folded={folded[group.title] === true}
+          onToggle={() => setFolded((f) => ({ ...f, [group.title]: !f[group.title] }))}
+          onAdd={addObject}
+        />
+      ))}
     </div>
   )
+}
+
+/** An icon per group. Only where it says something a label does not — the rest share the box. */
+const GROUP_ICONS: Record<string, typeof Box> = {
+  'Point Clouds': Sparkles,
+  Lines: Spline,
+  Ribbons: Waves,
 }
 
 function BrickGroup({
@@ -244,6 +259,8 @@ function BrickGroup({
   hint,
   bricks,
   onAdd,
+  onToggle,
+  folded,
   icon: Icon = Box,
 }: {
   title: string
@@ -251,31 +268,42 @@ function BrickGroup({
   /** Anything with an id and a label — geometry bricks and light bricks alike. */
   bricks: { id: string; label: string }[]
   onAdd: (brickId: string) => void
+  onToggle: () => void
+  folded: boolean
   icon?: typeof Box
 }) {
   return (
-    <section className="p-2">
-      <h3
-        className="text-[10px] uppercase tracking-wider text-slate-500 mb-1.5 cursor-help"
+    <section className="px-2 pb-2 pt-1.5">
+      <button
+        onClick={onToggle}
         title={hint}
+        aria-expanded={!folded}
+        className="w-full flex items-center gap-1 mb-1.5 text-[10px] uppercase tracking-wider text-slate-500 hover:text-slate-300 transition-colors"
       >
-        {title}
-      </h3>
-      <div className="grid grid-cols-3 gap-1">
-        {bricks.map((brick) => (
-          <button
-            key={brick.id}
-            onClick={() => onAdd(brick.id)}
-            title={`Add ${brick.label}`}
-            className="flex flex-col items-center gap-1 py-1.5 rounded bg-aura-surface hover:bg-aura-elevated border border-aura-line hover:border-aura-accent transition-colors"
-          >
-            <Icon className="w-3.5 h-3.5 text-slate-400" />
-            <span className="text-[9px] text-slate-400 truncate max-w-full px-1">
-              {brick.label}
-            </span>
-          </button>
-        ))}
-      </div>
+        <ChevronDown
+          className={`w-3 h-3 shrink-0 transition-transform ${folded ? '-rotate-90' : ''}`}
+        />
+        <span className="truncate">{title}</span>
+        <span className="ml-auto font-mono text-slate-600">{bricks.length}</span>
+      </button>
+
+      {!folded && (
+        <div className="grid grid-cols-3 gap-1">
+          {bricks.map((brick) => (
+            <button
+              key={brick.id}
+              onClick={() => onAdd(brick.id)}
+              title={`Add ${brick.label}`}
+              className="flex flex-col items-center gap-1 py-1.5 rounded bg-aura-surface hover:bg-aura-elevated border border-aura-line hover:border-aura-accent transition-colors"
+            >
+              <Icon className="w-3.5 h-3.5 text-slate-400" />
+              <span className="text-[9px] text-slate-400 truncate max-w-full px-1">
+                {brick.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
     </section>
   )
 }

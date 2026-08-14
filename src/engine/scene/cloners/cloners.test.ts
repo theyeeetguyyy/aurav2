@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { CLONER_BRICKS, radialCloner, linearCloner, gridCloner } from './cloners'
-import { EFFECTOR_BRICKS, randomEffector, stepEffector } from './effectors'
+import {
+  CLONER_BRICKS,
+  radialCloner,
+  linearCloner,
+  gridCloner,
+  scatterCloner,
+  surfaceCloner,
+} from './cloners'
+import { EFFECTOR_BRICKS, flowEffector, randomEffector, stepEffector } from './effectors'
 import { EffectRegistry } from '../EffectRegistry'
 import { CloneRuntime, hasCloner } from './CloneRuntime'
 import {
@@ -27,7 +34,8 @@ function buffers(): CloneBuffers {
     position: new Float32Array(MAX_CLONES * 3),
     rotation: new Float32Array(MAX_CLONES * 3),
     scale: new Float32Array(MAX_CLONES * 3),
-    tint: new Float32Array(MAX_CLONES * 3),
+    color: new Float32Array(MAX_CLONES * 3),
+  tint: new Float32Array(MAX_CLONES * 3),
   }
 }
 
@@ -79,11 +87,18 @@ describe('cloner catalogue', () => {
   )
 
   it.each(CLONER_BRICKS.map((b) => [b.id, b] as const))(
-    '%s starts every clone at unit scale and full tint',
+    '%s starts every clone at the SAME scale and full tint',
     (_id, brick) => {
+      // Uniformity, not literally 1. What an effector needs is a baseline with no hidden per-clone
+      // variation in it, so that a scale delta lands equally on every copy and stacking two effectors
+      // is predictable. Requiring exactly 1 additionally forbids a layout from having a sane arrival
+      // size, which the surface layout must: an instanced mesh draws the same geometry at every clone,
+      // so unit-scale studs are the size of the thing they stud and it arrives as a solid ball.
       const clones = layout(brick)
+      const first = clones.scale[0]
+      expect(first).toBeGreaterThan(0)
       for (let i = 0; i < clones.count * 3; i++) {
-        expect(clones.scale[i]).toBeCloseTo(1, 6)
+        expect(clones.scale[i]).toBeCloseTo(first, 6)
         expect(clones.tint[i]).toBeCloseTo(1, 6)
       }
     },
@@ -268,3 +283,181 @@ function captureY(runtime: CloneRuntime, scratch: Float32Array): number[] {
 function unsigned(values: Float32Array): number[] {
   return Array.from(values, (v) => (v === 0 ? 0 : v))
 }
+
+describe('non-lattice layouts (17-EXPRESSIVE-RANGE Pass 3)', () => {
+  it('scatter is deterministic, and its seed actually changes the cloud', () => {
+    // A layout using Math.random() would reopen a saved project as a different picture and stop an
+    // export matching its preview.
+    const a = layout(scatterCloner, { count: 64 })
+    const b = layout(scatterCloner, { count: 64 })
+    expect(Array.from(a.position)).toEqual(Array.from(b.position))
+
+    const c = layout(scatterCloner, { count: 64, seed: 7 })
+    expect(Array.from(c.position)).not.toEqual(Array.from(a.position))
+  })
+
+  it('scatter fills its box on every axis and stays inside it', () => {
+    const clones = layout(scatterCloner, { count: 400, width: 20, height: 10, depth: 60 })
+    const extent = [0, 0, 0]
+    for (let i = 0; i < clones.count; i++) {
+      const o = i * 3
+      for (let axis = 0; axis < 3; axis++) {
+        extent[axis] = Math.max(extent[axis], Math.abs(clones.position[o + axis]))
+      }
+    }
+    // Inside the half-extents…
+    expect(extent[0]).toBeLessThanOrEqual(10)
+    expect(extent[1]).toBeLessThanOrEqual(5)
+    expect(extent[2]).toBeLessThanOrEqual(30)
+    // …and actually using them, rather than collapsing to a plane or a line.
+    expect(extent[0]).toBeGreaterThan(8)
+    expect(extent[1]).toBeGreaterThan(4)
+    expect(extent[2]).toBeGreaterThan(24)
+  })
+
+  it('scatter has no lattice — the whole reason it exists', () => {
+    // The tell it removes: on a grid every coordinate is a multiple of the spacing, so the number of
+    // distinct values along an axis is tiny however many copies there are.
+    const grid = layout(gridCloner, { countX: 8, countY: 8, countZ: 8, spacingX: 8 })
+    const gridValues = new Set<number>()
+    for (let i = 0; i < grid.count; i++) gridValues.add(Math.round(grid.position[i * 3] * 100))
+    expect(gridValues.size).toBe(8)
+
+    const scattered = layout(scatterCloner, { count: 256 })
+    const scatterValues = new Set<number>()
+    for (let i = 0; i < scattered.count; i++) {
+      scatterValues.add(Math.round(scattered.position[i * 3] * 100))
+    }
+    expect(scatterValues.size).toBeGreaterThan(200)
+  })
+
+  it('scatter spherical mode keeps every clone inside the ball', () => {
+    const r = 20
+    const clones = layout(scatterCloner, {
+      count: 300,
+      spherical: 1,
+      width: r * 2,
+      height: r * 2,
+      depth: r * 2,
+    })
+    for (let i = 0; i < clones.count; i++) {
+      const o = i * 3
+      const length = Math.hypot(clones.position[o], clones.position[o + 1], clones.position[o + 2])
+      expect(length).toBeLessThanOrEqual(r + 1e-3)
+    }
+  })
+
+  it('the surface layout puts every clone on the supplied geometry', () => {
+    // Eight vertices of a cube: every clone must land on one of them, not between them.
+    const source = new Float32Array([
+      1, 1, 1, -1, 1, 1, 1, -1, 1, -1, -1, 1, 1, 1, -1, -1, 1, -1, 1, -1, -1, -1, -1, -1,
+    ])
+    const clones = buffers()
+    surfaceCloner.layout({
+      params: { ...defaults(surfaceCloner), count: 8, align: 0 },
+      clones,
+      sourcePositions: source,
+    })
+
+    expect(clones.count).toBe(8)
+    for (let i = 0; i < clones.count; i++) {
+      const o = i * 3
+      const onAVertex = [0, 1, 2, 3, 4, 5, 6, 7].some(
+        (v) =>
+          Math.abs(clones.position[o] - source[v * 3]) < 1e-6 &&
+          Math.abs(clones.position[o + 1] - source[v * 3 + 1]) < 1e-6 &&
+          Math.abs(clones.position[o + 2] - source[v * 3 + 2]) < 1e-6,
+      )
+      expect(onAVertex, `clone ${i}`).toBe(true)
+    }
+  })
+
+  it('the surface layout survives having no geometry at all', () => {
+    // Reachable: a brick that failed to build. It must not produce NaN positions.
+    const clones = layout(surfaceCloner, { count: 32 })
+    for (let i = 0; i < clones.count * 3; i++) expect(Number.isFinite(clones.position[i])).toBe(true)
+  })
+
+  it('the surface layout never asks for more clones than there are vertices', () => {
+    // Otherwise the stride wraps and copies stack invisibly on top of each other, which reads as a
+    // count control that stops working partway along its range.
+    const source = new Float32Array(12 * 3).fill(1)
+    const clones = buffers()
+    surfaceCloner.layout({
+      params: { ...defaults(surfaceCloner), count: 500 },
+      clones,
+      sourcePositions: source,
+    })
+    expect(clones.count).toBe(12)
+  })
+})
+
+describe('flow effector', () => {
+  function flow(overrides: Record<string, ParamValue>, count = 200) {
+    const clones = layout(scatterCloner, { count })
+    const before = Float32Array.from(clones.position)
+    flowEffector.affect({
+      params: { ...defaults(flowEffector), ...overrides },
+      clones,
+      time: 0,
+    })
+    return { clones, before }
+  }
+
+  it('moves clones when driven, and identically every time', () => {
+    const first = flow({ strength: 10 })
+    expect(Array.from(first.clones.position)).not.toEqual(Array.from(first.before))
+
+    const second = flow({ strength: 10 })
+    expect(Array.from(second.clones.position)).toEqual(Array.from(first.clones.position))
+  })
+
+  it('preserves spread rather than bunching — the reason it is a curl', () => {
+    // A plain noise offset pushes clones towards wherever the field happens to point, so the cloud
+    // collapses towards blobs and its spread shrinks. A divergence-free field cannot compress. That
+    // is the property the maths buys, so it is the property under test.
+    const { clones, before } = flow({ strength: 12, scale: 0.05 }, 400)
+
+    const spread = (values: ArrayLike<number>, count: number) => {
+      let sum = 0
+      let sumSquares = 0
+      for (let i = 0; i < count; i++) {
+        const v = values[i * 3]
+        sum += v
+        sumSquares += v * v
+      }
+      return Math.sqrt(sumSquares / count - (sum / count) ** 2)
+    }
+
+    const original = spread(before, clones.count)
+    const flowed = spread(clones.position, clones.count)
+    expect(flowed).toBeGreaterThan(original * 0.75)
+    expect(flowed).toBeLessThan(original * 1.6)
+  })
+
+  it('phase travels the field instead of accumulating', () => {
+    // Two phases give two pictures, and re-evaluating either reproduces it — so scrubbing backwards is
+    // exact and an out-of-order offline render matches the preview (HC-3).
+    const a = flow({ strength: 10, phase: 0 })
+    const b = flow({ strength: 10, phase: 0.5 })
+    expect(Array.from(b.clones.position)).not.toEqual(Array.from(a.clones.position))
+    expect(Array.from(flow({ strength: 10, phase: 0.5 }).clones.position)).toEqual(
+      Array.from(b.clones.position),
+    )
+  })
+
+  it('produces no NaN at the extremes of every control', () => {
+    const cases: Record<string, ParamValue>[] = [
+      { strength: 40, scale: 0.4, phase: 1, swirl: true },
+      { strength: -40, scale: 0.005, phase: 0 },
+      { strength: 40, scale: 0 },
+    ]
+    for (const params of cases) {
+      const { clones } = flow(params)
+      for (let i = 0; i < clones.count * 3; i++) {
+        expect(Number.isFinite(clones.position[i]), JSON.stringify(params)).toBe(true)
+        expect(Number.isFinite(clones.rotation[i]), JSON.stringify(params)).toBe(true)
+      }
+    }
+  })
+})

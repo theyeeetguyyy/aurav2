@@ -77,6 +77,7 @@ bounded with the oldest entries dropped first.
 | 4I | **Post-processing** — 14 whole-frame effects in 5 groups, project-global stack, every knob a modulation target (D-42/D-46) | ✅ |
 | 4J | `mesh/imported` — GLTF loading, swap-only | ⬜ |
 | 4K | `sdf` backend — Shader Park / LYGIA raymarch, `smooth-min` morphing | ⬜ |
+| 4O | **`lines` backend** — indexed `LineSegments`, five path bricks, two stroke materials, plus ribbons as swept meshes (D-114) | ✅ |
 | 4L | **Material system** — 7 shading models as bricks, open `MaterialParams` (D-43) | ✅ |
 | 4M | **Environment** — background, fog, three-point lighting, image-based reflections, grid, all routable (D-44) | ✅ |
 | 4N | **Lights as objects** — 5 light bricks, routable intensity, per-light shadows, authoring gizmo layer (D-48, resolves Q2) | ✅ |
@@ -290,12 +291,26 @@ the bar and the reasoning behind the order.
 |---|---|---|
 | 10A | Colour & light authoring | 🟡 |
 | ↳ | Scene palette, slot binding, six starters, background sync (D-105) | ✅ |
-| ↳ | Palette ramp across a clone array — needs per-instance tint to become absolute rather than a multiplier | ⬜ |
-| ↳ | Hue shift as a routable float, so the drop changes the colour and not only the size | ⬜ |
+| ↳ | Palette ramp across a clone array, on its own absolute colour channel (D-108, D-109) | ✅ |
+| ↳ | Hue shift as a routable float, so the drop changes the colour and not only the size (D-116) | ✅ |
 | ↳ | Rig colour derived from the palette | ⬜ |
-| 10B | Points backend — stateless, `position = f(id, t)` | ⬜ |
-| 10C | Non-lattice structure — noise, curl-flow, surface scatter, audio density | ⬜ |
-| 10D | Lines & ribbons | ⬜ |
+| 10B | Points backend — stateless, `position = f(id, t)` | ✅ |
+| ↳ | Five scatter bricks — shell, volume, field, disc, helix — deterministic from a hash of the index | ✅ |
+| ↳ | Two point materials — occluding and additive — with size, opacity and perspective sizing | ✅ |
+| ↳ | Every one of the fifteen deformers works on a cloud, unmodified (verified in the browser) | ✅ |
+| ↳ | **Any mesh drawn as a cloud of its own vertices**, one switch, density-derived dot size (D-110) | ✅ |
+| ↳ | Per-point colour from the palette — `vertexColors` is wired but not yet fed | ⬜ |
+| 10C | Non-lattice structure — noise, curl-flow, surface scatter, audio density | 🟡 |
+| ↳ | Scatter Cloner — hash positions in a box or ball, no lattice at any count (D-113) | ✅ |
+| ↳ | Surface Cloner — copies on the object's own deformed vertices, aligned to the normal | ✅ |
+| ↳ | Flow Effector — divergence-free curl noise, composes with all five layouts | ✅ |
+| ↳ | Audio-driven density — count as a routable target, so a drop adds copies | ⬜ |
+| 10D | **Lines & ribbons** — the third render backend (D-114) | ✅ |
+| ↳ | Five line bricks — Lissajous, Spiral, Rosette, Flow Lines, Web — indexed `LineSegments` | ✅ |
+| ↳ | Two stroke materials, occluding and additive. No width control: WebGL has none | ✅ |
+| ↳ | Two ribbon bricks — the same paths swept into a real mesh, `sides` × `flatten` from cable to band | ✅ |
+| ↳ | Every deformer works on a stroke unmodified, verified in an exported file | ✅ |
+| ↳ | Per-strand colour from the palette — the same gap the point backend has | ⬜ |
 | 10E | SDF backend | ⬜ |
 | 10F | Text | ⬜ |
 

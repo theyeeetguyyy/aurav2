@@ -9,7 +9,7 @@
 > Phase status lives in [06-ROADMAP.md](06-ROADMAP.md); the working queue lives in
 > [15-BUILD-PLAN.md](15-BUILD-PLAN.md). This is the *why it matters* view.
 
-*As of 2026-08-04 · 45 of 68 sub-phases · 324 tests.*
+*As of 2026-08-13 · 47 of 70 sub-phases (4 partial) · 534 tests.*
 
 ---
 
@@ -21,9 +21,11 @@ everything that would make the result unmistakably yours.**
 You can build a scene, light it, treat it, drive it from your stems, cut between looks on the
 beat, mark the drop, save it, undo it, and get an MP4 out. What is left divides cleanly:
 **narrative** — the section-aware intensity engine and crossfades, so structure does more than
-switch — and **the visual ceiling**, where particles, morphing and text live.
+switch — and **the visual ceiling**, where the raymarched family and text still live.
 
-Most of it has still only been run in a browser a handful of times.
+*Updated 2026-08-13.* The ceiling has risen twice since this was written: the **points** backend and
+the **lines** backend both landed, so there are four kinds of image rather than one and the sentence
+above is less true than it was. Text is now the largest single hole for this audience.
 
 ---
 
@@ -35,7 +37,10 @@ Most of it has still only been run in a browser a handful of times.
 | **Audio** | Multi-stem decode + sync, trim, solo-isolates-visuals, offline MIR worker, 13 feature timelines, onsets, BPM, beat grid |
 | **Modulation** | Weighted N:1, Gain→Curve→Rise/Fall→Range→Weight, input window + Normalise, response curves, discrete triggers, generators, **a per-stem editable modulation curve** |
 | **Routing UI** | Patchbay with drag-to-connect, live wires, honest reachable-range readouts, per-connection graph drawn from the real engine |
-| **Geometry** | 7 procedural (any↔any morph-ready) + 10 primitive shapes, **15 deformers**, **3 cloners × 4 effectors** including the time-delay one |
+| **Geometry** | 7 procedural (any↔any morph-ready) + 10 primitive shapes, **15 deformers**, **5 cloners × 6 effectors** including the time-delay and curl-flow ones |
+| **Points** | 5 scatter bricks, 2 point materials, and **any mesh drawn as a cloud of its own vertices** from one switch |
+| **Lines** | 5 stroke paths as indexed segments, 2 stroke materials, 2 ribbon bricks sweeping the same paths into meshes |
+| **Colour** | State-owned **palette** with slot binding, ramps across a clone array, and a routable **hue shift** on every material |
 | **Look** | **14 post effects**, **7 materials**, **environment** (gradient sky, fog, IBL reflections, grid), **5 light types** as scene objects |
 | **Camera** | **5 behaviours** (Orbit/Sway/Shake/Dolly/Lens), Look-At, Align-to-view |
 | **Export** | **MP4 out** — H.264 + AAC, deterministic frame stepping, 16:9 / 9:16 / 1:1, cancellable |
@@ -51,6 +56,7 @@ Most of it has still only been run in a browser a handful of times.
 | Missing | Why it matters | Where |
 |---|---|---|
 | **Expressive range** | Ten users, eight similar outputs. One of three declared `RenderBackend`s implemented; four of eight element families, and all four resolve to *lit mesh* or *full-frame filter*. The whole output space is `{primitive} × {deformer} × {regular array} × {accent colour} × {bloom, kaleidoscope, grade}`, and its centre of mass is the thing everyone makes. | **[17-EXPRESSIVE-RANGE.md](17-EXPRESSIVE-RANGE.md)** |
+| ↳ *status 2026-08-13* | **Three of four backends now**, six of eight families, and colour is authored rather than incidental. Whether that moved the centre of mass is **unmeasured**: the ten-project test has not been run since Pass 2. Running it is the next action, ahead of any further building. | 17 §2 |
 
 Everything in Tier 2 below is a *piece* of this gap. What 17 adds is the ordering, the reason for
 it, and a falsifiable bar to stop at. Read it before picking anything from the lists that follow —
@@ -83,10 +89,10 @@ This table is the inventory; that document is the sequence.
 | **Morph engine** | "Transform between any to any" is in the brief, and the shared-topology work is already done | 4F |
 | **More deformers** | FFT/spectrum, curl noise, cull/dissolve, voronoi shatter, taper, spline, jelly | 14-VISUAL-IDEAS §2 |
 | **Data elements** | Spectrum bars, waveform, Lissajous — what makes a video read instantly as *music* | 10-ELEMENTS B |
-| **Extruded 3D text** | The audience's clearest unmet need — beat name, producer tag, channel logo | 10-ELEMENTS A |
+| **Extruded 3D text** | The audience's clearest unmet need — beat name, producer tag, channel logo. **Now the last unbuilt element family that is not SDF** | 10-ELEMENTS A |
 | **Tunnels / SDF fields** | Also solves "the camera needs somewhere to go" | 4K |
 | **GLTF import** | Bring your own mesh | 4J |
-| **Trails / ribbons** | Doubles perceived density cheaply | 10-ELEMENTS A |
+| ~~**Lines & ribbons**~~ | **Built** (D-114). A third render backend: five path bricks as indexed line segments, two stroke materials, and two ribbon bricks sweeping the same paths into meshes | 17 §3 Pass 4 ✅ |
 
 ### Tier 3 — depth, not breadth
 
@@ -119,13 +125,17 @@ block work rather than merely sit there:
 
 ## Honest risks
 
-- **Nothing has been visually verified.** No browser has been driven in this workspace.
-  The post-processing GLSL has never compiled on a GPU, and the instanced cloner path has
-  never rendered. Both are covered by structural tests; neither is covered by a pixel.
+- ~~**Nothing has been visually verified.**~~ Resolved. The `run-aura` skill drives a real browser:
+  every page screenshotted, a stem imported, a look built, an MP4 exported and its frames decoded and
+  measured. Every new brick since has been checked against pixels, and the defects that found —
+  D9, D11, D14, D18, and the flow strand that ran out of frame — were all invisible to the tests.
+  **Still true in one direction:** everything has been seen under headless SwiftShader, and sub-ten-
+  pixel detail (point sprites, hairline strokes) needs a real GPU before any judgement (D-112).
 - **No performance work has been done.** 60fps has never been measured under load. The
   post chain runs 4× MSAA and Feedback Trails owns two full-resolution half-float
-  targets. Deformers and cloners are CPU-side, and a cloner multiplies the vertex work by
-  N. The audit is 9C and everything before it is guesswork.
+  targets. Deformers and cloners are CPU-side, a cloner multiplies the vertex work by N, and the
+  point and line backends now put up to 40 000 and 20 000 vertices through that same CPU pass.
+  The audit is 9C and everything before it is guesswork.
 - **Autosave does not exist.** Save is manual, so a crash still costs the session. 8G.
 - **The UI is functional, not designed.** Acknowledged and deferred by decision; the
   feature set is now large enough that the pass is worth scheduling.
@@ -136,12 +146,13 @@ block work rather than merely sit there:
 
 By cost of delay, not by phase number.
 
-1. ~~8E save/load~~ — ✅ built.
-2. ~~3F undo~~ — ✅ built.
-3. ~~Phase 8 export~~ — ✅ built.
-4. ~~Phase 6 timeline~~ — ✅ built (6A/6B/6D).
-5. **6C intensity engine** — markers exist and do nothing yet; this is what makes them matter.
-6. **6E transitions** — small next to what it buys, and every cut is currently hard.
-7. **Particles** — the visual ceiling.
-8. **Phase 7 camera authoring** — the time axis it needed now exists.
+1. ~~8E save/load~~ · ~~3F undo~~ · ~~Phase 8 export~~ · ~~Phase 6 timeline~~ (6A/6B/6D) — ✅ built.
+2. ~~Particles~~ — ✅ built as the points backend, plus lines and ribbons after it.
+3. **Run the ten-project test.** Unmeasured since Pass 2, and it is the only thing that says whether
+   the widening worked. Two hours of a human making things, ahead of any further building.
+4. **6C intensity engine** — markers exist and do nothing yet; this is what makes them matter.
+5. **6E transitions** — small next to what it buys, and every cut is currently hard.
+6. **Text (10F)** — the audience's clearest unmet need and now the largest hole.
+7. **Phase 7 camera authoring** — the time axis it needed now exists.
+8. **9C performance audit** — deferred long enough that the vertex budgets have doubled twice.
 9. **Craft pass** — once the feature set stops moving.

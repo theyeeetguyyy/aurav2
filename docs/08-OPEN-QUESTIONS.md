@@ -28,6 +28,14 @@ screen-space compositing pass over the 3D render, or 3D quads on a back plane? S
 is more useful for the target audience (channel branding, lower-thirds) but needs its own
 render path and its own coordinate system in the parameter registry.
 
+> *2026-08-14 — this now has a forcing function and a set of numbers.* Vertical delivery needs
+> **safe-area guides**, and the specs are exact: the cross-platform safe area is **900×1400 centred
+> in 1080×1920**, with TikTok claiming ~130 px at the top, ~400–484 px at the bottom and ~140–180 px
+> on the right for its action rail ([19 §2](19-RESEARCH-2026.md)). Guides are authoring furniture and
+> belong on a gizmo layer, which needs no answer to this question — but a *watermark, tag or
+> lower-third* is content in the same coordinate system, and that is the half Q3 has to decide.
+> See [20 §A4](20-OPPORTUNITIES.md).
+
 ### Q4 · Lasers and image layers
 **Blocks:** Phase 4.
 Each named exactly once in the original notes, never elaborated. Lasers = volumetric
@@ -75,6 +83,13 @@ Phase 7A ships a dialog.
 feature, but the ID-remapping strategy is not designed. A rig that references object IDs
 from its birth project is worthless. Needs to be solved *before* the first rig is
 exported, or every early rig breaks.
+
+> *2026-08-14 — promoted in importance, still unanswered.* Two findings make this the highest-value
+> open question in this document. The market **already pays $5–35 for a single look** and $240 for a
+> bundle of them, which is precisely what a portable state is; and remix communities are credited
+> with training their own users because the shared thing is **openable rather than a black box**
+> ([19 §1, §6](19-RESEARCH-2026.md), [20 §D1–D2](20-OPPORTUNITIES.md)). Both depend on this format
+> existing and being right the first time.
 
 ### Q11 · Collaboration / hand-off
 Exporting a rig separately from audio so an artist and a visual designer can work

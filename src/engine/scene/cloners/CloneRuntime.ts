@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import type { EffectInstance } from '@/types/visual'
+import type { Palette } from '../palette'
 import type { ParamValue } from '@/types/params'
 import { EffectRegistry } from '../EffectRegistry'
 import {
@@ -26,6 +27,7 @@ export class CloneRuntime {
     rotation: new Float32Array(MAX_CLONES * 3),
     scale: new Float32Array(MAX_CLONES * 3),
     tint: new Float32Array(MAX_CLONES * 3),
+    color: new Float32Array(MAX_CLONES * 3),
   }
 
   private readonly clonerContext: ClonerContext = { params: {}, clones: this.buffers }
@@ -39,11 +41,18 @@ export class CloneRuntime {
   private readonly scaleVector = new THREE.Vector3()
   private readonly colour = new THREE.Color()
 
-  /** Resolve this frame's clones. Returns 0 when nothing in the stack is a cloner. */
+  /** Resolve this frame's clones. Returns 0 when nothing in the stack is a cloner.
+   *
+   *  `base` is the object's resolved material colour and `palette` the scene's — both needed because
+   *  a colour effector produces absolute values, and its zero state has to be the colour the object
+   *  would have had anyway. */
   resolve(
     effects: EffectInstance[],
     time: number,
     resolveParams: (effect: EffectInstance) => Record<string, ParamValue>,
+    base?: THREE.Color,
+    palette?: Palette,
+    source?: THREE.BufferGeometry | null,
   ): number {
     const active = effects.filter(
       (e) => e.enabled && EffectRegistry.get(e.effectId)?.family === 'instancing',
@@ -56,6 +65,18 @@ export class CloneRuntime {
     // At most one cloner. Two layouts would each want to own every clone's base
     // transform, and the second would simply overwrite the first — so the first wins and
     // the UI can say so, rather than silently doing half of what was asked.
+    this.clonerContext.baseColor = base ? [base.r, base.g, base.b] : undefined
+    this.effectorContext.palette = palette
+
+    // The deformed geometry, so copies placed on the surface travel with it rather than sitting where
+    // the undeformed shape used to be.
+    this.clonerContext.sourcePositions = source?.getAttribute('position')?.array as
+      | Float32Array
+      | undefined
+    this.clonerContext.sourceNormals = source?.getAttribute('normal')?.array as
+      | Float32Array
+      | undefined
+
     let laidOut = false
     for (const effect of active) {
       const brick = EffectRegistry.get(effect.effectId)
@@ -89,7 +110,7 @@ export class CloneRuntime {
 
   /** Write the resolved clones into an InstancedMesh. */
   applyTo(mesh: THREE.InstancedMesh): void {
-    const { count, position, rotation, scale, tint } = this.buffers
+    const { count, position, rotation, scale, tint, color } = this.buffers
     mesh.count = count
 
     // The source geometry's own extent, so the bounds enclose the clones' surfaces
@@ -115,7 +136,9 @@ export class CloneRuntime {
       this.matrix.compose(this.translation, this.quaternion, this.scaleVector)
       mesh.setMatrixAt(i, this.matrix)
 
-      this.colour.setRGB(tint[o], tint[o + 1], tint[o + 2])
+      // Absolute colour × brightness. The material is white on an instanced mesh (see
+      // `SceneObjects`), so what lands here is the final colour rather than a modulation of one.
+      this.colour.setRGB(color[o] * tint[o], color[o + 1] * tint[o + 1], color[o + 2] * tint[o + 2])
       mesh.setColorAt(i, this.colour)
 
       if (x < minX) minX = x

@@ -17,6 +17,7 @@ export class DeformRuntime {
   private source: THREE.BufferGeometry | null = null
   private base = new Float32Array(0)
   private directions = new Float32Array(0)
+  private hasNormals = false
 
   private readonly context: DeformContext = {
     positions: new Float32Array(0),
@@ -71,7 +72,11 @@ export class DeformRuntime {
     positions.needsUpdate = true
     // Lighting is wrong without this — displaced faces keep their old normals and the
     // shape reads flat while it moves.
-    working.computeVertexNormals()
+    //
+    // Only where there were normals to begin with. A cloud and a stroke have none, and computing
+    // them would read the index in triples that are not triangles — wasted work on up to forty
+    // thousand vertices a frame, writing an attribute nothing shades from.
+    if (this.hasNormals) working.computeVertexNormals()
     working.computeBoundingSphere()
 
     return working
@@ -87,6 +92,7 @@ export class DeformRuntime {
 
     const position = source.getAttribute('position')
     this.base = Float32Array.from(position.array as Float32Array)
+    this.hasNormals = source.hasAttribute('normal')
 
     const direction = source.getAttribute('baseDirection')
     if (direction) {

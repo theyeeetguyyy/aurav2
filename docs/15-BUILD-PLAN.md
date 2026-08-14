@@ -17,10 +17,15 @@ owners:
 
 ---
 
-## 0 · Blocking everything: nothing has been run
+## 0 · ~~Blocking everything: nothing has been run~~ — resolved
 
-**No browser has been driven in this workspace.** Fifteen modules built, verified by 315
-structural tests, a typechecker and a linter — and by zero pixels.
+**Historical.** This section blocked the queue when no browser had ever been driven here. It is now
+driven every pass by the `run-aura` skill, which screenshots each page, imports a stem, builds a
+look, exports an MP4 and decodes its frames. The smoke list below is kept because it is still the
+right order to check things in by hand.
+
+> **No browser has been driven in this workspace.** Fifteen modules built, verified by 315
+> structural tests, a typechecker and a linter — and by zero pixels.
 
 Specifically unverified: every post-processing shader (GLSL fails at runtime, not at build
 time), the instanced cloner render path, the light gizmo layer, the automation lane's
@@ -78,6 +83,15 @@ Two things in the lists below are explicitly deferred rather than dropped:
 
 Defects still get fixed as found. That has not changed and does not need a queue.
 
+*2026-08-13 · where the widening got to.* Passes 1, 2 and 4 have landed and 3 is most of the way:
+palette, ramps and a routable hue shift; the points backend and any-mesh-as-a-cloud; scatter and
+surface layouts with a curl-flow effector; and the lines backend with its ribbons. Three of four
+render backends, six of eight element families.
+
+**The next action is not a build.** The ten-project test in [17 §2](17-EXPRESSIVE-RANGE.md) has not
+been run since Pass 2, and it is the only thing that can say whether four kinds of image actually
+produce ten distinguishable projects. Everything below — including the craft pass — stays behind it.
+
 ## 1 · Defects
 
 | # | Symptom | Cause | State |
@@ -117,6 +131,7 @@ Defects still get fixed as found. That has not changed and does not need a queue
 | D31 | **The scrub bar did not feel draggable** | It had the drag listeners all along — and a 6px-tall target with no handle. 24px hit area and a visible grip | ✅ fixed |
 | D32 | **REC was wired to nothing** | Styled like a live feature since Phase 1. Third instance of the pattern after `add-marker` and `forgetHandle` (D-100) | ✅ fixed |
 | D33 | **A new state's default object was named "Object"** | `defaultScene()` named a brick id that does not exist, so the registry lookup failed and it fell through to the generic label. Mine, introduced the same day | ✅ fixed |
+| D34 | **The per-object colour picker stopped working** | Every new object gets a palette slot, and the render path resolves a bound slot *over* the stored colour — so the picker wrote a value that was overridden on the next frame. Setting a colour now releases the slot, and clicking a swatch is the way back (D-107) | ✅ fixed |
 | **D8** | Distant geometry pops out | Camera far plane, grid fade and fog interact; needs one coherent depth budget | ⬜ open |
 
 **D7 is the important one** and it is not a display bug. It is the same root cause as the

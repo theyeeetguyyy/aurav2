@@ -4,6 +4,9 @@ import type { GeometryBrick } from './backends/types'
 import { canMorph, defaultParams } from './backends/types'
 import { PROCEDURAL_BRICKS } from './backends/proceduralMesh'
 import { PRIMITIVE_BRICKS } from './backends/primitiveMesh'
+import { POINT_BRICKS } from './backends/pointCloud'
+import { LINE_BRICKS } from './backends/lineCurve'
+import { RIBBON_BRICKS } from './backends/ribbonMesh'
 
 /** BrickRegistry — the catalogue of geometry operators.
  *
@@ -96,3 +99,7 @@ export const BrickRegistry = new BrickRegistryImpl()
 // default choice when adding a shape.
 BrickRegistry.registerAll(PROCEDURAL_BRICKS)
 BrickRegistry.registerAll(PRIMITIVE_BRICKS)
+BrickRegistry.registerAll(POINT_BRICKS)
+BrickRegistry.registerAll(LINE_BRICKS)
+// Ribbons are ordinary meshes — the same paths as the line bricks with a section swept along them.
+BrickRegistry.registerAll(RIBBON_BRICKS)

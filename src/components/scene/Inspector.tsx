@@ -1,5 +1,11 @@
 import { useSceneStore, useSelectedObject } from '@/store/useSceneStore'
 import { BrickRegistry } from '@/engine/scene/BrickRegistry'
+import {
+  canRenderAsPoints,
+  materialFamilyOf,
+  materialFamilyOfId,
+} from '@/engine/scene/buildObject'
+import { brickGroups } from '@/engine/scene/brickGroups'
 import { MaterialRegistry } from '@/engine/scene/materials/MaterialRegistry'
 import { LightRegistry } from '@/engine/scene/lights/LightRegistry'
 import { describeObject, groupsOf, readParam } from '@/engine/params/ParamRegistry'
@@ -64,6 +70,7 @@ export function Inspector() {
 function ObjectHeader({ object }: { object: SceneObject }) {
   const setBrick = useSceneStore((s) => s.setBrick)
   const setMaterialBrick = useSceneStore((s) => s.setMaterialBrick)
+  const setBackend = useSceneStore((s) => s.setBackend)
   const brick = BrickRegistry.get(object.brickId)
   const material = MaterialRegistry.get(object.materialId)
   const morphTargets = BrickRegistry.morphTargets(object.brickId)
@@ -77,9 +84,6 @@ function ObjectHeader({ object }: { object: SceneObject }) {
           <span className="text-[10px] text-slate-500 font-mono shrink-0">light</span>
         </div>
         <p className="text-[10px] text-slate-600 leading-snug">{light?.hint}</p>
-        <p className="text-[10px] text-slate-600 leading-snug">
-          Wire an onset to Intensity in Routing and this becomes a strobe.
-        </p>
       </header>
     )
   }
@@ -89,35 +93,51 @@ function ObjectHeader({ object }: { object: SceneObject }) {
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-[11px] font-medium text-slate-200 truncate">{object.name}</span>
         <span className="text-[10px] text-slate-500 font-mono shrink-0">
-          {object.backend}/{object.meshKind}
+          {[object.backend, object.meshKind].filter(Boolean).join('/')}
         </span>
       </div>
 
+      {/* Every group the library offers, so an object's own brick always appears selected rather
+          than blank — and from the same authority, so the two lists cannot drift apart. */}
       <select
         value={object.brickId}
         onChange={(e) => setBrick(object.id, e.target.value)}
         className="w-full h-6 px-1.5 bg-aura-surface border border-aura-line rounded text-[11px] text-slate-300 outline-none focus:border-aura-focus"
         title="Swap geometry. Shared parameter values are preserved."
       >
-        <optgroup label="Morphable">
-          {BrickRegistry.list()
-            .filter((b) => b.meshKind === 'procedural')
-            .map((b) => (
+        {brickGroups().map((group) => (
+          <optgroup key={group.title} label={group.title}>
+            {group.bricks.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.label}
               </option>
             ))}
-        </optgroup>
-        <optgroup label="Primitives">
-          {BrickRegistry.list()
-            .filter((b) => b.meshKind === 'primitive')
-            .map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.label}
-              </option>
-            ))}
-        </optgroup>
+          </optgroup>
+        ))}
       </select>
+
+      {/* Surface or cloud, for the same geometry. The largest change of image available from one
+          click: a vertex is a point, so every mesh already contains a cloud, and lit-surface and
+          accumulating-dust are not mistakable for each other. Hidden for a point brick, which has
+          no faces to shade. */}
+      {canRenderAsPoints(object) && (
+        <div className="flex rounded overflow-hidden border border-aura-line">
+          {(['mesh', 'points'] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setBackend(object.id, mode)}
+              aria-pressed={object.backend === mode}
+              className={`flex-1 h-6 text-[10px] uppercase tracking-wider transition-colors ${
+                object.backend === mode
+                  ? 'bg-aura-accent/15 text-aura-accent'
+                  : 'bg-aura-surface text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              {mode === 'mesh' ? 'Surface' : 'Points'}
+            </button>
+          ))}
+        </div>
+      )}
 
       <p className="text-[10px] text-slate-600 leading-snug">
         {brick?.morphGroup
@@ -133,11 +153,16 @@ function ObjectHeader({ object }: { object: SceneObject }) {
         className="w-full h-6 px-1.5 bg-aura-surface border border-aura-line rounded text-[11px] text-slate-300 outline-none focus:border-aura-focus"
         title={material?.hint ?? 'Shading model'}
       >
-        {MaterialRegistry.list().map((m) => (
-          <option key={m.id} value={m.id}>
-            {m.label}
-          </option>
-        ))}
+        {/* Filtered by backend: a `PointsMaterial` on a mesh renders nothing, a mesh material on a
+            cloud renders unshaded squares, and a mesh material on a stroke renders black. All three
+            read as bugs, so none is offered. */}
+        {MaterialRegistry.list()
+          .filter((m) => materialFamilyOfId(m.id) === materialFamilyOf(object.backend))
+          .map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
       </select>
     </header>
   )

@@ -1125,3 +1125,231 @@ Replaced with the property that actually matters: the horizon stays dark enough 
 against (`< 40`) **and the upper stop lifts the frame off the void** (`> horizon + 25`). Worth
 recording as a class of mistake, not just a fix — a test written from the implementation's
 assumptions will happily certify them.
+
+**D-107 · Setting a colour by hand releases the palette slot.**
+`writeParam`'s material branch clears `paletteSlot` when `material.color` is written. *Why:* the
+render path resolves a bound slot **over** the stored colour, and every new object gets a slot — so
+the per-object colour picker wrote a value that was immediately overridden and appeared to do nothing
+at all. Reported as "the colour param seems to not be working now of any shape", which it was not.
+
+Two things worth recording beyond the fix:
+
+- **I patched the wrong function first.** `setMaterial` is a bulk write; the inspector goes through
+  `writeParam`. The first attempt typechecked, read correctly, and changed nothing observable. *Fix
+  the path the UI actually uses* — and verify by driving it, which is how the second attempt was
+  caught.
+- **Releasing needs a way back.** Clicking a swatch in the palette panel now binds the selected
+  object to that slot. Without it an object could leave the palette and never rejoin, which is a
+  one-way door built by a bug fix.
+
+**D-108 · Clones carry an absolute colour channel, separate from the brightness multiplier.**
+`CloneBuffers` gained `color` (absolute RGB, seeded from the object's resolved material colour)
+alongside `tint` (a brightness multiplier effectors add to). Final instance colour is
+`color × tint`, and the material is set to **white** on an instanced mesh because Three multiplies
+material colour by `instanceColor` — without that, every clone would be tinted twice.
+
+*Why a second channel rather than reinterpreting `tint`:* every existing effector *adds* a weighted
+delta to it and it is labelled "Brightness", so it can only lighten or darken what is already there.
+A palette ramp has to be able to say "this one is teal and that one is chartreuse", which is a value,
+not a scaling. Folding them together would have broken four working effectors to add one.
+
+**D-109 · The Palette Ramp effector is why the colour channel exists.**
+Spreads the scene palette across a clone array — ends landing exactly on palette entries, with
+spread, offset, bias, reverse and ping-pong. *Why it matters:* a cloner produces N objects of the
+same shape *and* the same colour arranged regularly, which reads as an array of copies rather than
+as a form. That is the loudest "made in a toy" signal in the current output. Ping-pong exists so a
+closed array — a ring — meets itself at the seam instead of jumping from the last palette entry back
+to the first.
+
+The sRGB→linear conversion is deliberate and easy to get wrong in both directions: a material colour
+goes through it when Three parses the hex, but `instanceColor` does **not** get converted, and the
+shader multiplies it against a linear value. Skipping it washes every ramp out.
+
+*Verified in the browser:* eight clones in a ring, each a different palette colour. Worth a second
+look under a darker rig — under the default key of 2.2 a pastel palette reads paler than the swatches
+suggest, and it is not yet established whether that is the lighting or the conversion.
+
+**D-110 · Any mesh can be drawn as a cloud of its own vertices, from one switch.**
+`SceneObject.backend` was already a field, copied from the brick and never changed. It is now
+user-controllable: a Surface/Points segmented control in the inspector, backed by
+`useSceneStore.setBackend` and the shared `withBackend()` helper.
+
+*Why this and not more point bricks:* [17-EXPRESSIVE-RANGE §Pass 2](17-EXPRESSIVE-RANGE.md) promises
+"any geometry becomes a cloud", and five scatter bricks do not deliver that — they add five shapes to
+a library of ten. The switch multiplies it: every mesh brick, at every parameter setting, with every
+deformer already stacked on it, has a second image for one click. A vertex *is* a point, so it costs
+nothing but the switch.
+
+**One-way on purpose.** A point buffer has no faces, so drawing it as a mesh joins unrelated scattered
+vertices into shards. `canRenderAsPoints()` is the single authority and a point brick simply has no
+switch.
+
+*The two things that had to change with it:*
+- **The material moves with the backend.** A `PointsMaterial` on a mesh draws nothing and a mesh
+  material on `THREE.Points` draws unshaded squares — both read as "the object vanished". `withBackend`
+  changes them together and never separately. This also fixed a latent bug in `setBrick`: swapping a
+  point brick to a sphere kept the point material and the sphere rendered as nothing.
+- **Cloners are refused on a cloud.** Cloning draws an `InstancedMesh`, a cloud draws
+  `THREE.Points`, so a cloner stacked on one sat in the list looking active and changed nothing.
+
+*Two defaults that a fixed value could not serve:*
+- **Occluding dots, not additive.** The scatter bricks are sparse by construction and want
+  accumulation. A mesh packs thousands of vertices along a thin surface, and additive light there
+  saturates to a white smear with colour surviving only at the edges. Verified on a torus knot.
+- **Dot size comes from vertex spacing**, not a constant: `√(4πr²/count)·0.8`. An icosahedron's few
+  hundred spread vertices read cleanly at 0.6; a torus knot's thousands merge into a blocky mass at
+  the same value.
+
+**D-111 · A deformer resting at zero says so, rather than looking dead.**
+Every `DeformerBrick` now declares `driver` — the parameter whose zero makes `apply` a no-op — and the
+effect stack shows an **at rest** badge when that parameter is zero and no wire is driving it.
+
+*Why not simply give deformers a visible default:* modulation is `base + Σ offsets`, so the stored
+value is the **rest position**. A bass-driven bulge whose Amount defaults to 4 is permanently inflated
+and can only get worse on the kick. Zero is correct.
+
+*Why the badge is not optional:* the cost of a correct zero is that adding a deformer changes nothing,
+which is indistinguishable from a broken feature. That is not hypothetical — a browser check here
+added a Twist at its default `angle: 0`, saw no pixels move, and concluded the deformer stack did not
+reach point clouds at all. It does. A test now asserts each declared driver is inert at zero and
+*moves geometry when non-zero*, so the badge cannot lie in either direction.
+
+**D-112 · The preview renders at device resolution (`dpr={[1, 2]}`).**
+React Three Fiber renders one device pixel per CSS pixel unless told otherwise. On any HiDPI screen
+that made the viewport the single soft, aliased panel in an otherwise crisp interface, and thin
+geometry paid for it most. Capped at 2: the fourth pixel of a 4× display buys nothing visible and
+costs sixteen times the fragments.
+
+**Open, and not resolvable in the test harness:** below roughly eight device pixels, point sprites
+render as hard squares under headless SwiftShader while the same material at size 3 renders as clean
+circles. Nothing in the material varies with size, and the sprite's corner alpha is zero by
+construction, so the remaining explanations are all in the software rasteriser's point path. To be
+confirmed on real hardware before any further change — three fixes were attempted for this and two of
+them (mipmapping the sprite, then `alphaTest`) made it worse.
+
+**D-113 · Two layouts that are not lattices, and a flow field that composes with all five.**
+Pass 3 of [17-EXPRESSIVE-RANGE](17-EXPRESSIVE-RANGE.md). Line, ring and box are all lattices, and an
+array on a lattice reads as *an array of copies* rather than as a form — the loudest "made in a toy"
+signal in the output. Three additions close it:
+
+- **Scatter Cloner** — a count and a volume, positions from a hash of the clone index. Spherical
+  morphs the box into a ball with a cube-root radius so density stays even instead of piling up at the
+  centre.
+- **Surface Cloner** — copies on the object's **own deformed vertices**, aligned to the normal.
+  `ClonerContext` gained `sourcePositions`/`sourceNormals` for it, taken from the instanced mesh's live
+  geometry, so a stem-driven deformer carries the whole array with it.
+- **Flow Effector** — the curl of a noise-derived potential, sampled at each clone's position.
+
+*Why a Random effector was not already enough:* jitter displaces copies **from** lattice points, so the
+lattice still sets the density — at low amounts a wobbly grid, at high amounts noise — and the count
+stays locked to `nx·ny·nz`. Neither new layout has a lattice at all. Measured rather than asserted: a
+grid of 512 has **8** distinct x coordinates, a scatter of 256 has **over 200**.
+
+*Why curl and not a plain noise offset:* a plain offset pushes every copy towards wherever the field
+happens to point, so the array bunches into blobs and leaves holes. `curl(F)` is divergence-free by
+construction and therefore cannot compress, so copies slide past each other in streams and the density
+the layout established survives. A test asserts exactly that — spread after the field stays within
+0.75–1.6× of spread before it — because that property *is* the reason for the extra six noise samples.
+
+*Two things the invariants caught, and both were right:*
+- The catalogue requires an effector to be **inert at its defaults**, which is D-111's rule arriving
+  from the other direction. Flow's Strength therefore defaults to 0 and it declares `driver`, so the
+  stack shows **at rest** instead of looking dead. `EffectorBrick.driver` is optional because most
+  effectors have no single gate — their zero state is all of Move, Rotate, Scale and Brightness at
+  zero, and naming one would make the badge wrong the moment another was raised.
+- The catalogue also required every layout to start at **unit** scale. The surface layout cannot: an
+  instanced mesh draws the same geometry at every clone, so unit-scale studs are the size of the thing
+  they stud and the object arrives as a solid ball of copies of itself. The invariant was asserting the
+  wrong property — what an effector needs is a baseline with no *per-clone variation*, not the number
+  1 — so it now asserts uniformity across clones and the surface layout owns a `Clone Size` default of
+  0.15.
+
+*Verified in the browser.* A grid of 256 icosahedra reads as radiating rows; the same object under
+Scatter + Flow reads as a field with depth and no rows. A sphere under Surface Cloner is a ball of 500
+small spheres. Stacking a Spike deformer on that does **two** things, both wanted: the array follows
+the deformed silhouette, and every stud spikes in its own local frame, because one geometry is shared
+by every instance. Worth knowing rather than fixing — Cinema 4D separates the two because its cloner
+children are separate objects, and ours are instances of one.
+
+**D-114 · Lines are a render backend; ribbons are meshes. Two bricks, not one with a width slider.**
+Pass 4 of [17-EXPRESSIVE-RANGE](17-EXPRESSIVE-RANGE.md). `RenderBackend` gains `lines`, so three of
+the four declared paths are now implemented and only `sdf` is unbuilt. Five line bricks — Lissajous,
+Spiral, Rosette, Flow Lines, Web — plus two stroke materials and two ribbon bricks.
+
+*Why a stroke is a third family and not a thin mesh:* it has no area, so nothing about it is shaded
+and what you see is pure trajectory. A Lissajous figure and a lit sphere are not two settings of one
+image, and the ten-project test counts *kinds* of image, not permutations.
+
+**Indexed segments, always.** Every line brick emits one `BufferGeometry` with an index of vertex
+pairs, drawn as `THREE.LineSegments`. Two things fall out of that and both are load-bearing:
+- **Every deformer works unmodified**, exactly as on a point cloud. A deformer displaces positions
+  and never touches the index, so a strand stays connected however far its vertices move. Fifteen
+  operators arrive with the backend.
+- **Connectivity is the brick's business, not the draw call's.** A polyline and a web of links
+  between scattered nodes are the same buffer with a different index, which is why one backend draws
+  both instead of needing two.
+
+**Ribbons are separate bricks, deliberately.** A one-pixel stroke and a lit twisting band are lit,
+occluded and composited differently — one is a drawing and the other is an object. They are also
+different backends, and a *parameter* that silently changed an object's backend would be exactly the
+hidden coupling this codebase has removed twice. As ordinary meshes they arrive with all seven
+materials, shadows, reflections and cloners for free. `sides` and `flatten` span the family from a
+round cable to a flat band, because the difference genuinely is the section.
+
+**Width is not a control.** WebGL rasterises every line at one pixel and ignores
+`LineBasicMaterial.linewidth`. A Width slider that did nothing would be the fourth instance of the
+control-with-no-handler failure (D-100). Weight comes from the ribbon bricks.
+
+*Three things this pass also fixed, each found by looking rather than by a test:*
+- **Parallel transport, not Frenet frames.** A Frenet normal is undefined where a path runs
+  momentarily straight and flips through an inflection — visible as a band that snaps 180° mid-stroke,
+  on exactly the straight runs a flow line is full of.
+- **`DeformRuntime` no longer computes normals for geometry that never had any.** On an indexed line
+  it would read vertex *pairs* as triangles; on a forty-thousand-point cloud it was a wasted pass
+  every frame writing an attribute nothing shades from. Meshes are unaffected — they always have
+  normals.
+- **Flow defaults ran out of frame.** Step × Resolution is the length of a strand, and 0.6 × 220 from
+  a 14-unit spawn travels 130 units in every direction. Chosen together now, and only a screenshot
+  says which pair is right.
+
+*One shared field.* `curl3` moved from the Flow effector into `effects/noise.ts`, so a flow line and
+a flowed array follow the same current and compose in one scene.
+
+*Verified in the browser and in the file:* all five strokes and both ribbons render, four backends
+coexist in one scene taking their own palette slots, and a twisted Lissajous with Bloom and a camera
+orbit exports at 720p — mean luma 12.5, max 197, 15 % lit, 25 % of pixels changing per frame.
+
+**D-115 · The shape library folds, because it is now seven groups.**
+Four groups fitted the panel; seven do not, and the one that fell below the fold was **Lights** — a
+whole element family reachable only by finding the scrollbar of an inner container. Each group is a
+disclosure with its brick count in the header, and the grouping itself now lives in
+`brickGroups.ts` because the inspector's swap dropdown needs the same one. Those two had already
+drifted apart once: the library filtered by backend and the dropdown by `meshKind`, so a point brick
+appeared under "Morphable" in one of them and promised a morph it cannot do.
+
+**D-116 · Hue shift belongs to the object, not to the shading model.**
+The last open item in Pass 1: colour was authorable but *static*. The palette decides the scene's
+colours and nothing could change them during the piece, so a drop could change a shape's size, its
+brightness and its post treatment — but not its colour, which is the change an audience reads
+fastest.
+
+`hueShift` is a degrees parameter appended to **every** material brick by `MaterialRegistry.register`
+and implemented by **none** of them. The rotation happens in the render path, on the colours the
+model and the palette already resolved. That placement is the decision:
+
+- One control moves the Gradient's *two* stops together. A per-brick implementation would have
+  needed each model to decide what "shift my colours" meant, and the Gradient's answer would have
+  been wrong in a different way from the Fresnel's.
+- It survives a change of shading model, because `migrateParams` carries shared keys across.
+- It is an ordinary `material.` address, so it is wireable, curve-shapeable and clip-automatable
+  with no new machinery — which is the entire argument for the parameter registry.
+
+*Rotate, not replace.* Shifting an Ember scene by 40° is still an Ember scene; writing an absolute
+hue would discard the decision the palette records. It wraps rather than clamping, so a signal that
+overshoots lands somewhere sensible instead of parking on magenta.
+
+*A grey is unchanged at any angle.* Correct, and worth knowing rather than fixing: a Mono palette
+cannot be driven this way and no amount of signal will make it move.
+
+*Verified in the browser:* a Standard sphere at 120° goes indigo to salmon, and
+`…//material.hueShift` appears as a patchbay target on a fresh project.

@@ -95,6 +95,22 @@ Segment/resolution parameters are declared `exposed: false` — rebuilding geome
 frame because a knob wiggled is a performance trap. Continuous shape change belongs to
 deformers, not to topology.
 
+## 3c. Geometry bricks — `lines` backend and the ribbons that share its paths
+
+✅ Implemented (D-114). Strokes, drawn as indexed `THREE.LineSegments`:
+`line-lissajous` · `line-spiral` · `line-rose` · `line-flow` · `line-web`
+
+The first four are paths from `backends/curves.ts`, each drawing `strands` copies of itself spread by
+phase or seed. `line-web` is not a path at all — nodes scattered in a ball, linked to whichever
+neighbours fall inside a radius — and it is the reason the backend indexes its segments rather than
+assuming polylines.
+
+Ribbons sweep a section along the same paths and are ordinary `mesh/primitive` bricks:
+`geo-ribbon-spiral` · `geo-ribbon-flow`. `sides` × `flatten` spans a round cable to a flat band.
+
+Materials: `mat-lines` · `mat-lines-additive`. **No width parameter** — WebGL rasterises every line
+at one pixel and ignores `linewidth`, so weight comes from the ribbons.
+
 ## 4. SDF bricks — `sdf` backend
 
 **Primitives:** `sdf-sphere` · `sdf-box` · `sdf-torus` · `sdf-cylinder` · `sdf-capsule`
@@ -113,17 +129,24 @@ deformers, not to topology.
 
 ## 5. Deformer bricks — `geometry` family
 
-`def-explode` (vertices along normals, decaying — driven by discrete events) ·
-`def-gun-stretch` (directional elongation on transients) ·
-`def-perlin-wave` (noise displacement, amplitude from `band-sub`) ·
-`def-twist` · `def-pulse`
+✅ **Fifteen**, each a structurally distinct class of vertex operation. The catalogue and the argument
+for each are in [12-DEFORMERS.md](12-DEFORMERS.md) — the single home, so this list cannot drift.
+
+They apply to *every* backend that has vertices: a mesh, a cloud and a stroke alike, with no
+backend-specific code, because a deformer displaces positions and a point and a line vertex are
+positions.
 
 ## 6. Instancing bricks — `instancing` family
 
-`cloner-linear` · `cloner-radial` (radius, plane, start/end angle) · `cloner-grid`
+Layouts: `cloner-linear` · `cloner-radial` · `cloner-grid` · **`cloner-scatter`** ·
+**`cloner-surface`** — the last two are the ones that are not lattices (D-113).
 
-Effectors: `eff-random` · `eff-step` (sequential offset across clones) ·
-`eff-delay` (springy staggered propagation)
+Effectors: `eff-step` · `eff-random` · `eff-wave` · `eff-delay` (reads a stem's timeline at
+`t − i·delay`, so the array is a physical waveform of the recent past) · **`eff-flow`** (curl noise) ·
+**`eff-palette-ramp`** (the one effector writing absolute colour rather than a weighted delta).
+
+Not available on the `points` or `lines` backends: cloning draws an `InstancedMesh`, and both of
+those already carry their own multiplicity — point count, and strand count.
 
 Every clone carries U/V/W in 0–1 so effectors can assign per-clone values.
 **Effector parameters are ordinary modulation targets** — that is what makes

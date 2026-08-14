@@ -133,10 +133,10 @@ frame 12 and still produce exactly what was previewed.
 | `backends/primitiveMesh.ts` | 10 native Three geometries. `morphGroup: null` — swap-only. |
 | `backends/proceduralMesh.test.ts` | The shared-topology invariant (HC-4). 23 assertions. |
 | `EffectRegistry.ts` | Catalogue of stackable effects — deformers, cloners and effectors under one roof, told apart by which method they carry. Separate from BrickRegistry because a geometry brick *builds* a mesh and an effect brick *modifies* one. |
-| `DeformRuntime.ts` | Per-object working geometry. Shared geometry is never mutated — an object with deformers gets a private copy; one without allocates nothing. |
+| `DeformRuntime.ts` | Per-object working geometry. Shared geometry is never mutated — an object with deformers gets a private copy; one without allocates nothing. Recomputes normals only where the source had them: on an indexed line that pass reads vertex *pairs* as triangles, and on a 40 000-point cloud it is a wasted pass every frame (D-114). |
 | `effects/types.ts` | `DeformerBrick` contract. Whole-array, not per-vertex callback. |
 | `effects/deformers.ts` | **15 deformers**, each a distinct class of vertex operation (D-38). No `time` in the contract — they cannot self-animate (D-36). See [12-DEFORMERS.md](12-DEFORMERS.md). |
-| `effects/noise.ts` | Stateless 3D value noise + fbm. Stateless because deformers must be pure functions of time (HC-3). |
+| `effects/noise.ts` | Stateless 3D value noise + fbm, plus `curl3` — the divergence-free field, shared by the Flow effector and the Flow line so the two follow the same current. Stateless because deformers must be pure functions of time (HC-3). |
 | `cloners/types.ts` | `ClonerBrick` / `EffectorBrick`, `CloneBuffers` (structure-of-arrays), `MAX_CLONES`. `EffectorContext` carries time; `DeformContext` still does not (D-47) |
 | `cloners/cloners.ts` | Three layouts — radial, linear, grid. Three and not thirty: anything else is a layout plus an effector |
 | `cloners/effectors.ts` | Step, Random, Wave and **Time Delay**. Each is a weight function feeding one shared set of transform/tint outputs |
@@ -390,6 +390,37 @@ building the default scene a new **state** starts from (D-98). A store could not
 `useProjectStore` reaching into `useSceneStore` to construct an object it is about to store elsewhere
 would be a cycle for no reason.
 
+Also the one authority on the render backend of an object (D-110): `canRenderAsPoints()` decides
+whether the Surface/Points switch appears at all, and `withBackend()` moves an object between
+backends *with a renderable material* and a dot size derived from its own vertex spacing. Both the
+switch and `setBrick` go through it, which is what fixed a point brick swapped to a sphere rendering
+as nothing.
+
+## Non-lattice structure
+
+| File | Role |
+|---|---|
+| `engine/scene/cloners/cloners.ts` | Five layouts. Line, ring and box are lattices; **Scatter** and **Surface** are the two that are not, which is the whole point (D-113). The header comment holds the test for admitting a sixth |
+| `engine/scene/cloners/effectors.ts` | Six effectors. **Flow** is the curl of a noise potential — divergence-free, so an array slides into streams instead of bunching into blobs, and it composes with every layout |
+
+## Lines — the third render backend (D-114)
+
+| File | Role |
+|---|---|
+| `engine/scene/backends/curves.ts` | The path maths, and the one home for it: `writeStrand()` fills a polyline for any of four paths, and `pathDescriptors()` gives the controls. A **writer** rather than a `point(u)` function because the flow path integrates — each point follows from the one before, once, at build time. Every path draws `strands` copies of itself, spread by phase or by seed: one strand is a wire and reads as a debug view, twenty is a bundle and reads as something drawn |
+| `engine/scene/backends/lineCurve.ts` | Five bricks — Lissajous, Spiral, Rosette, Flow Lines, Web — all emitting indexed `LineSegments`. That index is why every deformer works on a stroke unmodified, and why a web of links between scattered nodes needs no second backend. The header records why width is not a control |
+| `engine/scene/backends/ribbonMesh.ts` | Two bricks that sweep a section along the same paths. Ordinary meshes, so all seven materials, shadows and cloners arrive with them. **Parallel transport, not Frenet frames** — a Frenet normal flips through an inflection and the band snaps 180° mid-stroke. `sides` × `flatten` spans round cable to flat band |
+| `engine/scene/materials/lineMaterials.ts` | Two stroke materials, occluding and additive. Additive matters more here than for points: strands cross constantly, so brightness accumulates at the knots of a figure and the core of a braid |
+| `engine/scene/brickGroups.ts` | How the catalogue divides for a human, by kind of image rather than by implementation. One home, because the library and the inspector's swap dropdown need the same one and had already drifted apart |
+
+## Points — the second render backend
+
+| File | Role |
+|---|---|
+| `engine/scene/backends/pointCloud.ts` | Five scatter bricks — shell, volume, field, disc, helix. Positions come from a hash of the point index, never `Math.random()`, so a saved project reopens as the same picture and an export matches its preview. Every one of the fifteen deformers works on them unmodified: a deformer displaces vertices, and a point is a vertex |
+| `engine/scene/materials/pointMaterials.ts` | Two materials, occluding and additive, and the shared round sprite. Additive is the one that matters — density becomes brightness, which no surface material can do at any setting. Neither writes depth; the comment there records why, including the two fixes that made it worse |
+| `devBridge.ts` | Dev-only read-only `window.aura` — objects with their effect stacks, palette, wires, states, strips, time. Exists because a screenshot cannot tell "the feature is broken" from "the click missed the button", and that ambiguity cost an afternoon: a deformer was reported dead on point clouds when the effect had simply been added at its zero default (D-111) |
+
 ## New in the state-model correction
 
 | File | Role |
@@ -404,5 +435,7 @@ would be a cycle for no reason.
 
 | File | Role |
 |---|---|
-| `engine/scene/palette.ts` | `Palette`, six starters, `paletteAt()` (wrapping slot lookup) and `paletteRamp()` (position along the palette, clamped not wrapped). Owned by the state, so a shared state carries the colours it was designed in (D-105) |
+| `engine/scene/palette.ts` | `Palette`, six starters, `paletteAt()` (wrapping slot lookup), `paletteRamp()` (position along the palette, clamped not wrapped) and `shiftHue()` — the rotation behind "the drop changes the colour" (D-116). Owned by the state, so a shared state carries the colours it was designed in (D-105) |
+| `engine/scene/materials/MaterialRegistry.ts` | Appends `hueShift` to every brick at registration, so no shading model can be missing it and none has to implement it — the rotation happens in the render path on the colours the model and the palette already resolved (D-116) |
 | `components/scene/PalettePanel.tsx` | Top of the Look page, because the palette is upstream of the background, the rig and every material. Starters are swatch rows — a dropdown of names would make you pick a palette without seeing it |
+| `engine/scene/cloners/effectors.ts` | Step / Random / Wave / Time Delay, plus **Palette Ramp** — the one effector that writes absolute colour rather than a weighted delta (D-109) |

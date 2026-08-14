@@ -2,11 +2,17 @@ import { create } from 'zustand'
 import { recordChange } from '@/store/historyHook'
 import type { ID } from '@/types/audio'
 import { formatAddress, type ParamAddress, type ParamValue } from '@/types/params'
-import type { EffectInstance, MaterialParams, SceneObject, SceneObjectType } from '@/types/visual'
+import type {
+  EffectInstance,
+  MaterialParams,
+  RenderBackend,
+  SceneObject,
+  SceneObjectType,
+} from '@/types/visual'
 import { BrickRegistry } from '@/engine/scene/BrickRegistry'
 import { EffectRegistry } from '@/engine/scene/EffectRegistry'
 import { MaterialRegistry } from '@/engine/scene/materials/MaterialRegistry'
-import { buildObject, uniqueName } from '@/engine/scene/buildObject'
+import { buildObject, uniqueName, withBackend } from '@/engine/scene/buildObject'
 import { DEFAULT_PALETTE, type Palette } from '@/engine/scene/palette'
 import { axisIndex } from '@/engine/params/ParamRegistry'
 import { useModulationStore } from '@/store/useModulationStore'
@@ -44,6 +50,8 @@ interface SceneState {
 
   /** Swap an object's geometry brick, keeping any parameters both bricks share. */
   setBrick: (id: ID, brickId: string) => void
+  /** Draw the same object as a surface or as a cloud of its own vertices. */
+  setBackend: (id: ID, backend: RenderBackend) => void
   /** Swap an object's shading model, keeping any values both materials share. */
   setMaterialBrick: (id: ID, materialId: string) => void
 
@@ -104,7 +112,17 @@ function writeParam(object: SceneObject, address: ParamAddress, value: ParamValu
     }
 
     case 'material':
-      return { ...object, material: { ...object.material, [axisKey]: value } }
+      return {
+        ...object,
+        material: { ...object.material, [axisKey]: value },
+        // Setting the colour by hand means "I want THIS colour", so it releases the palette slot.
+        // The render path resolves a bound slot over the stored value, so without this the picker
+        // wrote a colour that was immediately overridden and appeared to do nothing at all.
+        //
+        // This is the path the inspector actually uses — `setMaterial` is a separate bulk write, and
+        // fixing only that one was why the first attempt at this did not work.
+        paletteSlot: axisKey === 'color' ? null : object.paletteSlot,
+      }
 
     default:
       return { ...object, params: { ...object.params, [address.paramKey]: value } }
@@ -212,14 +230,19 @@ export const useSceneStore = create<SceneState>((set, get) => ({
         for (const key of Object.keys(defaults)) {
           if (key in o.params) params[key] = o.params[key]
         }
-        return {
-          ...o,
-          brickId,
-          backend: brick?.backend ?? o.backend,
-          meshKind: brick?.meshKind,
-          params,
-        }
+        // A mesh brick keeps a Points choice the user made; a point brick has no choice to keep.
+        const backend =
+          brick?.backend === 'mesh' && o.backend === 'points' ? 'points' : (brick?.backend ?? o.backend)
+
+        return withBackend({ ...o, brickId, meshKind: brick?.meshKind, params }, backend)
       }),
+    }))
+  },
+
+  setBackend: (id, backend) => {
+    recordChange(backend === 'points' ? 'Render as points' : 'Render as surface', ['scene'])
+    set((s) => ({
+      objects: s.objects.map((o) => (o.id === id ? withBackend(o, backend) : o)),
     }))
   },
 
@@ -245,9 +268,18 @@ export const useSceneStore = create<SceneState>((set, get) => ({
 
   setMaterial: (id, patch) =>
     set((s) => ({
-      objects: s.objects.map((o) =>
-        o.id === id ? { ...o, material: { ...o.material, ...patch } } : o,
-      ),
+      objects: s.objects.map((o) => {
+        if (o.id !== id) return o
+        // Setting the colour by hand means "I want THIS colour", so it releases the palette slot.
+        // Without this the object kept its slot, the render path kept overriding with the palette,
+        // and the colour picker silently did nothing — which is what shipped and was reported.
+        const releasesSlot = 'color' in patch
+        return {
+          ...o,
+          material: { ...o.material, ...patch },
+          paletteSlot: releasesSlot ? null : o.paletteSlot,
+        }
+      }),
     })),
 
   addEffect: (id, effect) =>

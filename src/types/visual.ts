@@ -21,7 +21,7 @@ export type SceneObjectType =
  *  They are not — each is genuinely best for a different question. Making the render
  *  path an explicit property of an object means all of them are implementable and
  *  comparable *visually* rather than argued about on paper. */
-export type RenderBackend = 'mesh' | 'sdf' | 'points'
+export type RenderBackend = 'mesh' | 'sdf' | 'points' | 'lines'
 
 /** Sub-kind for the mesh backend. Determines morph capability:
  *  - procedural — one shared icosphere topology, any↔any vertex morph

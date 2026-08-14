@@ -5,6 +5,7 @@ import {
   mixHex,
   paletteAt,
   paletteRamp,
+  shiftHue,
   type Palette,
 } from './palette'
 
@@ -138,6 +139,47 @@ describe('starter palettes', () => {
       const high = luma(palette.backgroundEnd)
       expect(low, `${name} horizon`).toBeLessThan(40)
       expect(high, `${name} sky`).toBeGreaterThan(low + 25)
+    }
+  })
+})
+
+describe('shiftHue', () => {
+  const channels = (hex: string) =>
+    [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16))
+
+  it('rotates the wheel — red to green to blue at 120° steps', () => {
+    expect(shiftHue('#ff0000', 120)).toBe('#00ff00')
+    expect(shiftHue('#ff0000', 240)).toBe('#0000ff')
+  })
+
+  it('is the identity at zero and at a full turn', () => {
+    // A wired parameter passes through both constantly, and a colour that drifts on every lap would
+    // mean the render is not a pure function of the signal.
+    for (const hex of ['#6366f1', '#ff7a18', '#00ffa3']) {
+      expect(shiftHue(hex, 0)).toBe(hex)
+      expect(channels(shiftHue(hex, 360)).join()).toBe(channels(hex).join())
+    }
+  })
+
+  it('wraps rather than clamping, so an overshooting signal lands somewhere sensible', () => {
+    expect(shiftHue('#ff0000', 480)).toBe(shiftHue('#ff0000', 120))
+    expect(shiftHue('#ff0000', -240)).toBe(shiftHue('#ff0000', 120))
+  })
+
+  it('keeps saturation and lightness, so a palette stays recognisable under it', () => {
+    const before = channels('#6366f1')
+    const after = channels(shiftHue('#6366f1', 90))
+    const spread = (c: number[]) => Math.max(...c) - Math.min(...c)
+    const mid = (c: number[]) => (Math.max(...c) + Math.min(...c)) / 2
+    expect(spread(after)).toBeCloseTo(spread(before), -0.5)
+    expect(mid(after)).toBeCloseTo(mid(before), -0.5)
+  })
+
+  it('leaves greys alone at every angle', () => {
+    // Correct, and worth knowing: a Mono palette cannot be driven this way and no amount of signal
+    // will make it move.
+    for (const hex of ['#000000', '#6e6e6e', '#ffffff']) {
+      expect(shiftHue(hex, 137)).toBe(hex)
     }
   })
 })

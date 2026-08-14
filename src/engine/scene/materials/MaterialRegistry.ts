@@ -1,6 +1,8 @@
 import type { ParamValue } from '@/types/params'
 import { MATERIAL_BRICKS } from './materials'
-import { materialKey, type MaterialBrick } from './types'
+import { POINT_MATERIAL_BRICKS } from './pointMaterials'
+import { LINE_MATERIAL_BRICKS } from './lineMaterials'
+import { hueShiftDescriptor, materialKey, type MaterialBrick } from './types'
 
 /** MaterialRegistry — the shading-model catalogue.
  *
@@ -11,12 +13,18 @@ import { materialKey, type MaterialBrick } from './types'
 class MaterialRegistryImpl {
   private readonly bricks = new Map<string, MaterialBrick>()
 
+  /** Registers the brick with `hueShift` appended to its descriptors.
+   *
+   *  Every shading model gets it, and none of them implements it: the shift is applied to the
+   *  resolved colours before they reach `update()`, which is the only way one control can move the
+   *  Gradient's two stops and the Fresnel's rim alike. Appended here rather than written into eight
+   *  bricks so it cannot be forgotten by the ninth. */
   register(brick: MaterialBrick): void {
     if (this.bricks.has(brick.id)) {
       console.warn(`[MaterialRegistry] "${brick.id}" already registered; ignoring duplicate`)
       return
     }
-    this.bricks.set(brick.id, brick)
+    this.bricks.set(brick.id, { ...brick, descriptors: [...brick.descriptors, hueShiftDescriptor()] })
   }
 
   registerAll(bricks: MaterialBrick[]): void {
@@ -58,3 +66,5 @@ export const DEFAULT_MATERIAL_ID = 'mat-standard'
 export const MaterialRegistry = new MaterialRegistryImpl()
 
 MaterialRegistry.registerAll(MATERIAL_BRICKS)
+MaterialRegistry.registerAll(POINT_MATERIAL_BRICKS)
+MaterialRegistry.registerAll(LINE_MATERIAL_BRICKS)

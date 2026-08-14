@@ -10,7 +10,7 @@ import { CloneRuntime, hasCloner } from '@/engine/scene/cloners/CloneRuntime'
 import { MAX_CLONES } from '@/engine/scene/cloners/types'
 import { MaterialRegistry } from '@/engine/scene/materials/MaterialRegistry'
 import { materialKey } from '@/engine/scene/materials/types'
-import { paletteAt } from '@/engine/scene/palette'
+import { paletteAt, shiftHue } from '@/engine/scene/palette'
 import { activeClock } from '@/engine/time/timeAuthority'
 import { GIZMO_LAYER, SceneLight } from './SceneLight'
 import { readToken } from '@/utils/tokens'
@@ -66,10 +66,17 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
   const meshRef = useRef<THREE.Mesh>(null)
   const instancedRef = useRef<THREE.InstancedMesh>(null)
   const outlineRef = useRef<THREE.Mesh>(null)
+  const pointsRef = useRef<THREE.Points>(null)
+  const linesRef = useRef<THREE.LineSegments>(null)
   /** Selection box for a cloned object — one wireframe cube around the whole array. */
   const selectionRef = useRef<THREE.Mesh>(null)
 
-  const cloned = hasCloner(object.effects)
+  // Cloning a point cloud would be MAX_CLONES × the point count of instanced draws, which is a
+  // different feature and not a useful one — the cloud is already the multiplicity. `InstancedMesh`
+  // also has no line equivalent, and a strand's own Strands parameter already covers multiplicity.
+  const isPoints = object.backend === 'points'
+  const isLines = object.backend === 'lines'
+  const cloned = hasCloner(object.effects) && !isPoints && !isLines
 
   // One clone runtime per object, allocated at MAX_CLONES so raising the count at frame
   // rate never allocates.
@@ -93,8 +100,21 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
     return map
   }, [materialBrick, object.id])
 
+  // Which of this model's values are colours. The hue shift moves all of them together — a Gradient's
+  // two stops have to rotate as one or the ramp changes shape rather than hue.
+  const colourKeys = useMemo(
+    () =>
+      (materialBrick?.descriptors ?? [])
+        .filter((d) => d.type === 'color')
+        .map((d) => materialKey(d.key)),
+    [materialBrick],
+  )
+
   // Reused every frame — resolving material values must not allocate.
   const resolvedMaterial = useRef<Record<string, ParamValue>>({})
+  /** The object's resolved colour, handed to the clone runtime to seed its colour channel.
+   *  Reused — this runs every frame and must not allocate. */
+  const baseColour = useMemo(() => new THREE.Color(), [])
 
   // One deform runtime per object, owning its private working geometry. Released
   // automatically whenever the stack has nothing that displaces vertices.
@@ -172,7 +192,15 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
         object.effects,
         (effect) => resolveEffectParams(effect) as Record<string, number>,
       )
-      for (const target of [meshRef.current, instancedRef.current, outlineRef.current]) {
+      // Points included: a deformer displaces vertices, and a point IS a vertex — which is what
+      // makes all fifteen of them work on a cloud without a line of point-specific code.
+      for (const target of [
+        meshRef.current,
+        instancedRef.current,
+        outlineRef.current,
+        pointsRef.current,
+        linesRef.current,
+      ]) {
         if (target && target.geometry !== resolved) target.geometry = resolved
       }
     }
@@ -203,10 +231,55 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
       Math.max(0.001, scale[2] + uniform + M.getOffset(keys.sz)),
     )
 
+    // ─── Material, before the cloners: they seed their colour channel from its result ───
+    if (material) {
+      const values = resolvedMaterial.current
+      for (const key in object.material) {
+        const base = object.material[key]
+        values[key] =
+          typeof base === 'number' ? base + M.getOffset(materialKeys[key]) : base
+      }
+      // The palette wins when the object is bound to a slot. Resolved here rather than written into
+      // `object.material`, so re-picking the palette recolours the scene without touching every
+      // object — the whole point of a slot. Setting a colour by hand releases the slot, which is
+      // what makes the per-object picker work (`setMaterial`).
+      if (object.paletteSlot !== null) {
+        values.color = paletteAt(palette, object.paletteSlot)
+      }
+
+      // Hue shift, last: it rotates whatever the model and the palette resolved to, which is what
+      // lets one control move a Gradient's two stops together and survive a change of shading model.
+      // Modulated like any other material value, so a stem wired here changes the colour of the
+      // piece on the drop rather than only its size.
+      const hue = (typeof object.material.hueShift === 'number' ? object.material.hueShift : 0) +
+        M.getOffset(materialKeys.hueShift)
+      if (hue !== 0) {
+        for (const key of colourKeys) {
+          const colour = values[key]
+          if (typeof colour === 'string') values[key] = shiftHue(colour, hue)
+        }
+      }
+
+      baseColour.set(String(values.color ?? '#ffffff'))
+
+      // An instanced mesh carries its colour per instance, and Three MULTIPLIES the material colour
+      // by it — so the material has to be white or every clone would be tinted twice.
+      material.update(cloned ? { ...values, color: '#ffffff' } : values)
+    }
+
     // ─── Cloners: one mesh drawn N times, never N meshes ───
     const instanced = instancedRef.current
     if (instanced && clone.current) {
-      clone.current.resolve(object.effects, activeClock().time, resolveEffectParams)
+      clone.current.resolve(
+        object.effects,
+        activeClock().time,
+        resolveEffectParams,
+        baseColour,
+        palette,
+        // The instanced mesh's own geometry — already the deformed copy when a deformer is stacked,
+        // so a surface layout follows the shape instead of where it started.
+        instanced.geometry,
+      )
       clone.current.applyTo(instanced)
 
       // Selection for a cloned object is ONE wireframe box around the whole array, not
@@ -232,25 +305,16 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
       }
     }
 
-    for (const target of [meshRef.current, instancedRef.current]) {
+    for (const target of [
+      meshRef.current,
+      instancedRef.current,
+      pointsRef.current,
+      linesRef.current,
+    ]) {
       if (target) target.visible = object.visible
     }
 
-    if (material) {
-      const values = resolvedMaterial.current
-      for (const key in object.material) {
-        const base = object.material[key]
-        values[key] =
-          typeof base === 'number' ? base + M.getOffset(materialKeys[key]) : base
-      }
-      // The palette wins over the stored colour when the object is bound to a slot. Resolved here
-      // rather than written into `object.material` so re-picking the palette recolours the scene
-      // without touching every object — which is the whole point of a slot.
-      if (object.paletteSlot !== null) {
-        values.color = paletteAt(palette, object.paletteSlot)
-      }
-      material.update(values)
-    }
+
   })
 
   if (!geometry || !material) return null
@@ -265,7 +329,18 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
 
   return (
     <group ref={groupRef}>
-      {cloned ? (
+      {isPoints ? (
+        // A cloud, not a surface. Points take no part in shadows — they have no normals, so a
+        // shadow map would be a square per point — and they are not raycast: hitting a single dot
+        // is not a gesture anyone can perform, so selection is via the layer stack.
+        <points ref={pointsRef} geometry={geometry} material={material.material} />
+      ) : isLines ? (
+        // A drawing, not a surface. Always `lineSegments` and never `line`: every line brick carries
+        // its own index of vertex pairs, which is what lets one backend draw both connected strands
+        // and a web of links between scattered nodes. Excluded from shadows and raycasting for the
+        // same reasons as a cloud.
+        <lineSegments ref={linesRef} geometry={geometry} material={material.material} />
+      ) : cloned ? (
         // `count` is deliberately not a prop: it is owned by useFrame, and passing it
         // would reset the array to zero instances on every unrelated re-render.
         <instancedMesh
@@ -294,7 +369,7 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
           exporter disables it, so selecting a shape before pressing Export no longer bakes a
           wireframe cage into the video. */}
       {isSelected &&
-        (cloned || denseGeometry ? (
+        (cloned || denseGeometry || isPoints || isLines ? (
           <mesh ref={selectionRef} raycast={() => {}} layers-mask={1 << GIZMO_LAYER}>
             <boxGeometry args={[1, 1, 1]} />
             <meshBasicMaterial color={outlineColour} wireframe transparent opacity={0.35} />

@@ -31,10 +31,11 @@ Have transform, material, deformers, cloners. Live in 3D space.
 | Element | What it is | Legacy source | Priority |
 |---|---|---|---|
 | **Shape** ✅ | Procedural + primitive meshes | `geometryShapes2`, `polyhedronExplode` | built |
-| **Cloner / Array** | One shape repeated linear/radial/grid, each clone individually addressable | `rhythmicGeometry` | **4H — next** |
-| **Text / Logo** | Extruded 3D type | — | **high** |
-| **Ribbon / Trail** | A swept tube along a path; leaves a streak behind a moving point | `dnaHelix` | high |
-| **Parametric Curve** | Lissajous, spirals, knots — a line defined by an equation | `lissajous`, `mathMode`, `mobiusRings` | medium |
+| **Cloner / Array** ✅ | One shape repeated across five layouts, each clone individually addressable | `rhythmicGeometry` | built (4H, D-113) |
+| **Text / Logo** | Extruded 3D type | — | **high — the last hole** |
+| **Ribbon** ✅ | A section swept along a path — round cable to flat twisting band from two controls | `dnaHelix` | built (D-114) |
+| **Parametric Curve** ✅ | Lissajous, spirals, rosettes, flow lines, webs — as strokes, on their own backend | `lissajous`, `mathMode`, `mobiusRings` | built (D-114) |
+| **Trail** | A stroke whose vertices are one object's positions at successive past times | — | open — needs modulation evaluated at `t − k` per vertex |
 | **Terrain / Heightfield** | Displaced plane, height from noise *or from a spectrum* | `terrainMesh` | medium |
 | **Fractal / L-System** | Recursive branching structure | `fractalTree` | medium |
 | **Imported Mesh** | GLTF, swap-only | — | 4J |

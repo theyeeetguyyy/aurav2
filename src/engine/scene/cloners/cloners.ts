@@ -11,23 +11,38 @@ import {
   type ClonerContext,
 } from './types'
 
-/** The three layouts. Everything else is an effector.
+/** The five layouts. Everything else is an effector.
  *
- *  Deliberately three and not thirty: a layout answers "where do the copies start", and
- *  line, ring and box are the three answers that are not reachable by putting an effector
- *  on one of the others. A spiral is a radial cloner with a Step effector on Y; a
- *  staircase is a linear cloner with a Step effector on rotation. Adding those as layouts
- *  would be adding presets, which is exactly what this architecture exists to avoid. */
+ *  The test for admitting one is unchanged: a layout answers "where do the copies start", and it earns
+ *  a place only if no effector on an existing layout can produce it. A spiral is a radial cloner with a
+ *  Step effector on Y; a staircase is a linear cloner with a Step effector on rotation. Adding those
+ *  would be adding presets, which is exactly what this architecture exists to avoid.
+ *
+ *  Line, ring and box were the first three. **Scatter** and **Surface** pass the same test and were
+ *  the gap that mattered most: all three originals are lattices, and an array on a lattice reads as an
+ *  array of copies rather than as a form — the loudest "made in a toy" tell in the output. A Random
+ *  effector does not close it, because jitter displaces copies *from* lattice points, so the lattice
+ *  still sets the density and the count is still locked to `nx·ny·nz`. */
 
 function fill(ctx: ClonerContext, count: number): number {
   const clamped = Math.max(1, Math.min(MAX_CLONES, Math.round(count)))
   ctx.clones.count = clamped
 
-  const { position, rotation, scale, tint } = ctx.clones
+  const { position, rotation, scale, tint, color } = ctx.clones
   position.fill(0, 0, clamped * 3)
   rotation.fill(0, 0, clamped * 3)
   scale.fill(1, 0, clamped * 3)
   tint.fill(1, 0, clamped * 3)
+
+  // Colour seeds from the object's own resolved material colour, so a stack with nothing touching
+  // colour renders exactly as it did before this channel existed.
+  const [r, g, b] = ctx.baseColor ?? [1, 1, 1]
+  for (let i = 0; i < clamped; i++) {
+    const o = i * 3
+    color[o] = r
+    color[o + 1] = g
+    color[o + 2] = b
+  }
   return clamped
 }
 
@@ -190,4 +205,160 @@ function clampCount(value: number): number {
 
 const DEG = Math.PI / 180
 
-export const CLONER_BRICKS: ClonerBrick[] = [radialCloner, linearCloner, gridCloner]
+/** Deterministic 0–1 from an index and a salt. The same integer hash the point bricks use.
+ *
+ *  Never `Math.random()`. A layout has to be a pure function of the clone index or a saved project
+ *  reopens as a different picture and an export stops matching its preview (HC-3). */
+function hash(i: number, salt: number): number {
+  let h = (i + 1) * 374761393 + salt * 668265263
+  h = (h ^ (h >>> 13)) * 1274126177
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296
+}
+
+/** ─────────────────────────────────────────────── the two non-lattice layouts
+ *
+ *  A grid with a Random effector is *not* these. Jitter displaces copies from lattice points, so the
+ *  lattice is still what sets the density — at low amounts you see a wobbly grid and at high amounts
+ *  you see noise, and the count is locked to `nx·ny·nz`. Neither of these has a lattice at all.
+ *
+ *  This is the answer to the loudest tell in the output: an array of two hundred objects that reads as
+ *  an array of two hundred objects (17-EXPRESSIVE-RANGE Pass 3). */
+export const scatterCloner: ClonerBrick = {
+  id: 'cloner-scatter',
+  label: 'Scatter Cloner',
+  family: 'instancing',
+  hint: 'Copies at random through a volume. No rows to give it away — dust, debris, a swarm at rest.',
+  descriptors: [
+    countParam('count', 'Count', MAX_CLONES, 120),
+    cloneParam('width', 'Width', 0, 200, 40, { unit: 'm' }),
+    cloneParam('height', 'Height', 0, 200, 40, { unit: 'm' }),
+    cloneParam('depth', 'Depth', 0, 200, 40, { unit: 'm' }),
+    // Above zero the box becomes a ball: radius scaled by the cube root of a uniform sample, which is
+    // what keeps density even instead of piling copies up at the centre.
+    cloneParam('spherical', 'Spherical', 0, 1, 0, { unit: 'x' }),
+    // Both default to zero, because the catalogue's rule is that a layout starts every clone at unit
+    // scale and no rotation: an effector adds to what the layout produced, so a layout that arrives
+    // already varied gives every effector a moving baseline to fight.
+    cloneParam('scaleVariation', 'Size Variation', 0, 1, 0, { unit: 'x' }),
+    cloneParam('spin', 'Random Spin', 0, 180, 0, { unit: 'deg' }),
+    cloneParam('seed', 'Seed', 0, 99, 0, { step: 1, type: 'int' }),
+  ],
+  layout(ctx) {
+    const count = fill(ctx, num(ctx.params, 'count', 64))
+    const { position, rotation, scale } = ctx.clones
+
+    const w = num(ctx.params, 'width', 40)
+    const h = num(ctx.params, 'height', 40)
+    const d = num(ctx.params, 'depth', 40)
+    const ball = Math.min(1, Math.max(0, num(ctx.params, 'spherical', 0)))
+    const variation = Math.min(1, Math.max(0, num(ctx.params, 'scaleVariation', 0)))
+    const spin = num(ctx.params, 'spin', 0) * DEG
+    const seed = Math.round(num(ctx.params, 'seed', 0))
+
+    for (let i = 0; i < count; i++) {
+      const o = i * 3
+
+      // A direction on the unit sphere, from two hashes. Reused for both distributions so raising
+      // Spherical morphs the same cloud rather than replacing it with a different one.
+      const cosTheta = hash(i, seed + 1) * 2 - 1
+      const phi = hash(i, seed + 2) * Math.PI * 2
+      const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta))
+      const radial = Math.cbrt(hash(i, seed + 3))
+
+      const bx = (hash(i, seed + 4) - 0.5) * w
+      const by = (hash(i, seed + 5) - 0.5) * h
+      const bz = (hash(i, seed + 6) - 0.5) * d
+
+      position[o] = bx + ball * (radial * sinTheta * Math.cos(phi) * (w / 2) - bx)
+      position[o + 1] = by + ball * (radial * cosTheta * (h / 2) - by)
+      position[o + 2] = bz + ball * (radial * sinTheta * Math.sin(phi) * (d / 2) - bz)
+
+      rotation[o] = (hash(i, seed + 7) * 2 - 1) * spin
+      rotation[o + 1] = (hash(i, seed + 8) * 2 - 1) * spin
+      rotation[o + 2] = (hash(i, seed + 9) * 2 - 1) * spin
+
+      // Size variation only ever shrinks, so raising it cannot make copies grow out of frame.
+      const s = Math.max(0.001, 1 - variation * hash(i, seed + 10))
+      scale[o] = s
+      scale[o + 1] = s
+      scale[o + 2] = s
+    }
+  },
+}
+
+export const surfaceCloner: ClonerBrick = {
+  id: 'cloner-surface',
+  label: 'Surface Cloner',
+  family: 'instancing',
+  hint: "Copies over the object's own surface, aligned to it. Scales, studs, fur, a shape made of shapes.",
+  descriptors: [
+    countParam('count', 'Count', MAX_CLONES, 200),
+    // Not optional, and not a unit default. An instanced mesh draws the SAME geometry at every clone,
+    // so without a size the studs are the size of the thing they are studding and the object arrives
+    // as a solid ball of overlapping copies of itself. 0.15 is the value at which it reads as a
+    // surface treatment on arrival.
+    cloneParam('size', 'Clone Size', 0.02, 1, 0.15, { unit: 'x' }),
+    cloneParam('offset', 'Lift', -10, 20, 0, { unit: 'm' }),
+    cloneParam('jitter', 'Jitter', 0, 5, 0, { unit: 'm' }),
+    cloneParam('align', 'Align to Surface', 0, 1, 1, { unit: 'x' }),
+    cloneParam('scaleVariation', 'Size Variation', 0, 1, 0, { unit: 'x' }),
+    cloneParam('seed', 'Seed', 0, 99, 0, { step: 1, type: 'int' }),
+  ],
+  layout(ctx) {
+    const positions = ctx.sourcePositions
+    const vertexCount = positions ? positions.length / 3 : 0
+    const count = fill(ctx, Math.min(num(ctx.params, 'count', 200), vertexCount || 1))
+    if (!positions || vertexCount === 0) return
+
+    const { position, rotation, scale } = ctx.clones
+    const normals = ctx.sourceNormals
+    const lift = num(ctx.params, 'offset', 0)
+    const jitter = num(ctx.params, 'jitter', 0)
+    const align = Math.min(1, Math.max(0, num(ctx.params, 'align', 1)))
+    const size = Math.max(0.001, num(ctx.params, 'size', 0.15))
+    const variation = Math.min(1, Math.max(0, num(ctx.params, 'scaleVariation', 0)))
+    const seed = Math.round(num(ctx.params, 'seed', 0))
+
+    for (let i = 0; i < count; i++) {
+      const o = i * 3
+      // Strided rather than hashed: a hash would revisit the same vertex and leave gaps, while an even
+      // stride spreads copies over the whole surface at any count.
+      const v = (Math.floor((i * vertexCount) / count) % vertexCount) * 3
+
+      // Prefer the real normal; fall back to the outward direction, which is right for anything
+      // roughly centred on the origin and is what the deformers use for the same reason.
+      let nx = normals ? normals[v] : positions[v]
+      let ny = normals ? normals[v + 1] : positions[v + 1]
+      let nz = normals ? normals[v + 2] : positions[v + 2]
+      const length = Math.hypot(nx, ny, nz) || 1
+      nx /= length
+      ny /= length
+      nz /= length
+
+      position[o] = positions[v] + nx * lift + (hash(i, seed + 1) - 0.5) * jitter
+      position[o + 1] = positions[v + 1] + ny * lift + (hash(i, seed + 2) - 0.5) * jitter
+      position[o + 2] = positions[v + 2] + nz * lift + (hash(i, seed + 3) - 0.5) * jitter
+
+      if (align > 0) {
+        // Euler XYZ that takes +Y onto the normal. Y because that is the axis a cone, a cylinder and
+        // a capsule all point along, so "aligned" means what it looks like it should for the shapes
+        // most likely to be used as a stud.
+        rotation[o] = align * Math.atan2(-nz, Math.hypot(nx, ny) || 1e-6)
+        rotation[o + 2] = align * Math.atan2(nx, ny || 1e-6)
+      }
+
+      const s = Math.max(0.001, size * (1 - variation * hash(i, seed + 4)))
+      scale[o] = s
+      scale[o + 1] = s
+      scale[o + 2] = s
+    }
+  },
+}
+
+export const CLONER_BRICKS: ClonerBrick[] = [
+  radialCloner,
+  linearCloner,
+  gridCloner,
+  scatterCloner,
+  surfaceCloner,
+]

@@ -1353,3 +1353,52 @@ cannot be driven this way and no amount of signal will make it move.
 
 *Verified in the browser:* a Standard sphere at 120° goes indigo to salmon, and
 `…//material.hueShift` appears as a patchbay target on a fresh project.
+
+**D-117 · The post chain sizes its buffers from the renderer, and its *effects* from the drawing buffer. They are not the same call.**
+Correction to [D-66](07-DECISIONS.md), which was right about the values and wrong about where to put them.
+
+D-66 established that render targets must follow the **drawing buffer** rather than R3F's `size`,
+because the two disagree during an export and following the wrong one rendered the whole chain at
+preview resolution. True, and the fix passed the drawing-buffer size into `EffectComposer.setSize()`.
+
+**That method resizes the renderer.** Its implementation, in order: if the renderer's size differs
+from the arguments, call `renderer.setSize(…)`; *then* size every buffer and pass from
+`renderer.getDrawingBufferSize()`. The second half is what was wanted and it happens on its own. The
+first half turned the canvas's CSS size into the drawing-buffer size, whereupon the drawing buffer
+became that times the pixel ratio, which the next frame's resize check saw as a change and fed back
+in — **a loop multiplying the canvas by the pixel ratio every frame.** 1338 CSS pixels reached 8192
+in three frames, a 199-megapixel drawing buffer, and the driver refused the allocation.
+
+Everything the user saw follows from that one call: `Texture total allocation size is too large`,
+then `Framebuffer is incomplete: attachment has zero size`, then `Context Lost`, and finally
+`Cannot read properties of null (reading 'alpha')` when React rebuilt the composer against a dead
+context — `postprocessing` reads `getContext().getContextAttributes().alpha`, which is `null` once
+the context is gone.
+
+**The rule, stated so it cannot be got wrong again:** pass `renderer.getSize()` to
+`composer.setSize()`. The comparison then matches, the renderer is left alone, and the buffers are
+still sized from the drawing buffer — which is what D-66 asked for.
+
+*Three defences, not one, because this failure mode is silent until it is fatal:*
+- **The preview's drawing buffer is capped by area**, not by a flat `dpr` maximum. A `dpr` of 2 is
+  right for a docked panel and dangerous full screen — 1920×1080 at 2× is a 3840×2160 buffer, and
+  the composer's two half-float buffers over it are 265 MB each before any effect's own targets.
+- **MSAA steps down with area** — 4 samples up to 2.5 Mpx, 2 up to 5, then none. Aliased edges in
+  full screen are a fair trade for a viewport that still exists, and at that pixel density MSAA buys
+  less anyway.
+- **The chain unmounts while the context is lost** and remounts on restore. Three recovers on its
+  own; `EffectComposer` cannot be *constructed* against a dead context, so the chain must not try.
+
+*Verified in the browser:* three effects stacked at a 4-megapixel buffer, canvas stable at its CSS
+size, context alive, zero console errors — and a 720p export that decodes at exactly 1280×720 with
+bloom visible in the frames.
+
+**D-118 · An export renders at one device pixel per requested pixel.**
+`WebGLRenderer.setSize(w, h)` multiplies by the pixel ratio, and every resolution the exporter offers
+is already in real pixels. So a 1080p export was drawing 3840×2160 and 4K was asking for 7680×4320 —
+wasted work at the small end and, at the large end, an allocation past what a mid-range GPU will give
+once the post chain sits on it. Failing that way loses the context rather than merely being slow,
+which is how it would have presented: "4K export crashes the app", with nothing pointing here.
+
+`setPixelRatio(1)` for the duration of the export, restored afterwards. It also makes the exported
+resolution exactly what the UI promised, which it was not before.

@@ -26,6 +26,14 @@ interface Rect {
   height: number
 }
 
+/** Ceiling on the preview's drawing buffer, in pixels.
+ *
+ *  Chosen from what the post chain costs rather than from what a GPU can draw: every effect in the
+ *  chain is sized from this buffer, and the two half-float composer buffers alone are eight bytes a
+ *  pixel each before multisampling. 4 M pixels is a 2560×1560-ish buffer — sharper than any laptop
+ *  panel at 1× and comfortably inside what a mid-range GPU will allocate several times over. */
+const MAX_BUFFER_PIXELS = 4_000_000
+
 /** The one and only 3D viewport (docs/03-ARCHITECTURE.md HC-9).
  *
  *  Mounted once at the app shell and never unmounted. It positions itself over whichever
@@ -88,6 +96,20 @@ export function PersistentViewport() {
 
   const visible = rect !== null
 
+  // Device pixels per CSS pixel, capped by AREA rather than by a constant.
+  //
+  // A flat `dpr={[1, 2]}` is right for a docked panel and dangerous full screen: 1920×1080 at 2×
+  // is a 3840×2160 drawing buffer, and the post chain allocates two half-float buffers over it —
+  // 265 MB each before any effect's own targets. That allocation is refused by the driver and takes
+  // the WebGL context with it, which is how adding one post effect in full screen killed the
+  // viewport. `PostChain` steps its sample count down as a second line of defence; this is the first.
+  //
+  // At any normal panel size the budget is not reached and this returns 2 exactly as before.
+  const dpr = Math.min(
+    2,
+    Math.max(1, Math.sqrt(MAX_BUFFER_PIXELS / Math.max(1, (rect?.width ?? 1) * (rect?.height ?? 1)))),
+  )
+
   return (
     <div
       className="fixed z-0 overflow-hidden"
@@ -109,8 +131,8 @@ export function PersistentViewport() {
         // the viewport was the one soft, aliased panel in an otherwise crisp interface — and thin
         // geometry paid for it most: a point sprite four CSS pixels across had four pixels to be a
         // circle in, and became a square. Capped at 2 because the fourth pixel of a 4× display buys
-        // nothing visible and costs sixteen times the fragments.
-        dpr={[1, 2]}
+        // nothing visible and costs sixteen times the fragments — and capped again by area above.
+        dpr={dpr}
         // 'percentage' = PCFShadowMap. R3F's default (`shadows` / 'soft') maps to
         // PCFSoftShadowMap, which Three has deprecated.
         shadows="percentage"

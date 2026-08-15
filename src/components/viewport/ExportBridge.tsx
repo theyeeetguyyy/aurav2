@@ -23,6 +23,7 @@ export function ExportBridge() {
       begin(width, height) {
         const previous = new THREE.Vector2()
         gl.getSize(previous)
+        const previousRatio = gl.getPixelRatio()
         const previousCamera = get().camera
         const previousFrameloop = get().frameloop
 
@@ -46,11 +47,19 @@ export function ExportBridge() {
           set({ camera: sceneCamera })
         }
 
+        // The requested resolution is in REAL pixels, and `setSize` multiplies by the pixel ratio —
+        // so on a 2× display a 1080p export was quietly rendering a 3840×2160 buffer and a 4K one
+        // asked for 7680×4320. The second is past what a mid-range GPU will allocate once the post
+        // chain's half-float buffers are stacked on it, and the failure mode is a lost context
+        // rather than a slow render. One device pixel per requested pixel, restored afterwards.
+        gl.setPixelRatio(1)
+
         // `updateStyle: false` — the drawing buffer changes size, the CSS box does not,
         // so the viewport does not visibly resize while rendering.
         gl.setSize(width, height, false)
 
         return () => {
+          gl.setPixelRatio(previousRatio)
           gl.setSize(previous.x, previous.y, false)
           if (sceneCamera) {
             sceneCamera.aspect = previous.x / Math.max(1, previous.y)

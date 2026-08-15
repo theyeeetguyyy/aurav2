@@ -131,6 +131,23 @@ Watch the mirror-image trap too: `DeformRuntime.resolve()` calls `computeVertexN
 adding a deformer *does* shift a lit mesh's shading by a pixel or two. On a mesh, "the image changed"
 is not evidence the deformer did anything.
 
+### Check the drawing buffer, not just the screenshot
+
+A screenshot looks identical whether the canvas is 2307×1733 or 14128×14128 — the browser scales it
+into the same box. D-117 was a feedback loop that multiplied the canvas by the pixel ratio every
+frame and killed the WebGL context, and it is invisible in an image. Two numbers catch it:
+
+```js
+await page.evaluate(() => {
+  const c = document.querySelector('canvas')
+  return { css: [c.clientWidth, c.clientHeight], drawing: [c.width, c.height],
+           lost: c.getContext('webgl2')?.isContextLost() }
+})
+```
+
+`drawing` should be `css × dpr` and should not move when an effect is added. Assert it after any
+change to the post chain, the viewport sizing or the exporter.
+
 ### You cannot read the viewport's pixels from inside the page
 
 `drawImage(canvas, …)` into a 2D context returns **blank**, and so does `gl.readPixels` after

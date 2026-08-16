@@ -112,6 +112,23 @@ describe('delay', () => {
   it('passes the value through unchanged — it changes WHEN, not what', () => {
     expect(applyProcessors([processor('delay', { seconds: 1 })], 0.37)).toBeCloseTo(0.37)
   })
+
+  it('reads AHEAD on a negative offset — the anticipation case', () => {
+    // The one capability no live-tap tool has: the future has not happened yet for a tool that
+    // taps a signal, and here the whole timeline exists before the first frame renders. A shape
+    // wired this way braces a sixteenth before the kick instead of answering it afterwards.
+    expect(processorTimeOffset([processor('delay', { seconds: -0.25 })], 3)).toBeCloseTo(3.25)
+  })
+
+  it('anticipates from the very start of the piece', () => {
+    // The zero floor exists to stop a LAGGING wire asking for a moment before the song. It must
+    // not also stop a leading one at t=0, which is exactly where an intro needs it.
+    expect(processorTimeOffset([processor('delay', { seconds: -0.5 })], 0)).toBeCloseTo(0.5)
+  })
+
+  it('an offset of zero is the identity in both directions', () => {
+    expect(processorTimeOffset([processor('delay', { seconds: 0 })], 4.2)).toBeCloseTo(4.2)
+  })
 })
 
 describe('stacks', () => {

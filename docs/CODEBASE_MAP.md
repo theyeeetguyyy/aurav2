@@ -110,6 +110,7 @@ frame 12 and still produce exactly what was previewed.
 | `RealtimeAnalyser.ts` | Per-track Meyda extraction from the **pre-fader** tap. Live path only — retained for future mic input; modulation does not read it. |
 | `featureTypes.ts` | Shared worker/main contract. Imports nothing — the worker must stay free of stores and DOM. |
 | `analysis.worker.ts` | Offline MIR. Own radix-2 FFT, 13 metrics, spectral-flux onset detection with adaptive median threshold, tempo from folded inter-onset histogram, **percentile normalisation per metric**. |
+| `silence.ts` | The fourteenth metric, and the only one measuring absence. Counts consecutive quiet frames, ignores gaps between hits, ramps over a real stop, and holds zero before a stem's first sound — which is the part a live tap cannot do (D-123). |
 | `AudioFeatures.ts` | **The source of truth for audio-derived values.** `sample(track, metric, t)` — a value AT A TIME, deterministic in any call order. `lastOnsetAtOrBefore()` backs stateless event triggers. |
 
 ### `engine/modulation/`

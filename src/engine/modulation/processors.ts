@@ -20,13 +20,21 @@ import type { ParamDescriptor } from '@/types/params'
  *  |---|---|
  *  | **Quantise** | Snap to N levels. Continuous motion becomes stepped motion — the single cheapest way to make something read as deliberate rather than as drifting |
  *  | **Sample & Hold** | Re-read the input at a fixed rate and hold between reads. The classic stepped-random look, and what turns a smooth envelope into a sequence |
- *  | **Delay** | Read the source as it was `t` seconds ago. Stagger six objects off one stem and they cascade instead of moving as a block |
+ *  | **Delay / Anticipate** | Read the source at another moment. Positive lags, so six objects off one stem cascade instead of moving as a block. **Negative reads ahead** — the shape braces before the hit |
  *
  *  **All three are pure functions of time**, which is what makes them legal here (HC-3). Delay is
  *  the one that looks stateful and is not: it asks the source for `t - d` rather than remembering
  *  what it saw. Every source in this system is already a function of `t`, so that works — and it
  *  means an out-of-order offline render reproduces exactly, which a buffer of past values could
- *  never guarantee. */
+ *  never guarantee.
+ *
+ *  It is also why the offset may go **negative**, and that is worth stating plainly because it is
+ *  the one capability here that no competing tool has at all. A live-tap architecture knows the
+ *  present and nothing else, so "read the signal a sixteenth from now" is not a feature it has
+ *  chosen not to build — it is unavailable to it. Here the whole timeline exists before the first
+ *  frame renders, so ahead and behind are the same subtraction with a different sign. Editing craft
+ *  says a cut landing just *before* the beat creates tension where one landing on it merely
+ *  confirms; this is that, as a parameter. */
 
 export type ProcessorKind = 'quantise' | 'hold' | 'delay'
 
@@ -113,10 +121,16 @@ export const holdBrick: ProcessorBrick = {
 
 export const delayBrick: ProcessorBrick = {
   kind: 'delay',
-  label: 'Delay',
-  hint: 'Reads the source as it was earlier. Stagger several objects off one stem to cascade them.',
+  label: 'Delay / Anticipate',
+  hint: 'Reads the source at another moment. Positive lags — stagger objects to cascade them. NEGATIVE READS AHEAD, so a shape braces before the hit lands.',
   // No `apply`, for the same reason as Sample & Hold: it changes which moment is read.
-  descriptors: [param('seconds', 'Delay', 0, 4, 0.25, { unit: 's' })],
+  //
+  // The range goes NEGATIVE, and that is the whole feature. Reading `t + d` is the one thing no
+  // live-tap tool can do at all — the future has not happened yet — and here it is the same
+  // subtraction with the other sign, because every source is a function of `t` over a timeline that
+  // already exists in full. Two seconds of look-ahead is about eight beats at trap tempo; more than
+  // that stops reading as anticipation and starts reading as a different part of the song.
+  descriptors: [param('seconds', 'Offset', -2, 4, 0.25, { unit: 's' })],
 }
 
 export const PROCESSOR_BRICKS: ProcessorBrick[] = [quantiseBrick, holdBrick, delayBrick]
@@ -153,7 +167,11 @@ export function processorTimeOffset(
     if (!processor.enabled) continue
 
     if (processor.kind === 'delay') {
-      sampleAt -= Math.max(0, num(processor.params, 'seconds', 0.25))
+      // Not clamped at zero: a negative offset reads the source AHEAD of now, which is what makes a
+      // shape tense a sixteenth before the kick instead of answering it afterwards. Sampling past
+      // the end of a timeline holds its last value, so a wire that anticipates does not fall to
+      // zero as the song runs out.
+      sampleAt -= num(processor.params, 'seconds', 0.25)
       continue
     }
 

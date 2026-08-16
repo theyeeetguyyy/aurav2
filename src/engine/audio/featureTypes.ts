@@ -30,6 +30,10 @@ export const FEATURE_KEYS = [
   'spectral-centroid',
   'spectral-flux',
   'onset',
+  // The only metric here that measures ABSENCE. Rises when the stem stops playing for longer than
+  // a gap between hits, which is the bar before the drop — and is computable only offline, because
+  // a live tap cannot tell "silent" from "has not started".
+  'silence',
   ...BAND_KEYS,
 ] as const
 

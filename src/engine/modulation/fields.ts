@@ -208,6 +208,8 @@ export const AUDIO_FIELDS: FieldOption[] = [
   { kind: 'audio', key: 'rms', label: 'Loudness (RMS)', needsSource: true },
   { kind: 'audio', key: 'peak', label: 'Peak', needsSource: true },
   { kind: 'audio', key: 'onset', label: 'Onset (decaying)', needsSource: true },
+  // The inverse of everything else here — it rises when the stem stops.
+  { kind: 'audio', key: 'silence', label: 'Silence', needsSource: true },
   { kind: 'audio', key: 'spectral-centroid', label: 'Brightness', needsSource: true },
   { kind: 'audio', key: 'spectral-flux', label: 'Spectral Flux', needsSource: true },
   { kind: 'audio', key: 'band-sub', label: 'Band · Sub', needsSource: true },

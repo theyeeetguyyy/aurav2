@@ -1475,3 +1475,51 @@ All three sample the frame away from their own pixel, so each declares `standalo
 pass rather than being merged.
 
 *Verified in the browser:* all three compile, render, and leave the context alive.
+
+**D-122 · A wire may read the future. The offset goes negative.**
+The Delay processor read the source at `t − d` and clamped `d` at zero. Removing that clamp is a
+three-line change and it adds the one capability no competitor in the
+[2026 scan](19-RESEARCH-2026.md) has at all.
+
+A live-tap architecture knows the present and nothing else, so "read this stem a sixteenth from now"
+is not a feature those tools chose not to build — it is unavailable to them. Here the whole timeline
+exists before the first frame renders, so ahead and behind are the same subtraction with a different
+sign, and `AudioFeatures.sample` already clamps past the end of a timeline, so an anticipating wire
+holds rather than falling to zero as the song runs out.
+
+*Why it is worth having.* Editing craft says a cut landing just **before** the beat creates tension
+where one landing on it merely confirms. A shape that tenses a sixteenth before the kick and releases
+into it reads as choreographed; the same shape answering the kick reads as reacting. That difference
+is the whole distance between "audio-reactive" and "made to the music", and it is now a number.
+
+*The zero floor stays* — but only where it was for: `processorTimeOffset` still refuses to ask for a
+moment before the piece began, because every source is silent there and a **lagging** wire would drop
+out for its delay length. A leading wire at `t = 0` is unaffected, which is exactly where an intro
+needs it. A test asserts both.
+
+Range is −2 s to +4 s. Two seconds is about eight beats at trap tempo; past that it stops reading as
+anticipation and starts reading as a different part of the song.
+
+**D-123 · Silence is a signal.**
+A fourteenth metric, and the only one that measures **absence**. Every visualiser reacts to loudness;
+nothing reacts to the music stopping — and in this genre the bar before the drop, where everything
+cuts out, is the most important visual moment in the track. Until now it was inexpressible.
+
+**Inverting the envelope does not produce it**, which is the reason this needed designing rather than
+deriving. `1 − envelope` is high between every two kicks, so it fires eight times a bar and reads as
+chatter. What makes silence a musical event is **duration**: the signal counts consecutive quiet
+frames, ignores the first 0.14 s of them — that is the gap between hits — and ramps to full over
+0.6 s.
+
+**It is computable only offline, and that is the interesting part.** A live tap cannot distinguish
+"silent" from "has not started yet": at the first frame of a song every stem is quiet. Because the
+whole file is analysed up front, the run before a stem's first sound is held at zero explicitly, so
+an intro does not open with every silence wire at maximum. A stem that never rises above the floor
+reports nothing at all rather than reporting silence throughout — otherwise the emptiest stem in a
+project would be its loudest source.
+
+*Placement.* Its own module, not a block in the worker: the worker assigns `self.onmessage` at module
+scope and therefore cannot be imported by a test, and a rule this specific — ignore short gaps, ramp
+over long ones, never fire before the first sound, ignore an empty stem — is worth asserting. The
+worker's `timelines` record is pre-allocated from `FEATURE_KEYS`, so adding the key was type-safe by
+construction and an older cached project simply reads zeros.

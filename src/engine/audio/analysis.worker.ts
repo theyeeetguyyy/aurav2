@@ -24,6 +24,7 @@ import {
   type FeatureKey,
   type TrackFeatures,
 } from './featureTypes'
+import { writeSilence } from './silence'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FFT — iterative radix-2 Cooley-Tukey, in place
@@ -315,6 +316,10 @@ function analyse(samples: Float32Array, sampleRate: number): TrackFeatures {
     envelope = target + (envelope - target) * coefficient
     timelines.envelope[frame] = envelope
   }
+
+  // The one metric that measures absence rather than energy. See `silence.ts` for why inverting
+  // the envelope does not produce it, and why it is computable only offline.
+  writeSilence(timelines.envelope, timelines.silence, FEATURE_RATE)
 
   const bpm = estimateBpm(onsetTimes)
 

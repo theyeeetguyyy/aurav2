@@ -22,8 +22,8 @@ could be wrong — read a row, then jump to its section only if you want to argu
 | ~~**A2**~~ | ~~Better colour maths~~ | **Built** (D-120). Hue rotation and palette ramps moved to Oklab, so a hue wire changes colour without changing brightness | ✅ |
 | **A3** | Motion blur on export only | Render each frame several times and average. Fast motion stops strobing. Only an offline tool can do this | small |
 | **A4** | Vertical safe-area guides | A box in the viewport showing what TikTok/Reels covers up, so your subject isn't behind the caption | tiny |
-| **A5** | Anticipation on any wire | Let a wire read *slightly ahead* in the song, so a shape braces before the hit instead of after | tiny |
-| **A6** | Silence as a signal | React to the music *stopping* — the bar before the drop. Nothing on the market does this | small |
+| ~~**A5**~~ | ~~Anticipation on any wire~~ | **Built** (D-122). The Delay processor's offset goes negative, so any wire can read ahead and brace before the hit | ✅ |
+| ~~**A6**~~ | ~~Silence as a signal~~ | **Built** (D-123). A fourteenth metric that rises when a stem stops for longer than a gap between hits | ✅ |
 | **A7** | Starter scenes | Three to five real, fully editable scenes so the first screen isn't empty | small |
 | **B** | Attractors, growth, isolines, audio-shaped strokes | New shapes, all cheap now that the lines backend exists | day each |
 | **C1** | Let cheap shapes rebuild every frame | Unlocks the oscilloscope, the live spectrum, the sweeping figure — the things that read instantly as *music* | medium |

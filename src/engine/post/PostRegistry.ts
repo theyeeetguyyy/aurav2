@@ -1,6 +1,7 @@
 import type { ParamValue } from '@/types/params'
 import { BUILTIN_POST_BRICKS } from './bricks/builtins'
 import { SHADER_POST_BRICKS } from './bricks/shaders'
+import { ONE_BIT_POST_BRICKS } from './bricks/onebit'
 import { feedbackBrick } from './bricks/feedback'
 import { POST_GROUPS, type PostBrick, type PostGroup } from './types'
 
@@ -53,4 +54,9 @@ class PostRegistryImpl {
 
 export const PostRegistry = new PostRegistryImpl()
 
-PostRegistry.registerAll([...BUILTIN_POST_BRICKS, ...SHADER_POST_BRICKS, feedbackBrick])
+PostRegistry.registerAll([
+  ...BUILTIN_POST_BRICKS,
+  ...SHADER_POST_BRICKS,
+  ...ONE_BIT_POST_BRICKS,
+  feedbackBrick,
+])

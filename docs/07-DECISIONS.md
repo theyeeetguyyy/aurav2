@@ -1402,3 +1402,76 @@ which is how it would have presented: "4K export crashes the app", with nothing 
 
 `setPixelRatio(1)` for the duration of the export, restored afterwards. It also makes the exported
 resolution exactly what the UI promised, which it was not before.
+
+**D-119 · A row whose content comes from outside the store must subscribe to it.**
+`StemLaneRow` decided whether to draw the analysed curve by calling `AudioFeatures.has(track.id)` at
+render time. `AudioFeatures` is not a store, so nothing re-rendered the row when the worker landed —
+and the row's entire content depends on that one call. The result: analysis finished in a few
+seconds, the curve sat in memory, and the stems page went on saying *"Analysing… this row fills in
+when the worker finishes"* until some unrelated edit happened to re-render it.
+
+`AudioFeatures.onProgress` has existed since Phase 2 and `SourceColumn` was its only caller. Third
+time this exact shape has appeared — an API that exists, a consumer that forgot (D-100).
+
+*How it was found, and the more useful half:* a browser check waited on the placeholder text
+disappearing and hung for three minutes. The check could not tell "the worker has not finished" from
+"the worker finished and the row did not notice", so `window.aura` grew `tracks()` — with an
+`analysed` flag per stem — plus `lanes()`, `duration()` and `triggers()`. The last one matters on its
+own: **an onset drop creates a trigger, not a connection** (D-30), so a check counting only
+`connections()` reports every onset wire as a failure. It did.
+
+**D-120 · Colour operations happen in Oklab.**
+`shiftHue` (D-116) rotated hue in HSL, and HSL's numbers are not perceptual: yellow and blue at the
+same "lightness" look nothing alike, so a stem wired to Hue Shift made the object **pump in
+brightness as well as colour**. That is not a subtlety — it reads as a bug in the modulation rather
+than in the colour maths, and the modulation was correct.
+
+Oklab has the property the operation needs: `L` is perceptual lightness and the colour lives entirely
+in `(a, b)`, so a hue rotation is a rotation about the origin and `L` does not move. `paletteRamp`
+moved with it — the old version mixed sRGB channel-wise and *said in its own comment* that Oklab
+would be better. It matters most exactly where a ramp is read: across a clone array, where perceptual
+spacing is the difference between an even progression and a dark clump next to a bright one.
+
+`mixHex` deliberately stays a literal sRGB mix. It is a different operation with different callers,
+and a plain blend should not silently become perceptual.
+
+*Hand-rolled, not `culori`:* two matrices and a cube root, in a codebase that already hand-rolls its
+FFT for the same reason.
+
+*Three tests changed, and the change is the point.* They asserted sRGB channel arithmetic —
+`shiftHue('#ff0000', 120) === '#00ff00'`. That is now **wrong on purpose**: pure green is far
+brighter than pure red, so arriving there would mean the lightness moved. They assert the real
+properties instead — the dominant channel walks red→green→blue, perceptual lightness holds across a
+full turn, every angle stays in gamut, and a two-stop ramp is evenly spaced in `L`.
+
+*One test written and deleted:* that an Oklab midpoint stays more vivid than an sRGB one. False for
+the pair it used — two near-complementary colours pass close to neutral in *any* perceptual space.
+The claim Oklab actually makes is about even lightness, and that is what is asserted now.
+
+**D-121 · The 1-bit family — dither, halftone, ASCII.**
+Three post bricks that make the frame *worse* on purpose, and the first addition to that catalogue
+since [17-EXPRESSIVE-RANGE](17-EXPRESSIVE-RANGE.md) ruled that more post effects are permutations
+inside one image family. These are the exception it allows: a dithered frame is a different **kind**
+of image from a bloomed one, not another setting of it.
+
+The reason is in the market rather than in the engine. Clean high-resolution WebGL is, in 2026, the
+visual signature of something generated; a frame that has been visibly reduced reads as made.
+Dither-effect interest is up roughly 900 % year on year and the trend writing names the cause
+outright — a counter-move to perfect-resolution AI imagery ([19 §4](19-RESEARCH-2026.md)). It is also
+the cheapest possible answer to AURA's own output looking uniformly smooth.
+
+*Three implementation notes worth keeping:*
+- **The Bayer matrix is computed, not tabulated.** Indexing a `const` array with a varying value is
+  illegal in GLSL ES 1.0, so the usual 8×8 table cannot be looked up. It is recursive by
+  construction — `M(2n) = 4·M(n)(⌊p/2⌋) + M(2)(p mod 2)` — so three lines reproduce it exactly.
+- **Halftone takes the square root of brightness for its dot radius.** Dot *area* should track
+  brightness and area goes as r². Skipping the root prints every midtone far too dark, which is the
+  mistake the naive version of this effect always makes.
+- **ASCII glyphs live in a `DataTexture`, not in shader constants.** Packing a 5×5 bitmap needs 25
+  bits and a `float` is exact only to 24, so the densest glyphs silently lost their bottom row.
+  A texture has no such limit and needs no bitwise operations. Same pattern as the point sprite.
+
+All three sample the frame away from their own pixel, so each declares `standalone` and takes its own
+pass rather than being merged.
+
+*Verified in the browser:* all three compile, render, and leave the context alive.

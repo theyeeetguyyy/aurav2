@@ -18,8 +18,8 @@ could be wrong — read a row, then jump to its section only if you want to argu
 |---|---|---|---|
 | **S1** | Stem separation in the app | Drop in one MP3, get drums/bass/vocals/other back, all on your machine. Today you must already own stems | medium |
 | **S2** | Spotify Canvas export | The 8-second looping vertical clip every release needs. We can make it loop *perfectly*; most tools can't | small |
-| **A1** | Dither / halftone / ASCII / posterise | Four post effects that make the output look *made* instead of computer-smooth. Massively in fashion right now | small |
-| **A2** | Better colour maths | Rotate a colour without it also getting brighter or duller. Fixes every ramp and every hue wire at once | tiny |
+| ~~**A1**~~ | ~~Dither / halftone / ASCII~~ | **Built** (D-121). Three post effects that make the output look *made* instead of computer-smooth | ✅ |
+| ~~**A2**~~ | ~~Better colour maths~~ | **Built** (D-120). Hue rotation and palette ramps moved to Oklab, so a hue wire changes colour without changing brightness | ✅ |
 | **A3** | Motion blur on export only | Render each frame several times and average. Fast motion stops strobing. Only an offline tool can do this | small |
 | **A4** | Vertical safe-area guides | A box in the viewport showing what TikTok/Reels covers up, so your subject isn't behind the caption | tiny |
 | **A5** | Anticipation on any wire | Let a wire read *slightly ahead* in the song, so a shape braces before the hit instead of after | tiny |

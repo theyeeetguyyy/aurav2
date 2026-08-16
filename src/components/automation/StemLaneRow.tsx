@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Eraser } from 'lucide-react'
 import { metricLabel, useAutomationStore, type AutomationLane } from '@/store/useAutomationStore'
 import { AudioFeatures } from '@/engine/audio/AudioFeatures'
@@ -26,7 +27,19 @@ export function StemLaneRow({
   beatGrid: readonly number[]
 }) {
   const clearClips = useAutomationStore((s) => s.clearClips)
-  const analysed = AudioFeatures.has(track.id)
+
+  // `AudioFeatures` is not a store, so nothing re-renders this row when the worker lands — and this
+  // row's entire content depends on that. Without the subscription the placeholder below is
+  // permanent: the analysis finishes in a few seconds, the curve is right there in memory, and the
+  // stems page goes on saying "Analysing…" until some unrelated edit happens to re-render it.
+  // `onProgress` existed all along and `SourceColumn` was the only caller (D-119).
+  const [analysed, setAnalysed] = useState(() => AudioFeatures.has(track.id))
+  useEffect(() => {
+    setAnalysed(AudioFeatures.has(track.id))
+    return AudioFeatures.onProgress((id) => {
+      if (id === track.id) setAnalysed(AudioFeatures.has(track.id))
+    })
+  }, [track.id])
 
   if (!analysed) {
     return (

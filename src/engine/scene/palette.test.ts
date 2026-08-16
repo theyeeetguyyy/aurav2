@@ -8,6 +8,7 @@ import {
   shiftHue,
   type Palette,
 } from './palette'
+import { linearToOklab, srgbToLinear } from './oklab'
 
 const four: Palette = {
   colors: ['#000000', '#ff0000', '#00ff00', '#ffffff'],
@@ -53,9 +54,36 @@ describe('paletteRamp', () => {
     expect(paletteRamp(four, 2 / 3)).toBe('#00ff00')
   })
 
-  it('interpolates between stops', () => {
-    // Halfway from black to red.
-    expect(paletteRamp(four, 1 / 6)).toBe('#800000')
+  it('interpolates between stops perceptually, not channel-wise', () => {
+    // Halfway from black to red. sRGB's channel midpoint is #800000; Oklab's is darker, because
+    // half the *perceived* lightness of red is not half its red channel. The perceptual answer is
+    // the one that makes a ramp across a clone array read as evenly spaced.
+    const mid = paletteRamp(four, 1 / 6)
+    expect(mid).toMatch(/^#[0-9a-f]{6}$/)
+    expect(mid).not.toBe('#800000')
+    const red = Number.parseInt(mid.slice(1, 3), 16)
+    expect(red).toBeGreaterThan(0x40)
+    expect(red).toBeLessThan(0x80)
+  })
+
+  it('spaces a ramp evenly in perceived lightness', () => {
+    // Oklab's actual guarantee, and what makes a clone array read as an even progression rather
+    // than as a dark clump and a bright clump. Channel-wise sRGB bunches the steps because its
+    // numbers are not perceptual; here every step should be about the same size.
+    //
+    // Note what is NOT claimed: that the midpoint stays vivid. Two near-complementary colours
+    // pass close to neutral in *any* perceptual space, and a test asserting otherwise was wrong.
+    const two: Palette = { ...four, colors: ['#12060a', '#ffb400'] }
+    const lightness = (hex: string) => {
+      const [r, g, b] = [1, 3, 5].map((i) => srgbToLinear(Number.parseInt(hex.slice(i, i + 2), 16) / 255))
+      return linearToOklab(r, g, b).L
+    }
+
+    const steps = [0, 0.25, 0.5, 0.75, 1].map((t) => lightness(paletteRamp(two, t)))
+    const deltas = steps.slice(1).map((v, i) => v - steps[i])
+    for (const d of deltas) expect(d).toBeGreaterThan(0)
+    // Within a few percent — only 8-bit rounding and gamut clamping separate them from identical.
+    expect(Math.max(...deltas) / Math.min(...deltas)).toBeLessThan(1.1)
   })
 
   it('clamps outside 0–1 rather than wrapping', () => {
@@ -147,9 +175,34 @@ describe('shiftHue', () => {
   const channels = (hex: string) =>
     [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16))
 
-  it('rotates the wheel — red to green to blue at 120° steps', () => {
-    expect(shiftHue('#ff0000', 120)).toBe('#00ff00')
-    expect(shiftHue('#ff0000', 240)).toBe('#0000ff')
+  it('rotates towards the expected part of the wheel', () => {
+    // Not to pure green: pure green is far brighter than pure red, and a rotation that arrived
+    // there would have changed the lightness — which is the entire thing this is built to avoid.
+    // What it must do is move the dominant channel from red to green to blue.
+    const dominant = (hex: string) => {
+      const [r, g, b] = [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16))
+      return r >= g && r >= b ? 'r' : g >= b ? 'g' : 'b'
+    }
+    expect(dominant('#ff0000')).toBe('r')
+    expect(dominant(shiftHue('#ff0000', 120))).toBe('g')
+    expect(dominant(shiftHue('#ff0000', 240))).toBe('b')
+  })
+
+  it('holds perceptual lightness across a full turn — the reason for Oklab', () => {
+    // The defect this replaced: rotating in HSL swings apparent brightness as it turns, so a stem
+    // wired to Hue Shift pumped the object's lightness as well as its colour. Sampled every 30°,
+    // Oklab's L must barely move. sRGB luma is a stand-in for it here and is enough to catch a
+    // swing of the size HSL produced.
+    const luma = (hex: string) => {
+      const [r, g, b] = [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16) / 255)
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    }
+    for (const start of ['#6366f1', '#ff7a18', '#00ffa3']) {
+      const base = luma(start)
+      for (let deg = 30; deg < 360; deg += 30) {
+        expect(Math.abs(luma(shiftHue(start, deg)) - base), `${start} @${deg}`).toBeLessThan(0.22)
+      }
+    }
   })
 
   it('is the identity at zero and at a full turn', () => {
@@ -166,13 +219,14 @@ describe('shiftHue', () => {
     expect(shiftHue('#ff0000', -240)).toBe(shiftHue('#ff0000', 120))
   })
 
-  it('keeps saturation and lightness, so a palette stays recognisable under it', () => {
-    const before = channels('#6366f1')
-    const after = channels(shiftHue('#6366f1', 90))
-    const spread = (c: number[]) => Math.max(...c) - Math.min(...c)
-    const mid = (c: number[]) => (Math.max(...c) + Math.min(...c)) / 2
-    expect(spread(after)).toBeCloseTo(spread(before), -0.5)
-    expect(mid(after)).toBeCloseTo(mid(before), -0.5)
+  it('stays inside the gamut at every angle', () => {
+    // A rotation can leave what sRGB can show. Clamping is the answer, and the thing to assert is
+    // that it produces a real colour rather than a wrapped or NaN one.
+    for (const start of ['#ff0000', '#00ffa3', '#b026ff', '#f5f0e6']) {
+      for (let deg = 0; deg < 360; deg += 15) {
+        expect(shiftHue(start, deg), `${start} @${deg}`).toMatch(/^#[0-9a-f]{6}$/)
+      }
+    }
   })
 
   it('leaves greys alone at every angle', () => {

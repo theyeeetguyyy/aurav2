@@ -161,6 +161,12 @@ Helpers: `helper-grid` · `helper-transform` (translate/rotate/scale gizmos)
 
 > Behaviour beyond raw Three.js parameters is unspecified — see Q2.
 
+## 7b. The 1-bit family — `Texture` group (D-121)
+
+`post-dither` · `post-halftone` · `post-ascii`. The three effects that **reduce** the frame instead
+of smoothing it, and the only additions to this catalogue that are a different *kind* of image rather
+than another glow. All three sample away from their own pixel, so all three are `standalone`.
+
 ## 8. Post-process bricks
 
 `post-bloom` (intensity, luminanceThreshold, luminanceSmoothing) ·

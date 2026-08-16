@@ -17,6 +17,8 @@
  *  An object may still hold an explicit colour and ignore the palette. Both matter — the palette is
  *  for the scene reading as one thing, the override is for the one object that has to differ. */
 
+import { chroma, linearToOklab, linearToSrgb, oklabToLinear, srgbToLinear } from './oklab'
+
 export interface Palette {
   /** Ordered. Index 0 is the lead colour and is what a single-object scene gets. */
   colors: string[]
@@ -103,10 +105,15 @@ export function paletteAt(palette: Palette, slot: number): string {
 
 /** Blend two palette entries, for ramping a value across an array of clones.
  *
- *  Interpolated in linear-ish sRGB rather than through a colour space conversion. Not because that
- *  is correct — it is not, and a proper OkLab ramp would be smoother — but because a wrong ramp
- *  between two chosen colours still lands on colours from the palette at both ends, which is what
- *  keeps an array reading as composed. Worth revisiting when there is a reason to. */
+ *  **Interpolated in Oklab.** The earlier version mixed sRGB channel-wise and said so, on the
+ *  grounds that a wrong ramp still lands on the right colours at both ends. True, and the middle is
+ *  where a ramp is actually read: blending two saturated colours in sRGB passes through a desaturated
+ *  grey-brown, which is exactly the part of a clone array the eye spends most of its time on.
+ *  Oklab keeps the midpoint as vivid as the ends and holds a steady perceived lightness across the
+ *  whole run.
+ *
+ *  `mixHex` stays a literal sRGB mix — it is a different operation with different callers, and a
+ *  plain blend should not silently become perceptual. */
 export function paletteRamp(palette: Palette, position: number): string {
   const colors = palette.colors
   if (colors.length === 0) return '#ffffff'
@@ -116,55 +123,63 @@ export function paletteRamp(palette: Palette, position: number): string {
   const scaled = clamped * (colors.length - 1)
   const low = Math.floor(scaled)
   const high = Math.min(colors.length - 1, low + 1)
-  return mixHex(colors[low], colors[high], scaled - low)
+  return mixOklab(colors[low], colors[high], scaled - low)
 }
 
-/** Rotate a colour's hue by `degrees`, keeping its saturation and lightness.
+/** Perceptual blend of two `#rrggbb` strings. */
+export function mixOklab(a: string, b: string, t: number): string {
+  const k = Math.min(1, Math.max(0, t))
+  const [ar, ag, ab] = parseHex(a).map((c) => srgbToLinear(c / 255))
+  const [br, bg, bb] = parseHex(b).map((c) => srgbToLinear(c / 255))
+
+  const from = linearToOklab(ar, ag, ab)
+  const to = linearToOklab(br, bg, bb)
+  const lerp = (x: number, y: number) => x + (y - x) * k
+
+  return fromLinear(
+    oklabToLinear({ L: lerp(from.L, to.L), a: lerp(from.a, to.a), b: lerp(from.b, to.b) }),
+  )
+}
+
+function fromLinear([r, g, b]: [number, number, number]): string {
+  return toHex(
+    Math.round(linearToSrgb(r) * 255),
+    Math.round(linearToSrgb(g) * 255),
+    Math.round(linearToSrgb(b) * 255),
+  )
+}
+
+/** Rotate a colour's hue by `degrees`, keeping its lightness and chroma.
  *
  *  The operation behind "the drop changes the colour of the piece". It rotates rather than replaces
  *  so a palette stays recognisable under it: shifting an Ember scene by 40° is still an Ember scene,
  *  where writing an absolute hue would throw away the decision the palette records.
  *
- *  A grey is unchanged at any angle, which is correct and worth knowing — a Mono palette cannot be
- *  driven this way, and no amount of signal will make it move.
+ *  **Rotated in Oklab, not HSL**, and the difference is the whole point. An HSL rotation moves
+ *  through hues of wildly different apparent brightness — yellow at "lightness 0.5" is far brighter
+ *  than blue at the same number — so a stem wired to this made the object pump in lightness as well
+ *  as colour. In Oklab, `L` is perceptual lightness and the hue lives entirely in `(a, b)`, so a
+ *  rotation about the origin changes the colour and nothing else.
  *
- *  Hand-rolled rather than `THREE.Color.offsetHSL` because this file is colour authoring and has no
- *  reason to pull in the renderer; the conversion is fifteen lines and exact. */
+ *  A grey is unchanged at any angle, which is correct and worth knowing — a Mono palette cannot be
+ *  driven this way, and no amount of signal will make it move. In Oklab that falls out for free:
+ *  a grey has zero chroma, and rotating zero gives zero.
+ *
+ *  Out-of-gamut results are clamped. Rotating a saturated colour eventually leaves what sRGB can
+ *  show, and clamping desaturates it slightly rather than wrapping it to something unrelated. */
 export function shiftHue(hex: string, degrees: number): string {
   if (degrees === 0 || !Number.isFinite(degrees)) return hex
 
-  const [r, g, b] = parseHex(hex).map((c) => c / 255)
-  const max = Math.max(r, g, b)
-  const min = Math.min(r, g, b)
-  const lightness = (max + min) / 2
-  const delta = max - min
-  if (delta === 0) return hex
+  const [r, g, b] = parseHex(hex).map((c) => srgbToLinear(c / 255))
+  const lab = linearToOklab(r, g, b)
+  if (chroma(lab) < 1e-6) return hex
 
-  const saturation = lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min)
+  const angle = (degrees * Math.PI) / 180
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
 
-  let hue: number
-  if (max === r) hue = ((g - b) / delta + (g < b ? 6 : 0)) / 6
-  else if (max === g) hue = ((b - r) / delta + 2) / 6
-  else hue = ((r - g) / delta + 4) / 6
-
-  // Wraps, so a routed signal that overshoots lands somewhere sensible instead of clamping.
-  hue = (((hue + degrees / 360) % 1) + 1) % 1
-
-  const q = lightness < 0.5 ? lightness * (1 + saturation) : lightness + saturation - lightness * saturation
-  const p = 2 * lightness - q
-  return toHex(
-    Math.round(hueToChannel(p, q, hue + 1 / 3) * 255),
-    Math.round(hueToChannel(p, q, hue) * 255),
-    Math.round(hueToChannel(p, q, hue - 1 / 3) * 255),
-  )
-}
-
-function hueToChannel(p: number, q: number, t: number): number {
-  const wrapped = ((t % 1) + 1) % 1
-  if (wrapped < 1 / 6) return p + (q - p) * 6 * wrapped
-  if (wrapped < 1 / 2) return q
-  if (wrapped < 2 / 3) return p + (q - p) * (2 / 3 - wrapped) * 6
-  return p
+  const rotated = { L: lab.L, a: lab.a * cos - lab.b * sin, b: lab.a * sin + lab.b * cos }
+  return fromLinear(oklabToLinear(rotated))
 }
 
 /** Linear mix of two `#rrggbb` strings. Returns hex, because that is what the material stores. */

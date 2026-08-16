@@ -119,9 +119,11 @@ one shared 642-vertex icosphere** (any↔any morphable) · **10 native primitive
 · **15 deformers**, each a structurally distinct class of vertex operation, with a stack
 UI, all drivable at frame rate · inspector shows live modulated values.
 See [12-DEFORMERS.md](12-DEFORMERS.md).
-✅ **4I post-processing** — 14 whole-frame effects in five groups (Glow · Distort · Time ·
+✅ **4I post-processing** — **17** whole-frame effects in five groups (Glow · Distort · Time ·
 Colour · Texture), a project-global reorderable stack with a master bypass, adjacent
-effects merged into one fullscreen pass.
+effects merged into one fullscreen pass. Includes the **1-bit family** — Dither, Halftone and
+ASCII — which reduce the frame rather than smoothing it, and are the one addition that is a
+different kind of image rather than another glow (D-121).
 ✅ **4L materials** — 7 shading models as bricks (Standard, Physical, Unlit, Gradient,
 Fresnel Rim, Toon, Normal). `MaterialParams` is open, not a fixed struct.
 ✅ **4M environment** — gradient background, fog, three-point rig with drivable intensity

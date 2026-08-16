@@ -2,6 +2,9 @@ import { useSceneStore } from '@/store/useSceneStore'
 import { useProjectStore } from '@/store/useProjectStore'
 import { useModulationStore } from '@/store/useModulationStore'
 import { usePostStore } from '@/store/usePostStore'
+import { useAudioStore, projectDuration } from '@/store/useAudioStore'
+import { useAutomationStore } from '@/store/useAutomationStore'
+import { AudioFeatures } from '@/engine/audio/AudioFeatures'
 import { activeClock } from '@/engine/time/timeAuthority'
 
 /** Read-only state bridge for browser-driven checks. Development builds only.
@@ -44,6 +47,13 @@ export function installDevBridge(): void {
           target: c.target,
           enabled: c.enabled,
         })),
+      /** Discrete wires. An onset drop makes one of THESE, never a connection (D-30) — a check
+       *  that counts only `connections()` reports every onset wire as a failure. */
+      triggers: () =>
+        useModulationStore.getState().triggers.map((t) => ({
+          source: t.source,
+          target: t.target,
+        })),
       states: () =>
         Object.values(useProjectStore.getState().project.statesLibrary).map((s) => ({
           id: s.id,
@@ -61,6 +71,29 @@ export function installDevBridge(): void {
       activeStateId: () => useProjectStore.getState().activeStateId,
       post: () => usePostStore.getState().effects.map((e) => e.effectId),
       time: () => activeClock().time,
+
+      /** Stems, and whether the offline worker has actually produced their timelines.
+       *
+       *  Worth a getter of its own: "the stem row still says Analysing" has two very different
+       *  causes — the worker has not finished, or it has and the row did not re-render — and a
+       *  check that cannot tell them apart will either hang or proceed on nothing. */
+      tracks: () =>
+        useAudioStore.getState().tracks.map((t) => ({
+          id: t.id,
+          name: t.name,
+          analysed: AudioFeatures.has(t.id),
+          trim: t.trimBounds,
+          duration: t.buffer?.duration ?? 0,
+        })),
+      duration: () => projectDuration(useAudioStore.getState().tracks),
+      /** The selected signals, which is what Routing lists as sources. */
+      lanes: () =>
+        useAutomationStore.getState().lanes.map((l) => ({
+          id: l.id,
+          name: l.name,
+          metric: l.source?.metric ?? null,
+          clips: l.clips.length,
+        })),
     },
   })
 }

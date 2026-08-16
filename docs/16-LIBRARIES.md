@@ -88,7 +88,7 @@ strokes are best at.
 deformed positions each frame: one copy per frame, and it buys width. `Line2NodeMaterial` is the
 WebGPU equivalent if that migration ever happens.
 
-### An Oklab colour utility — **planned**, and small enough to hand-roll ([20 §A2](20-OPPORTUNITIES.md))
+### An Oklab colour utility — **built, hand-rolled** ([D-120](07-DECISIONS.md)), in `engine/scene/oklab.ts`
 
 `paletteRamp` already documents that its sRGB mixing is wrong, and `shiftHue` (D-116) has the same
 flaw somewhere more visible: rotating hue in HSL changes apparent brightness as it turns, so a stem

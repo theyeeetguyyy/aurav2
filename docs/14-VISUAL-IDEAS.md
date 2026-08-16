@@ -9,7 +9,7 @@
 
 ## Benchmark
 
-Notch ships **70+ deformer nodes** and **20+ cloner nodes**. AURA has 15 deformers, 14 post effects,
+Notch ships **70+ deformer nodes** and **20+ cloner nodes**. AURA has 15 deformers, 17 post effects,
 9 materials, 5 cloners and 6 effectors, across three render backends. That gap is a roadmap, not a
 verdict — Notch is a decade old, and about half of its list is things AURA should never build (face
 tracking, MDD import, fertilizer times). The half worth taking is below.
@@ -139,7 +139,7 @@ Cheapest quality-per-hour in the entire document.
 - **Pixel sort** · **datamosh** — glitch, currently very much in fashion.
 - **Optical-flow displacement** — the frame drags itself along its own motion.
 - **Edge detect / contour** — instant line-art or toon rendering.
-- **Halftone · ASCII · dither · posterise** — print and terminal aesthetics.
+- ~~**Halftone · ASCII · dither**~~ — ✅ built (D-121). Print and terminal aesthetics.
 - **CRT / VHS / scanlines** — analogue nostalgia.
 - **Anamorphic streaks · god rays · lens dirt** — cinematic.
 - **Cosine palettes** — recolour the entire frame from four vectors. Palette cycling on the beat.
@@ -290,9 +290,9 @@ graphics work at all. Full reasoning, cost and risk in [20-OPPORTUNITIES.md](20-
   compared against key profiles gives the chord. Wire it to the hue shift that landed in D-116 and
   *the colour changes when the chord changes*. Scriabin drew this map in 1910; nobody in the
   competitive set ships it.
-- **The 1-bit family** — dither, halftone, ASCII, posterise. Four post bricks, and the one place
-  where "another post effect" is a different *kind* of image rather than another glow: it is the
-  fastest way for output to stop reading as smooth generated WebGL.
+- ~~**The 1-bit family**~~ — ✅ built (D-121): Dither, Halftone and ASCII. The one place where
+  "another post effect" is a different *kind* of image rather than another glow, and the fastest
+  way for output to stop reading as smooth generated WebGL.
 
 ## Part 8 — What I would actually build, in order
 

@@ -86,7 +86,7 @@ This table is the inventory; that document is the sequence.
 | **Colour & light authoring** | Not previously listed, and it is **first**. One colour per object from a rotating palette, over near-black, under one rig — so every scene is "an accent colour on dark", including for a user who made no colour decision. Palettes, gradients across clones, hue from signal. Cheapest change that touches every frame | 17 §3 Pass 1 |
 | **Points backend** | Doubles the medium: a cloud is not a surface. `points` is already in the type union with nothing behind it. Stateless, so D-49's objection to particle *libraries* does not apply | 10-ELEMENTS C |
 | **Non-lattice structure** | Cloners distribute on grids, radials and spirals — all regular, so multiplicity always reads as an array. Loudest "made in a toy" signal in the current output | 17 §3 Pass 3 |
-| **Morph engine** | "Transform between any to any" is in the brief, and the shared-topology work is already done | 4F |
+| ~~**Morph engine**~~ | **Built** (D-124). Any procedural shape blends into any other, Amount routable | 4F ✅ |
 | **More deformers** | FFT/spectrum, curl noise, cull/dissolve, voronoi shatter, taper, spline, jelly | 14-VISUAL-IDEAS §2 |
 | **Data elements** | Spectrum bars, waveform, Lissajous — what makes a video read instantly as *music* | 10-ELEMENTS B |
 | **Extruded 3D text** | The audience's clearest unmet need — beat name, producer tag, channel logo. **Now the last unbuilt element family that is not SDF** | 10-ELEMENTS A |

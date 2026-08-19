@@ -17,6 +17,7 @@ import { buildObject } from '@/engine/scene/buildObject'
 import { DEFAULT_PALETTE } from '@/engine/scene/palette'
 import { ModulationMatrix } from '@/engine/modulation/ModulationMatrix'
 import type { SceneObject } from '@/types/visual'
+import { projectDuration, useAudioStore } from './useAudioStore'
 
 /** States, strips and markers.
  *
@@ -366,3 +367,15 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   setBpm: (bpm) => set((s) => ({ project: { ...s.project, bpm } })),
 }))
+
+/** Section markers and the project's length, for the narrative fields (6C).
+ *
+ *  Passed into the engine, never imported by it — the same rule as `getLane` and `getPatterns`.
+ *  The duration comes from the audio rather than the project: a section's arc has to run to the end
+ *  of the song, and the last marker has no end of its own. */
+export function getSections(): { markers: readonly SectionMarker[]; duration: number } {
+  return {
+    markers: useProjectStore.getState().project.markers,
+    duration: projectDuration(useAudioStore.getState().tracks),
+  }
+}

@@ -5,7 +5,12 @@ import { useGeneratorStore } from '@/store/useGeneratorStore'
 import { GENERATOR_TYPES, type GeneratorType } from '@/types/generator'
 import { AudioFeatures } from '@/engine/audio/AudioFeatures'
 import { TransportClock } from '@/engine/time/TransportClock'
-import { AUTOMATION_FIELD, GENERATOR_FIELD, RHYTHM_FIELDS } from '@/engine/modulation/fields'
+import {
+  AUTOMATION_FIELD,
+  GENERATOR_FIELD,
+  NARRATIVE_FIELDS,
+  RHYTHM_FIELDS,
+} from '@/engine/modulation/fields'
 import { metricLabel, useAutomationStore } from '@/store/useAutomationStore'
 import type { FeatureKey } from '@/engine/audio/featureTypes'
 import type { FieldRef } from '@/types/params'
@@ -88,6 +93,7 @@ export function SourceColumn({ onDragStart }: SourceColumnProps) {
       })}
 
       <RhythmSection onDragStart={onDragStart} />
+      <NarrativeSection onDragStart={onDragStart} />
       <DrawnSection lanes={drawnLanes} onDragStart={onDragStart} />
       <GeneratorSection onDragStart={onDragStart} />
     </div>
@@ -232,6 +238,33 @@ function RhythmSection({ onDragStart }: SourceColumnProps) {
           key={option.key}
           label={option.label}
           field={{ kind: 'rhythm', key: option.key }}
+          color="var(--color-aura-node-processor)"
+          onDragStart={onDragStart}
+        />
+      ))}
+    </Group>
+  )
+}
+
+/** The song's own structure as a signal (6C).
+ *
+ *  Like Rhythm, these take no stem: a section belongs to the piece, not to one instrument. What
+ *  makes them different from everything else in this column is that they are not measurements of
+ *  sound at all — they read the markers the user placed, which is the only way a signal can know it
+ *  is in the third bar of a build rather than simply loud (D-29). */
+function NarrativeSection({ onDragStart }: SourceColumnProps) {
+  return (
+    <Group>
+      <header className="flex items-center gap-1.5 px-2 py-1.5 sticky top-0 bg-aura-base z-10">
+        <Waves className="w-3 h-3 text-slate-500" />
+        <h3 className="flex-1 text-[11px] font-medium text-slate-200">Structure</h3>
+      </header>
+
+      {NARRATIVE_FIELDS.map((option) => (
+        <SourceDot
+          key={option.key}
+          label={option.label}
+          field={{ kind: 'narrative', key: option.key }}
           color="var(--color-aura-node-processor)"
           onDragStart={onDragStart}
         />

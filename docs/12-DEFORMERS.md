@@ -37,7 +37,7 @@ stack gets a private copy, one without allocates nothing.
 
 ---
 
-## The fifteen
+## The twenty
 
 Each is a different **class** of vertex operation, not a variation on one. That is the
 selection criterion — a deformer that is "explode but slightly different" earns nothing,
@@ -60,9 +60,31 @@ because the value is in how they *combine*.
 | 13 | **Quantize** | discretisation | Snaps vertices to a grid, blended. Digital and blocky | Amount ← a build-up |
 | 14 | **Attract / Repel** | point field | Pulls toward or pushes from a movable point, Gaussian falloff | Point position ← LFOs, to drag the shape around |
 | 15 | **Spherify** | normalisation | Rounds toward a sphere; negative exaggerates the silhouette | Anything — it is the "resolve" deformer |
+| 16 | **Dissolve** | subtractive | The only one that REMOVES rather than moves. Vertices past a threshold collapse to the centre, making their triangles degenerate and therefore invisible. Scatter sweeps between a clean wipe along an axis and a scattered erosion | Amount ← a build-up, for a shape that disintegrates into the drop |
+| 17 | **Taper** | proportional | Scales the cross-section along an axis. The only one that changes a shape's *proportions* — cylinder to cone, sphere to teardrop | Slow envelope |
+| 18 | **Mirror** | space folding | Reflects one half of the shape onto the other. Asks which side of a plane a vertex is on rather than where to move it, so the silhouette changes *shape*. Offsetting the plane cuts the form somewhere it was not designed to be cut | Amount ← a build-up |
+| 19 | **Ocean** | trochoidal | Gerstner waves. Points move in circles rather than up and down, so material piles into sharp crests with flat troughs between — the horizontal term is the whole effect and no setting of **Wave** reproduces it | Travel ← saw LFO |
+| 20 | **Shatter** | cellular, irregular | Voronoi cells from scattered seeds, where **Fracture** uses an axis-aligned grid. Same gesture, different material: grid gives blocks and reads digital, seeds give shards and read as glass | Kick, hard hits |
+
+### One that was written and deleted
+
+**Relax** — a smoothing deformer, to stack after chaos and regain control of a silhouette. Without
+neighbour adjacency the only thing it could do was pull vertices toward a **mean radius**, which is
+Spherify with the radius computed rather than typed. The selection criterion above is not decoration:
+a catalogue whose premise is that every entry is a distinct class is worth *less* for holding a
+near-duplicate. A true Laplacian relax needs adjacency the shared topology could provide and does not
+expose — real work, not twenty lines, and worth doing properly when it is worth doing.
 
 ### Distinctions worth knowing
 
+- **Fracture vs. Shatter.** Both break the surface into rigid chunks; the difference is the
+  break *pattern*, and the pattern is the point. Fracture quantises position onto an axis-aligned
+  grid, so the pieces are blocks and it reads as digital collapse. Shatter assigns each vertex to
+  its nearest of N scattered seeds, so the pieces are irregular shards and it reads as glass or
+  stone. Neither is a setting of the other.
+- **Wave vs. Ocean.** Wave is a vertical sine — round, symmetric humps. Ocean adds the horizontal
+  term that makes water water: points travel in circles, material gathers at the crest, and the
+  troughs flatten out. Turning Wave's amplitude up gives taller humps, never peaks.
 - **Explode vs. Fracture.** Explode moves every vertex independently, so the mesh
   stretches. Fracture groups neighbours into cells and moves each cell as a rigid unit,
   so the mesh reads as *broken*. Different look, different maths.

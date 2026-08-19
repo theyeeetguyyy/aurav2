@@ -478,7 +478,181 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
   },
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Texture
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Sobel edge detection — the frame as line art.
+ *
+ *  Structurally unlike everything else in this file: every other effect here is a function of a
+ *  pixel's own colour or of where it samples from. This one is a **spatial derivative** — it
+ *  responds to how fast colour is *changing*, which is information no per-pixel operation has
+ *  access to. That is why it can turn a lit render into a drawing, and why no combination of
+ *  grade, bloom and kaleidoscope approximates it.
+ *
+ *  It also pairs with the lines backend in a way worth knowing: strokes drawn in 3D and edges
+ *  extracted in 2D are the same visual language arriving from opposite directions, and a scene
+ *  using both reads as deliberately drawn rather than as a filtered render. */
+export const edgeBrick: PostBrick = {
+  id: 'post-edge',
+  label: 'Edge / Contour',
+  hint: 'Outlines where the picture changes fastest. Turns any render into line art.',
+  group: 'Texture',
+  standalone: true,
+  descriptors: [
+    postParam('amount', 'Amount', 0, 1, 0),
+    // Below the threshold nothing is drawn, so a noisy render does not become a grey mesh of
+    // false edges. This is the control that decides whether it reads as a drawing or as dirt.
+    postParam('threshold', 'Threshold', 0, 1, 0.12),
+    postParam('width', 'Line Width', 0.5, 4, 1, { unit: 'x' }),
+    // 0 keeps the picture and draws over it; 1 throws the picture away and keeps only the lines.
+    postParam('isolate', 'Ink Only', 0, 1, 0),
+  ],
+  create(): PostHandle {
+    const { effect, set } = shaderEffect(
+      'Edge',
+      /* glsl */ `
+uniform float amount;
+uniform float threshold;
+uniform float width;
+uniform float isolate;
+
+float luma(const in vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+
+void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
+  if (amount <= 0.0) { outputColor = inputColor; return; }
+
+  vec2 step = texelSize * width;
+
+  // Full 3×3 Sobel rather than a cheap 4-tap difference: the diagonal taps are what keep a
+  // near-45° edge as bright as a vertical one, and without them the outline of a rotating
+  // object visibly pulses as it turns.
+  float tl = luma(texture2D(inputBuffer, uv + vec2(-step.x,  step.y)).rgb);
+  float t  = luma(texture2D(inputBuffer, uv + vec2( 0.0,     step.y)).rgb);
+  float tr = luma(texture2D(inputBuffer, uv + vec2( step.x,  step.y)).rgb);
+  float l  = luma(texture2D(inputBuffer, uv + vec2(-step.x,  0.0   )).rgb);
+  float r  = luma(texture2D(inputBuffer, uv + vec2( step.x,  0.0   )).rgb);
+  float bl = luma(texture2D(inputBuffer, uv + vec2(-step.x, -step.y)).rgb);
+  float b  = luma(texture2D(inputBuffer, uv + vec2( 0.0,    -step.y)).rgb);
+  float br = luma(texture2D(inputBuffer, uv + vec2( step.x, -step.y)).rgb);
+
+  float gx = (tr + 2.0 * r + br) - (tl + 2.0 * l + bl);
+  float gy = (tl + 2.0 * t + tr) - (bl + 2.0 * b + br);
+  float edge = smoothstep(threshold, threshold + 0.15, length(vec2(gx, gy)));
+
+  // The line takes the picture's OWN colour, brightened, rather than a colour of its own. That
+  // keeps the scene palette intact through the effect — a magenta object outlines magenta — and
+  // it means this brick needs no colour uniform, which nothing else in this file has.
+  vec3 ink = inputColor.rgb * 1.6 + 0.12;
+  vec3 base = mix(inputColor.rgb, vec3(0.0), isolate);
+  outputColor = vec4(mix(inputColor.rgb, mix(base, ink, edge), amount), inputColor.a);
+}`,
+      { amount: 0, threshold: 0.12, width: 1, isolate: 0 },
+    )
+
+    return {
+      node: effect,
+      update(params) {
+        set('amount', num(params, 'amount', 0))
+        set('threshold', num(params, 'threshold', 0.12))
+        set('width', num(params, 'width', 1))
+        set('isolate', num(params, 'isolate', 0))
+      },
+      dispose: () => effect.dispose(),
+    }
+  },
+}
+
+/** A cathode-ray tube: barrel curvature, scanlines, phosphor mask and edge falloff.
+ *
+ *  Four things that always appear together and are pointless apart — a scanline over a flat
+ *  rectangular frame reads as a stripe overlay, not as a screen. Curvature is what makes the
+ *  others land, because it is the cue that says "this is a display being photographed".
+ *
+ *  Nothing here animates. A rolling scanline would need the composer's own wall clock, which
+ *  cannot be exported (HC-2) — so the roll is a `phase` parameter and the user wires an LFO, the
+ *  same answer this file gives everywhere else. */
+export const crtBrick: PostBrick = {
+  id: 'post-crt',
+  label: 'CRT',
+  hint: 'Curved glass, scanlines and phosphor. Wire Roll to a slow saw for a drifting picture.',
+  group: 'Texture',
+  standalone: true,
+  descriptors: [
+    postParam('amount', 'Amount', 0, 1, 0),
+    postParam('curvature', 'Curvature', 0, 1, 0.35),
+    postParam('scanlines', 'Scanlines', 0, 1, 0.5),
+    postParam('density', 'Line Density', 100, 1400, 600),
+    postParam('mask', 'Phosphor', 0, 1, 0.3),
+    postParam('vignette', 'Vignette', 0, 1, 0.4),
+    postParam('roll', 'Roll', 0, 1, 0, { step: 0.001 }),
+  ],
+  create(): PostHandle {
+    const { effect, set } = shaderEffect(
+      'CRT',
+      /* glsl */ `
+uniform float amount;
+uniform float curvature;
+uniform float scanlines;
+uniform float density;
+uniform float mask;
+uniform float vignette;
+uniform float roll;
+
+void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
+  if (amount <= 0.0) { outputColor = inputColor; return; }
+
+  // Barrel distortion about the centre. The frame is sampled through curved glass, so the
+  // corners pull inward and the picture bows.
+  vec2 c = uv - 0.5;
+  float r2 = dot(c, c);
+  vec2 warped = c * (1.0 + curvature * r2 * 1.6) + 0.5;
+
+  // Outside the tube there is no picture — black, not a smeared edge pixel.
+  float inside = step(0.0, warped.x) * step(warped.x, 1.0) * step(0.0, warped.y) * step(warped.y, 1.0);
+  vec3 picture = texture2D(inputBuffer, clamp(warped, 0.0, 1.0)).rgb * inside;
+
+  // Scanlines follow the WARPED coordinate, so they bend with the glass. Following uv instead
+  // is the tell that separates a convincing CRT from a stripe overlay.
+  float line = 0.5 + 0.5 * sin((warped.y + roll) * density);
+  picture *= 1.0 - scanlines * (1.0 - line);
+
+  // Phosphor triads: neighbouring columns favour R, G and B in turn.
+  float column = fract(warped.x * resolution.x / 3.0);
+  vec3 triad = vec3(
+    smoothstep(0.66, 0.33, abs(column - 0.166)),
+    smoothstep(0.66, 0.33, abs(column - 0.5)),
+    smoothstep(0.66, 0.33, abs(column - 0.833))
+  );
+  picture *= mix(vec3(1.0), 0.4 + 1.6 * triad, mask);
+
+  picture *= 1.0 - vignette * smoothstep(0.15, 0.75, r2);
+
+  outputColor = vec4(mix(inputColor.rgb, picture, amount), inputColor.a);
+}`,
+      { amount: 0, curvature: 0.35, scanlines: 0.5, density: 600, mask: 0.3, vignette: 0.4, roll: 0 },
+    )
+
+    return {
+      node: effect,
+      update(params) {
+        set('amount', num(params, 'amount', 0))
+        set('curvature', num(params, 'curvature', 0.35))
+        set('scanlines', num(params, 'scanlines', 0.5))
+        set('density', num(params, 'density', 600))
+        set('mask', num(params, 'mask', 0.3))
+        set('vignette', num(params, 'vignette', 0.4))
+        // Wrapped, so a saw LFO driving it rolls continuously instead of jumping at the reset.
+        set('roll', num(params, 'roll', 0) * Math.PI * 2)
+      },
+      dispose: () => effect.dispose(),
+    }
+  },
+}
+
 export const SHADER_POST_BRICKS: PostBrick[] = [
+  edgeBrick,
+  crtBrick,
   kaleidoscopeBrick,
   mirrorBrick,
   zoomBlurBrick,

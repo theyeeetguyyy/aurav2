@@ -2,6 +2,7 @@ import type { ParamValue } from '@/types/params'
 import { BUILTIN_POST_BRICKS } from './bricks/builtins'
 import { SHADER_POST_BRICKS } from './bricks/shaders'
 import { ONE_BIT_POST_BRICKS } from './bricks/onebit'
+import { rgbDelayBrick } from './bricks/rgbDelay'
 import { feedbackBrick } from './bricks/feedback'
 import { POST_GROUPS, type PostBrick, type PostGroup } from './types'
 
@@ -59,4 +60,5 @@ PostRegistry.registerAll([
   ...SHADER_POST_BRICKS,
   ...ONE_BIT_POST_BRICKS,
   feedbackBrick,
+  rgbDelayBrick,
 ])

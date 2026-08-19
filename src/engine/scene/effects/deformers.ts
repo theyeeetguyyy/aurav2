@@ -16,9 +16,16 @@ import { fbm3, hashCell, vertexRandom } from './noise'
  *
  *  2. **Structurally distinct.** Each entry is a different *class* of vertex operation,
  *     not a variation on one. Radial, axial, field-based, angular, periodic, cellular,
- *     distance-ring, gravitational, warp, discretising, point-field, normalising. Fifteen
- *     genuinely different mathematical behaviours, which is what makes them combine into
- *     something larger than the sum. */
+ *     distance-ring, gravitational, warp, discretising, point-field, normalising,
+ *     subtractive, proportional. Seventeen genuinely different mathematical behaviours,
+ *     which is what makes them combine into something larger than the sum.
+ *
+ *     The rule has teeth: a **Relax** deformer was written and deleted rather than shipped.
+ *     Without neighbour adjacency it could only pull vertices toward a mean radius, which is
+ *     Spherify with the radius computed instead of typed. A catalogue whose whole premise is
+ *     that every entry is a distinct class is worth less, not more, for holding a near-duplicate.
+ *     A real Laplacian relax needs adjacency the shared topology could provide and does not yet
+ *     expose — that is a feature with real work in it, not twenty lines. */
 
 const num = (params: Record<string, number>, key: string, fallback: number): number => {
   const value = params[key]
@@ -539,6 +546,284 @@ export const DEFORMER_BRICKS: DeformerBrick[] = [
         positions[o] *= scale
         positions[o + 1] *= scale
         positions[o + 2] *= scale
+      }
+    },
+  },
+
+  // ─────────────────────────────────────────────────────── subtractive
+  {
+    // The only deformer that REMOVES rather than moves. Everything else in this file
+    // conserves the silhouette's material; this one takes it away, which is a different
+    // class of image — a shape disintegrating rather than a shape being pushed around.
+    //
+    // A vertex cannot actually be deleted: the index buffer is shared and fixed, and
+    // rebuilding it per frame is exactly what D-31 forbids. Collapsing a vertex onto the
+    // centre instead makes every triangle touching it degenerate, and a degenerate
+    // triangle rasterises to nothing. Same result, no reallocation.
+    id: 'def-dissolve',
+    label: 'Dissolve',
+    family: 'geometry',
+    driver: 'amount',
+    hint: 'Vertices vanish past a threshold. The shape disintegrates rather than deforming.',
+    descriptors: [
+      deformParam('amount', 'Amount', 0, 1, 0),
+      // Which vertices go first. At 0 it is a clean sweep along the axis — a wipe; at 1 it
+      // is fully scattered — an erosion. The two read completely differently and the
+      // in-between is where it looks deliberate.
+      deformParam('scatter', 'Scatter', 0, 1, 0.7),
+      axisParam(),
+    ],
+    apply({ positions, base, vertexCount, params }) {
+      const amount = num(params, 'amount', 0)
+      if (amount <= 0) return
+
+      const scatter = num(params, 'scatter', 0.7)
+      const axis = axisIndexOf(params)
+
+      // Extent along the axis, so the wipe covers the whole shape whatever its size.
+      let min = Infinity
+      let max = -Infinity
+      for (let i = 0; i < vertexCount; i++) {
+        const v = base[i * 3 + axis]
+        if (v < min) min = v
+        if (v > max) max = v
+      }
+      const span = max - min || 1
+
+      for (let i = 0; i < vertexCount; i++) {
+        const o = i * 3
+        // Each vertex gets a threshold: partly its position along the axis, partly its own
+        // stable random. Mixing the two is what turns a hard wipe into an erosion.
+        const along = (base[o + axis] - min) / span
+        const threshold = along * (1 - scatter) + vertexRandom(i) * scatter
+        if (amount <= threshold) continue
+
+        // Collapse hard rather than shrinking gradually: a half-collapsed vertex drags its
+        // triangles into visible spikes, which reads as a glitch instead of as removal.
+        positions[o] = 0
+        positions[o + 1] = 0
+        positions[o + 2] = 0
+      }
+    },
+  },
+
+  // ─────────────────────────────────────────────────────── axial, proportional
+  {
+    // Cross-section scaling that varies along an axis. Trivial arithmetic, and the reason
+    // it earns a place is that nothing else here changes a shape's PROPORTIONS: Squash
+    // conserves volume, Bulge is radial about a centre, Bend is angular. Taper is what
+    // turns a cylinder into a cone and a sphere into a teardrop.
+    id: 'def-taper',
+    label: 'Taper',
+    family: 'geometry',
+    driver: 'amount',
+    hint: 'Narrows one end and widens the other. Cylinder to cone, sphere to teardrop.',
+    descriptors: [
+      deformParam('amount', 'Amount', -1, 1, 0),
+      // Where the cross-section is left untouched. Moving it decides whether the shape
+      // pinches at one end or in the middle.
+      deformParam('pivot', 'Pivot', -1, 1, 0),
+      axisParam(),
+    ],
+    apply({ positions, base, vertexCount, params }) {
+      const amount = num(params, 'amount', 0)
+      if (amount === 0) return
+
+      const axis = axisIndexOf(params)
+      const pivot = num(params, 'pivot', 0)
+      const a = (axis + 1) % 3
+      const b = (axis + 2) % 3
+
+      let extent = 0
+      for (let i = 0; i < vertexCount; i++) {
+        const v = Math.abs(base[i * 3 + axis])
+        if (v > extent) extent = v
+      }
+      if (extent < 1e-5) return
+
+      for (let i = 0; i < vertexCount; i++) {
+        const o = i * 3
+        const along = base[o + axis] / extent - pivot
+        // Clamped above zero: past a full taper the cross-section would invert through the
+        // axis and the shape would turn inside out.
+        const scale = Math.max(0, 1 + along * amount)
+        positions[o + a] *= scale
+        positions[o + b] *= scale
+      }
+    },
+  },
+
+  // ─────────────────────────────────────────────────────── space folding
+  {
+    // Folds space rather than displacing points. Every other deformer here asks "where should
+    // this vertex go"; this one asks "which side of a plane is it on" and reflects it if the
+    // answer is the wrong one. Half the surface is discarded and replaced by a mirror of the
+    // other half, so the silhouette changes shape rather than changing position — the 3D
+    // equivalent of what the Kaleidoscope post effect does to the frame.
+    id: 'def-mirror',
+    label: 'Mirror',
+    family: 'geometry',
+    driver: 'amount',
+    hint: 'Reflects one half of the shape onto the other. Forces symmetry, or folds it into something new.',
+    descriptors: [
+      deformParam('amount', 'Amount', 0, 1, 0),
+      // Moving the plane off centre is what stops this being a symmetry toggle: the fold line
+      // cuts the shape somewhere it was not designed to be cut, and the result is a form the
+      // source geometry does not contain.
+      deformParam('offset', 'Plane Offset', -20, 20, 0, { unit: 'm' }),
+      deformParam('flip', 'Flip Side', 0, 1, 0),
+      axisParam(),
+    ],
+    apply({ positions, vertexCount, params }) {
+      const amount = num(params, 'amount', 0)
+      if (amount <= 0) return
+
+      const axis = axisIndexOf(params)
+      const offset = num(params, 'offset', 0)
+      const keepPositive = num(params, 'flip', 0) < 0.5
+      const k = Math.min(1, amount)
+
+      for (let i = 0; i < vertexCount; i++) {
+        const o = i * 3 + axis
+        const side = positions[o] - offset
+        // Only the discarded half moves. Blending rather than snapping lets the fold be driven:
+        // at 0.5 the two halves meet in the middle, which is a form of its own rather than a
+        // half-finished reflection.
+        if (keepPositive ? side >= 0 : side <= 0) continue
+        positions[o] += (offset - side - positions[o]) * k
+      }
+    },
+  },
+
+  // ─────────────────────────────────────────────────────── periodic, trochoidal
+  {
+    // Gerstner waves — the difference between a sine ripple and water.
+    //
+    // `Wave` displaces vertically by a sine, which gives round, symmetric humps. Real water
+    // moves in circles: a point rises AND slides toward the crest, which piles material up
+    // into sharp peaks with broad flat troughs between. That horizontal term is the entire
+    // effect, it is why ocean shaders use this instead of a sine, and no amount of tuning
+    // `Wave` produces it — the maths is different, not the settings.
+    id: 'def-ocean',
+    label: 'Ocean',
+    family: 'geometry',
+    driver: 'amplitude',
+    hint: 'Trochoidal waves — peaked crests, flat troughs. Water rather than a sine ripple.',
+    descriptors: [
+      deformParam('amplitude', 'Amplitude', 0, 20, 0, { unit: 'm' }),
+      deformParam('wavelength', 'Wavelength', 1, 60, 14, { unit: 'm' }),
+      // How far the horizontal motion goes. At 0 this degenerates to a sine; at 1 the crests
+      // are knife-sharp and start to curl over.
+      deformParam('steepness', 'Steepness', 0, 1, 0.7),
+      // Two crossed wave trains rather than one, so the surface does not read as corduroy.
+      deformParam('crossing', 'Crossing', 0, 1, 0.5),
+      PHASE('Travel'),
+      axisParam('axis', 'Up Axis'),
+    ],
+    apply({ positions, base, vertexCount, params }) {
+      const amplitude = num(params, 'amplitude', 0)
+      if (amplitude === 0) return
+
+      const wavelength = Math.max(0.001, num(params, 'wavelength', 14))
+      const steepness = num(params, 'steepness', 0.7)
+      const crossing = num(params, 'crossing', 0.5)
+      const travel = num(params, 'phase', 0) * TAU
+      const up = axisIndexOf(params)
+      const a = (up + 1) % 3
+      const b = (up + 2) % 3
+
+      const k = TAU / wavelength
+      // Steepness is divided by the wave number so that a steep short wave and a steep long one
+      // look equally steep. Without it, shortening the wavelength quietly turns the surface
+      // inside out as the horizontal term overtakes the spacing between points.
+      const q = (steepness / k) * amplitude * 0.5
+
+      for (let i = 0; i < vertexCount; i++) {
+        const o = i * 3
+        // Sampled at the undisplaced position so the pattern stays anchored to the surface as
+        // other deformers move it, exactly as Noise Wave does.
+        const p1 = base[o + a] * k + travel
+        const p2 = (base[o + a] * 0.6 + base[o + b] * 0.8) * k - travel * 0.85
+
+        const s1 = Math.sin(p1)
+        const s2 = Math.sin(p2)
+
+        positions[o + up] += amplitude * (s1 * (1 - crossing * 0.5) + s2 * crossing * 0.5)
+        // The trochoidal term: material slides toward the crest, sharpening it.
+        positions[o + a] += q * (Math.cos(p1) * (1 - crossing * 0.5) + Math.cos(p2) * 0.6 * crossing * 0.5)
+        positions[o + b] += q * Math.cos(p2) * 0.8 * crossing * 0.5
+      }
+    },
+  },
+
+  // ─────────────────────────────────────────────────────── cellular, irregular
+  {
+    // True Voronoi cells, where `Fracture` uses an axis-aligned grid.
+    //
+    // Both break a shape into chunks, and the break pattern is the whole point: a grid gives
+    // blocks, which reads as digital, and scattered seeds give irregular shards, which reads as
+    // glass or stone. Same gesture, different material — worth its own entry for the same reason
+    // Twist and Vortex both exist.
+    id: 'def-shatter',
+    label: 'Shatter',
+    family: 'geometry',
+    driver: 'amount',
+    hint: 'Breaks the surface into irregular shards and throws them outward. Glass, not blocks.',
+    descriptors: [
+      deformParam('amount', 'Amount', -20, 20, 0, { unit: 'm' }),
+      deformParam('cells', 'Shards', 2, 64, 12, { step: 1, type: 'int', realtime: false }),
+      deformParam('spin', 'Spin', 0, 360, 0, { unit: 'deg' }),
+      deformParam('seed', 'Seed', 0, 32, 1, { step: 1, type: 'int', realtime: false }),
+    ],
+    apply({ positions, base, vertexCount, params }) {
+      const amount = num(params, 'amount', 0)
+      if (amount === 0) return
+
+      const cells = Math.max(2, Math.round(num(params, 'cells', 12)))
+      const spin = (num(params, 'spin', 0) * Math.PI) / 180
+      const seed = Math.round(num(params, 'seed', 1))
+
+      for (let i = 0; i < vertexCount; i++) {
+        const o = i * 3
+
+        // Nearest seed wins. Seeds are hashed from their index, so the shard pattern is stable
+        // across frames and across a reopened project — a pattern that reshuffles every frame
+        // reads as boiling noise rather than as a break.
+        let nearest = 0
+        let best = Infinity
+        for (let c = 0; c < cells; c++) {
+          const sx = (hashCell(c, seed, 11) - 0.5) * 2
+          const sy = (hashCell(c, seed, 23) - 0.5) * 2
+          const sz = (hashCell(c, seed, 37) - 0.5) * 2
+          // Seeds live on the unit sphere of directions rather than in space, so every shard
+          // owns a patch of the SURFACE regardless of how large the shape is.
+          const length = Math.hypot(base[o], base[o + 1], base[o + 2]) || 1
+          const dx = base[o] / length - sx
+          const dy = base[o + 1] / length - sy
+          const dz = base[o + 2] / length - sz
+          const distance = dx * dx + dy * dy + dz * dz
+          if (distance < best) {
+            best = distance
+            nearest = c
+          }
+        }
+
+        // Every vertex of one shard gets the SAME displacement, which is what keeps the shard
+        // rigid instead of stretching it apart.
+        const push = amount * (0.5 + hashCell(nearest, seed, 53))
+        const dirX = (hashCell(nearest, seed, 67) - 0.5) * 2
+        const dirY = (hashCell(nearest, seed, 79) - 0.5) * 2
+        const dirZ = (hashCell(nearest, seed, 91) - 0.5) * 2
+        const length = Math.hypot(dirX, dirY, dirZ) || 1
+
+        positions[o] += (dirX / length) * push
+        positions[o + 1] += (dirY / length) * push
+        positions[o + 2] += (dirZ / length) * push
+
+        if (spin !== 0) {
+          const angle = spin * (hashCell(nearest, seed, 103) - 0.5) * 2
+          rotatePlane(positions, o, 0, 2, angle)
+        }
       }
     },
   },

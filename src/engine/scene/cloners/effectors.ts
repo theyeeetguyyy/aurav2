@@ -394,11 +394,83 @@ export const flowEffector: EffectorBrick = {
   },
 }
 
+/** Every clone turns to face a point.
+ *
+ *  The second effector here that writes an **absolute** value rather than adding a weighted delta —
+ *  the palette ramp was the first, and for the same reason. "Rotate every clone by 30°" and "point
+ *  every clone at this spot" are different kinds of instruction: the first composes with whatever
+ *  came before it, the second replaces it, because a partially-aimed object is not aimed.
+ *
+ *  It is also the first effector whose result depends on **where a clone ended up** rather than on
+ *  its index. That makes it compose in a way none of the others do: a Scatter layout aims outward
+ *  from wherever the hash threw each copy, and a Flow effector ahead of it in the stack changes the
+ *  aim as the array drifts, because Flow has already moved the positions this reads.
+ *
+ *  Blend is what keeps it usable rather than absolute — at 0.5 the array is half-turned toward the
+ *  target, which is a legible state of its own and the only way this survives being wired to a stem. */
+export const aimEffector: EffectorBrick = {
+  id: 'eff-aim',
+  label: 'Aim Effector',
+  family: 'instancing',
+  // Naming the axis in the hint is not pedantry. Verifying this by eye failed twice — first on
+  // spheres, which look identical from every angle, then on cones, which are rotationally
+  // symmetric about their own axis and so show nothing under yaw either. A user pointing an
+  // Aim Effector at a symmetric shape will see no change and reasonably conclude it is broken.
+  hint: 'Turns every clone so its Z axis faces a point. Use an off-axis shape — a symmetric one shows nothing. Wire the target to LFOs and the array tracks it.',
+  driver: 'blend',
+  descriptors: [
+    cloneParam('blend', 'Blend', 0, 1, 0),
+    cloneParam('targetX', 'Target X', -100, 100, 0, { unit: 'm' }),
+    cloneParam('targetY', 'Target Y', -100, 100, 0, { unit: 'm' }),
+    cloneParam('targetZ', 'Target Z', -100, 100, 0, { unit: 'm' }),
+    cloneChoice('away', 'Face Away', false),
+  ],
+  affect(ctx) {
+    const blend = num(ctx.params, 'blend', 0)
+    if (blend <= 0) return
+
+    const tx = num(ctx.params, 'targetX', 0)
+    const ty = num(ctx.params, 'targetY', 0)
+    const tz = num(ctx.params, 'targetZ', 0)
+    const away = ctx.params.away === true
+    const k = Math.min(1, blend)
+
+    const { position, rotation, count } = ctx.clones
+
+    for (let i = 0; i < count; i++) {
+      const o = i * 3
+      let dx = tx - position[o]
+      let dy = ty - position[o + 1]
+      let dz = tz - position[o + 2]
+      if (away) {
+        dx = -dx
+        dy = -dy
+        dz = -dz
+      }
+
+      const flat = Math.hypot(dx, dz)
+      // A clone sitting exactly on the target has no direction to face. Leaving it alone is the
+      // only answer that does not make it snap to an arbitrary axis as the target passes through.
+      if (flat < 1e-6 && Math.abs(dy) < 1e-6) continue
+
+      // Same convention the Flow effector uses when it aligns a clone to the current: pitch on X,
+      // yaw on Y. Matching it means the two can be stacked without one fighting the other.
+      const pitch = Math.atan2(dy, flat || 1e-6)
+      const yaw = Math.atan2(dx, dz || 1e-6)
+
+      rotation[o] += (pitch - rotation[o]) * k
+      rotation[o + 1] += (yaw - rotation[o + 1]) * k
+      rotation[o + 2] += (0 - rotation[o + 2]) * k
+    }
+  },
+}
+
 export const EFFECTOR_BRICKS: EffectorBrick[] = [
   paletteRampEffector,
   stepEffector,
   randomEffector,
   waveEffector,
   flowEffector,
+  aimEffector,
   delayEffector,
 ]

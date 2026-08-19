@@ -116,10 +116,10 @@ Routing page gets a live scene monitor for free.
 ✅ Layer stack outliner · `BrickRegistry` with geometry caching · **7 procedural shapes on
 one shared 642-vertex icosphere** (any↔any morphable) · **10 native primitives**
 (swap-only) · descriptor-driven inspector · `ScrubField` with pointer lock.
-· **15 deformers**, each a structurally distinct class of vertex operation, with a stack
+· **20 deformers**, each a structurally distinct class of vertex operation, with a stack
 UI, all drivable at frame rate · inspector shows live modulated values.
 See [12-DEFORMERS.md](12-DEFORMERS.md).
-✅ **4I post-processing** — **17** whole-frame effects in five groups (Glow · Distort · Time ·
+✅ **4I post-processing** — **20** whole-frame effects in five groups (Glow · Distort · Time ·
 Colour · Texture), a project-global reorderable stack with a master bypass, adjacent
 effects merged into one fullscreen pass. Includes the **1-bit family** — Dither, Halftone and
 ASCII — which reduce the frame rather than smoothing it, and are the one addition that is a
@@ -139,7 +139,10 @@ Lines · Web) as indexed `LineSegments`, so every deformer works on a stroke unm
 links is the same buffer with a different index. Two stroke materials; **no width control, because
 WebGL has none** — weight comes from the two ribbon bricks, which sweep the same paths into ordinary
 meshes (D-114).
-⬜ 4F morph · 4J GLTF · 4K SDF backend.
+✅ **4F morph** — any procedural shape blends into any other, as an effect in the stack, with
+Amount as a routable parameter. The shared 642-vertex topology built in 4C for exactly this had gone
+unused for eight phases while the inspector advertised it (D-124).
+⬜ 4J GLTF · 4K SDF backend.
 
 ### Phase 5 — Modulation (partial)
 ✅ `SignalShaper` (Gain→Rise/Fall→Min/Max→Weight) · `ModulationMatrix` with weighted N:1 ·
@@ -269,8 +272,10 @@ below is worth starting until someone has sat down and made ten of them.
 | Clone count as an audio-driven target | 3 | The descriptor is already `realtime`; what is missing is the demonstration that a drop *adds copies* |
 | Trails | 4 | A stroke whose vertices are one object's positions at successive past times. Needs modulation evaluated at `t − k` per vertex — a pass of its own, not a leftover |
 
-**Deliberately not next:** interaction craft (gizmos, drag-to-scrub, hover, motion) and more
-post effects. The first makes a narrow tool pleasant; the second adds permutations inside an image
+**The order of work is fixed (D-127):** visual range → camera → timeline transitions → interface.
+The craft pass is parked at stage 4 on purpose, not by neglect.
+
+**Deliberately not next:** interaction craft (gizmos, drag-to-scrub, hover, motion). The first makes a narrow tool pleasant; the second adds permutations inside an image
 family that already exists. Both are recorded — see
 [05-DESIGN-SYSTEM.md](05-DESIGN-SYSTEM.md) §"Where this system is still not honest".
 

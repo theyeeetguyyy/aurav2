@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useModulationStore } from '@/store/useModulationStore'
-import { useAutomationStore } from '@/store/useAutomationStore'
 import { useUIStore } from '@/store/useUIStore'
 import { Splitter } from '@/components/common/Splitter'
 import { refreshAnchors } from './anchors'
@@ -35,7 +34,6 @@ interface PatchbayProps {
 export function Patchbay({ selectedWireId, onSelectWire, bottomLeft }: PatchbayProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const connect = useModulationStore((s) => s.connect)
-  const addTrigger = useModulationStore((s) => s.addTrigger)
   const [hint, setHint] = useState<string | null>(null)
 
   const sourceWidth = useUIStore((s) => s.patchSourceWidth)
@@ -54,22 +52,23 @@ export function Patchbay({ selectedWireId, onSelectWire, bottomLeft }: PatchbayP
     (field: FieldRef, address: ParamAddress) => {
       const { descriptor } = describeTarget(address)
 
-      // Onset sources are percussive, so they default to a discrete fire-once trigger.
-      // Everything else defaults to a continuous blend (Principle 4). The source already
-      // implies the answer, so the user is not asked at drop time.
+      // Every drop makes an ordinary connection, onset included (D-125).
       //
-      // The metric now sits behind a lane rather than on the field (D-88), so this has to look
-      // through it. Checking `field.key` alone silently stopped matching when stems started
-      // exposing lanes, which turned every onset drop into a continuous wire.
-      if (isOnsetSource(field)) {
-        addTrigger(field, address)
-        setHint(`Trigger → ${descriptor?.label ?? address.paramKey}`)
-      } else {
-        connect(field, address, seedRange(descriptor))
-        setHint(`${field.key} → ${descriptor?.label ?? address.paramKey}`)
-      }
+      // Onset used to be special-cased into a discrete trigger, on the reasoning that a percussive
+      // source implies a fire-once response. Two things were wrong with that. A trigger has no
+      // signal chain — no gain, curve, rise/fall, range or processors — so the one source most
+      // people wire first was the only one that could not be shaped. And its impulse was a flat
+      // `1` in the parameter's own units while every connection seeds its range from the target
+      // descriptor, so an onset onto a ±20 parameter moved it by 5 % and onto a ±500 one did
+      // nothing visible at all. It read as "onset does not work", and that reading was correct.
+      //
+      // Nothing is lost by dropping the special case: the analysed `onset` timeline is *already* an
+      // exponentially decaying impulse per detected hit, so a continuous wire fires on the hit the
+      // same way — and now the decay is Rise/Fall, the shape is a curve, and the depth is a range.
+      connect(field, address, seedRange(descriptor))
+      setHint(`${field.key} → ${descriptor?.label ?? address.paramKey}`)
     },
-    [connect, addTrigger],
+    [connect],
   )
 
 
@@ -190,19 +189,4 @@ function seedRange(
   const magnitude = base !== 0 ? Math.abs(base) : span * 0.05
 
   return { min: 0, max: Math.min(magnitude, descriptor.max) }
-}
-
-/** Is this source a percussive onset, however it is referenced?
- *
- *  Directly, on a legacy audio field, or through a lane whose metric is onset. Kept next to the
- *  one decision that uses it rather than in the engine, because "what should a drop default to"
- *  is an interaction question, not a signal one. */
-function isOnsetSource(field: FieldRef): boolean {
-  if (field.kind === 'audio') return field.key === 'onset'
-  if (field.kind !== 'automation' || !field.sourceId) return false
-
-  const lane = useAutomationStore
-    .getState()
-    .lanes.find((candidate: { id: string }) => candidate.id === field.sourceId)
-  return lane?.source?.metric === 'onset'
 }

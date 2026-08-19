@@ -8,6 +8,7 @@ import {
   type AutomationPattern,
 } from '@/engine/automation/clips'
 import type { ModulationProcessor } from './processors'
+import { sectionAt, type Section } from '@/engine/timeline/sectionIntensity'
 
 /** Field evaluation — every signal in AURA reduced to one call (Principle 12).
  *
@@ -39,6 +40,11 @@ export interface FieldContext {
   getPatterns?(): Readonly<Record<string, AutomationPattern>>
   /** A shared processing stage by id. Wires reference processors rather than owning them. */
   getProcessor?(id: string): ModulationProcessor | null
+  /** The project's section markers and its length, for the narrative fields.
+   *
+   *  Passed in rather than imported, like everything else here — and the duration matters as much
+   *  as the markers: without it the final section has no end, so its progress never advances. */
+  getSections?(): { markers: readonly Section[]; duration: number }
 }
 
 /** The shape field evaluation needs from a Generator. Structural, so `engine/` does not
@@ -60,6 +66,17 @@ export function evaluateField(field: FieldRef, ctx: FieldContext): number {
       return evaluateGenerative(field, ctx)
     case 'rhythm':
       return evaluateRhythm(field, ctx.time)
+    case 'narrative': {
+      // Declared in `FieldKind` from the start — "section intensity, buildup, drop decay — carries
+      // memory over bars" — and unimplemented until 6C. This is what makes a `drop` marker a force
+      // rather than a label (D-29).
+      const sections = ctx.getSections?.()
+      if (!sections) return 0
+      const state = sectionAt(sections.markers, ctx.time, sections.duration)
+      if (field.key === 'section-progress') return state.progress
+      if (field.key === 'section-approach') return state.approach
+      return state.intensity
+    }
     case 'automation': {
       const lane = field.sourceId ? (ctx.getLane?.(field.sourceId) ?? null) : null
       if (!lane) return 0
@@ -84,9 +101,8 @@ export function evaluateField(field: FieldRef, ctx: FieldContext): number {
       // A drawn lane has no signal to fall back to, so it holds the nearest clip edge.
       return holdValue(lane.clips, patterns, ctx.time) ?? 0
     }
-    case 'narrative':
     case 'object':
-      // Phase 6C (section-aware narrative) and Phase 5E (object-to-object routing).
+      // Phase 5E — object-to-object routing.
       return 0
     default:
       return 0
@@ -219,6 +235,14 @@ export const AUDIO_FIELDS: FieldOption[] = [
   { kind: 'audio', key: 'band-upper-mid', label: 'Band · Upper Mid', needsSource: true },
   { kind: 'audio', key: 'band-presence', label: 'Band · Presence', needsSource: true },
   { kind: 'audio', key: 'band-brilliance', label: 'Band · Brilliance', needsSource: true },
+]
+
+/** The narrative fields need no source at all — they read the project's own section markers, which
+ *  belong to the piece rather than to any one stem. */
+export const NARRATIVE_FIELDS: FieldOption[] = [
+  { kind: 'narrative', key: 'section-intensity', label: 'Section Intensity', needsSource: false },
+  { kind: 'narrative', key: 'section-progress', label: 'Section Progress', needsSource: false },
+  { kind: 'narrative', key: 'section-approach', label: 'Approaching Next', needsSource: false },
 ]
 
 export const RHYTHM_FIELDS: FieldOption[] = [

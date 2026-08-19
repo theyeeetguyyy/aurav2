@@ -191,6 +191,9 @@ function SceneObjectMesh({ object }: { object: SceneObject }) {
         geometry,
         object.effects,
         (effect) => resolveEffectParams(effect) as Record<string, number>,
+        // The object's own geometry parameters, so a morph target is built at this object's size
+        // rather than at the target brick's defaults.
+        object.params,
       )
       // Points included: a deformer displaces vertices, and a point IS a vertex — which is what
       // makes all fifteen of them work on a cloud without a line of point-specific code.

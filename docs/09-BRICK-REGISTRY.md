@@ -141,7 +141,7 @@ positions.
 Layouts: `cloner-linear` · `cloner-radial` · `cloner-grid` · **`cloner-scatter`** ·
 **`cloner-surface`** — the last two are the ones that are not lattices (D-113).
 
-Effectors: `eff-step` · `eff-random` · `eff-wave` · `eff-delay` (reads a stem's timeline at
+Effectors: `eff-step` · `eff-random` · `eff-wave` · **`eff-aim`** (turns every clone's Z axis toward a point — absolute rotation, not a weighted delta, and the only effector that reads where a clone *ended up*) · `eff-delay` (reads a stem's timeline at
 `t − i·delay`, so the array is a physical waveform of the recent past) · **`eff-flow`** (curl noise) ·
 **`eff-palette-ramp`** (the one effector writing absolute colour rather than a weighted delta).
 
@@ -160,6 +160,14 @@ Every clone carries U/V/W in 0–1 so effectors can assign per-clone values.
 Helpers: `helper-grid` · `helper-transform` (translate/rotate/scale gizmos)
 
 > Behaviour beyond raw Three.js parameters is unspecified — see Q2.
+
+## 7c. Reduction and analogue — `Texture` group (D-128)
+
+`post-edge` · `post-crt`. **Edge / Contour** is a spatial derivative — it responds to how fast
+colour is *changing*, which no per-pixel operation can see, and turns a lit render into line art
+that keeps the scene palette. **CRT** is barrel curvature, scanlines, phosphor triads and edge
+falloff together, because a scanline over a flat frame reads as a stripe overlay rather than a
+screen. Its roll is a parameter, not an animation — a wall clock cannot be exported (HC-2).
 
 ## 7b. The 1-bit family — `Texture` group (D-121)
 

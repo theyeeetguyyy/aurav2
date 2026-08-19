@@ -21,6 +21,13 @@ export interface DeformContext {
   vertexCount: number
   /** Resolved parameter values, already including modulation for this frame. */
   params: Record<string, number>
+  /** The vertex positions of this effect's morph target, for a brick that declares
+   *  `morphTargetKey`. Null for every other effect, and null when the target cannot be resolved.
+   *
+   *  Supplied by the runtime rather than looked up by the brick, because `engine/scene/effects/`
+   *  has no business reaching into the geometry registry — and because the lookup is cached there
+   *  once per parameter signature rather than once per frame. */
+  targetPositions: Float32Array | null
 }
 
 /** NOTE: there is deliberately no `time` here (D-36).
@@ -50,6 +57,11 @@ export interface DeformerBrick {
    *  misreading cost real debugging time here. Naming the gate lets the UI say "at rest" instead of
    *  looking dead, and gives a wire an obvious default target. */
   driver: string
+  /** The parameter naming another brick to morph towards, for the one effect that does that.
+   *
+   *  Declaring it is what makes the runtime resolve `DeformContext.targetPositions`. A brick that
+   *  does not declare it never pays for the lookup. */
+  morphTargetKey?: string
   descriptors: ParamDescriptor[]
   apply(ctx: DeformContext): void
 }

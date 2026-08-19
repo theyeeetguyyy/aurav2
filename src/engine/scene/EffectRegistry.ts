@@ -2,6 +2,7 @@ import type { ParamValue } from '@/types/params'
 import type { EffectInstance } from '@/types/visual'
 import type { DeformerBrick } from './effects/types'
 import { DEFORMER_BRICKS } from './effects/deformers'
+import { morphBrick } from './effects/morph'
 import { CLONER_BRICKS } from './cloners/cloners'
 import { EFFECTOR_BRICKS } from './cloners/effectors'
 import type { ClonerBrick, EffectorBrick } from './cloners/types'
@@ -64,4 +65,4 @@ class EffectRegistryImpl {
 
 export const EffectRegistry = new EffectRegistryImpl()
 
-EffectRegistry.registerAll([...DEFORMER_BRICKS, ...CLONER_BRICKS, ...EFFECTOR_BRICKS])
+EffectRegistry.registerAll([...DEFORMER_BRICKS, morphBrick, ...CLONER_BRICKS, ...EFFECTOR_BRICKS])

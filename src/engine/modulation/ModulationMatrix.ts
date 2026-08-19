@@ -45,7 +45,12 @@ class ModulationMatrixImpl {
     triggers: readonly EventTrigger[],
     host: Pick<
       FieldContext,
-      'isTrackActive' | 'getGenerator' | 'getLane' | 'getPatterns' | 'getProcessor'
+      | 'isTrackActive'
+      | 'getGenerator'
+      | 'getLane'
+      | 'getPatterns'
+      | 'getProcessor'
+      | 'getSections'
     >,
   ): void {
     const time = clock.time

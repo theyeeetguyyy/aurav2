@@ -461,3 +461,65 @@ describe('flow effector', () => {
     }
   })
 })
+
+describe('aim effector', () => {
+  const aim = EFFECTOR_BRICKS.find((b) => b.id === 'eff-aim')!
+
+  /** Two clones, placed by hand either side of the origin along Z. */
+  function twoClones(): CloneBuffers {
+    const clones = buffers()
+    clones.count = 2
+    clones.position.set([0, 0, 10, 0, 0, -10])
+    clones.scale.fill(1, 0, 6)
+    return clones
+  }
+
+  function run(overrides: Record<string, ParamValue>): CloneBuffers {
+    const clones = twoClones()
+    aim.affect({ params: { ...defaults(aim), ...overrides }, clones, time: 0 })
+    return clones
+  }
+
+  it('is inert at rest, like every effector', () => {
+    const clones = run({})
+    expect(Array.from(clones.rotation.slice(0, 6))).toEqual([0, 0, 0, 0, 0, 0])
+  })
+
+  it('turns a clone to face the target', () => {
+    // A clone at +Z aiming at the origin looks along −Z, which is a yaw of 180°. One at −Z looks
+    // along +Z, a yaw of 0. If both come back 0 the effector is running and doing nothing, which
+    // is exactly what a screenshot of spheres could not tell me.
+    const clones = run({ blend: 1 })
+    expect(Math.abs(clones.rotation[1])).toBeCloseTo(Math.PI, 3)
+    expect(Math.abs(clones.rotation[4])).toBeCloseTo(0, 3)
+  })
+
+  it('pitches toward a target above the array', () => {
+    const clones = run({ blend: 1, targetY: 10, targetZ: 10 })
+    // Target is level with the +Z clone in Z but 10 above it: looking straight up.
+    expect(clones.rotation[0]).toBeGreaterThan(0.5)
+  })
+
+  it('blends part-way rather than snapping', () => {
+    const full = run({ blend: 1 }).rotation[1]
+    const half = run({ blend: 0.5 }).rotation[1]
+    expect(Math.abs(half)).toBeGreaterThan(0.01)
+    expect(Math.abs(half)).toBeLessThan(Math.abs(full))
+  })
+
+  it('faces away when asked', () => {
+    const toward = run({ blend: 1 }).rotation[1]
+    const away = run({ blend: 1, away: true }).rotation[1]
+    expect(Math.abs(toward - away)).toBeGreaterThan(1)
+  })
+
+  it('leaves a clone sitting exactly on the target alone', () => {
+    // No direction to face. Snapping to an arbitrary axis as the target passes through would be a
+    // visible glitch every time a wired target crosses a clone.
+    const clones = buffers()
+    clones.count = 1
+    clones.position.set([0, 0, 0])
+    aim.affect({ params: { ...defaults(aim), blend: 1 }, clones, time: 0 })
+    expect(Array.from(clones.rotation.slice(0, 3))).toEqual([0, 0, 0])
+  })
+})

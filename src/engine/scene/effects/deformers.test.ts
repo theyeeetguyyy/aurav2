@@ -22,6 +22,7 @@ function makeContext(params: Record<string, number | string>): DeformContext {
     base,
     directions,
     vertexCount: base.length / 3,
+    targetPositions: null,
     params: params as Record<string, number>,
   }
 }
@@ -326,6 +327,7 @@ describe('new deformer families behave structurally differently', () => {
       base,
       directions,
       vertexCount: 2,
+      targetPositions: null,
       params: { ...defaultsOf('def-fracture'), amount: 5, cellSize: 10, spin: 0 } as Record<
         string,
         number
@@ -341,7 +343,15 @@ describe('new deformer families behave structurally differently', () => {
     }
   })
 
-  it('has 15 structurally distinct deformers', () => {
-    expect(DEFORMER_BRICKS.length).toBe(15)
+  it('has 20 structurally distinct deformers', () => {
+    // The count is asserted so that adding one is a deliberate act. Two joined the original
+    // fifteen: Dissolve, which is the only operation here that REMOVES rather than moves, and
+    // Taper, the only one that changes a shape's proportions along an axis.
+    //
+    // A third — Relax — was written and deleted rather than shipped. Without neighbour adjacency
+    // it could only pull vertices toward a mean radius, which is Spherify with the radius computed
+    // instead of typed. A catalogue whose entire premise is that every entry is a distinct class of
+    // operation is worth less, not more, for containing a near-duplicate.
+    expect(DEFORMER_BRICKS.length).toBe(20)
   })
 })

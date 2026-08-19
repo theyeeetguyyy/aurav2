@@ -71,8 +71,8 @@ bounded with the oldest entries dropped first.
 | 4C | `mesh/procedural` — shared-topology icosphere factory, 6 shapes, **invariant test** | ✅ |
 | 4D | `mesh/primitive` — 10 native Three geometries, swap-only | ✅ |
 | 4E | Inspector — fully descriptor-driven, `ScrubField` with pointer lock | ✅ |
-| 4F | Morph engine — vertex lerp within the procedural family | ⬜ |
-| 4G | Deformers — **15 structurally distinct** (D-38). See [12-DEFORMERS.md](12-DEFORMERS.md) | ✅ |
+| 4F | **Morph engine** — vertex lerp within the procedural family, as an entry in the effect stack so Amount is a modulation target and stack order decides morph-then-deform (D-124) | ✅ |
+| 4G | Deformers — **20 structurally distinct** (D-38). See [12-DEFORMERS.md](12-DEFORMERS.md) | ✅ |
 | 4H | **Cloner + Effectors** — radial/linear/grid layouts, Step/Random/Wave/Time-Delay effectors, GPU instanced (D-47) | ✅ |
 | 4I | **Post-processing** — 14 whole-frame effects in 5 groups, project-global stack, every knob a modulation target (D-42/D-46) | ✅ |
 | 4J | `mesh/imported` — GLTF loading, swap-only | ⬜ |
@@ -223,7 +223,7 @@ profile for zero React re-renders during playback.
 |---|---|---|
 | 6A | State library + Strip references (HC-7), per-state connection activation (HC-8) | ✅ |
 | 6B | NLE timeline canvas — 3 lanes, playhead, drag/resize, zoom, pan | ✅ |
-| 6C | Section markers ✅ · **section-aware intensity engine** (restored from v1) | 🟡 |
+| 6C | Section markers ✅ · **section-aware intensity engine** — three narrative sources from the marker layout, so a `drop` marker is a force rather than a label (D-126) | ✅ |
 | 6D | Beat-grid snap, zoom-aware, markers included in the grid | ✅ |
 | 6E | Transitions — cut / crossfade / morph on overlap | ⬜ |
 | 6F | Camera track lane on the timeline | ⬜ |

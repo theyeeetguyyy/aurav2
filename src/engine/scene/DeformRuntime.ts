@@ -1,5 +1,7 @@
 import * as THREE from 'three'
 import type { EffectInstance } from '@/types/visual'
+import type { ParamValue } from '@/types/params'
+import { BrickRegistry } from './BrickRegistry'
 import { EffectRegistry } from './EffectRegistry'
 import type { DeformContext } from './effects/types'
 
@@ -25,6 +27,7 @@ export class DeformRuntime {
     directions: new Float32Array(0),
     vertexCount: 0,
     params: {},
+    targetPositions: null,
   }
 
   /** Produce the geometry to render this frame.
@@ -33,6 +36,11 @@ export class DeformRuntime {
     source: THREE.BufferGeometry,
     effects: EffectInstance[],
     resolveParams: (effect: EffectInstance) => Record<string, number>,
+    /** The object's own geometry parameters, for building a morph target that matches it.
+     *
+     *  A sphere of radius 8 morphing into a torus should become a torus of radius 8. Built against
+     *  the target brick's defaults instead, it would jump in size mid-transition. */
+    brickParams: Record<string, ParamValue> = {},
   ): THREE.BufferGeometry {
     const active = effects.filter(
       (e) => e.enabled && EffectRegistry.get(e.effectId)?.family === 'geometry',
@@ -66,6 +74,12 @@ export class DeformRuntime {
       // The registry holds cloners and effectors too; only a deformer carries `apply`.
       if (!brick || !('apply' in brick)) continue
       ctx.params = resolveParams(effect)
+      // Resolved here rather than inside the brick: `effects/` has no business reaching into the
+      // geometry registry, and the registry caches by parameter signature, so a held morph costs
+      // one lookup rather than a rebuild per frame.
+      ctx.targetPositions = brick.morphTargetKey
+        ? this.morphTarget(String(effect.params[brick.morphTargetKey] ?? ''), brickParams)
+        : null
       brick.apply(ctx)
     }
 
@@ -80,6 +94,26 @@ export class DeformRuntime {
     working.computeBoundingSphere()
 
     return working
+  }
+
+  /** Positions of a morph target, built with the morphing object's own parameters.
+   *
+   *  Returns null unless the target exists and its vertex count matches — the shared-topology
+   *  invariant guarantees it does within the procedural family, and a mismatch means someone
+   *  pointed a morph at a brick that cannot morph. Refusing is the honest answer; lerping between
+   *  mismatched buffers produces exactly the self-intersecting mush the invariant exists to prevent. */
+  private morphTarget(
+    targetId: string,
+    brickParams: Record<string, ParamValue>,
+  ): Float32Array | null {
+    if (!targetId) return null
+
+    const geometry = BrickRegistry.buildGeometry(targetId, brickParams)
+    const attribute = geometry?.getAttribute('position')
+    if (!attribute) return null
+
+    const array = attribute.array as Float32Array
+    return array.length === this.base.length ? array : null
   }
 
   /** Rebuild the working copy when the source geometry changes identity. */

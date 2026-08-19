@@ -5,6 +5,7 @@ import { useModulationStore, getProcessor } from '@/store/useModulationStore'
 import { isTrackVisuallyActive } from '@/store/useAudioStore'
 import { getGenerator } from '@/store/useGeneratorStore'
 import { getLane, getPatterns } from '@/store/useAutomationStore'
+import { getSections } from '@/store/useProjectStore'
 
 /** Evaluates the modulation matrix once per frame, before anything reads it.
  *
@@ -30,6 +31,7 @@ export function ModulationDriver() {
       getLane,
       getPatterns,
       getProcessor,
+      getSections,
     })
   })
 

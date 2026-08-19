@@ -1523,3 +1523,226 @@ scope and therefore cannot be imported by a test, and a rule this specific — i
 over long ones, never fire before the first sound, ignore an empty stem — is worth asserting. The
 worker's `timelines` record is pre-allocated from `FEATURE_KEYS`, so adding the key was type-safe by
 construction and an older cached project simply reads zeros.
+
+**D-124 · Morph is an effect in the stack, and the UI stops claiming a feature that did not exist.**
+Phase 4F, and the original brief's headline requirement: *"Transform btwn any to any possible."*
+
+The infrastructure has been in place since Phase 4C. Every procedural brick builds exactly
+`BASE_VERTEX_COUNT` (642) vertices from one welded icosphere, `proceduralMesh.test.ts` has enforced
+that at every parameter value ever since, and `canMorph()` / `morphTargets()` were written alongside
+it. **Nothing ever used them to move a vertex.** The inspector said *"Can morph into 6 other shapes"*
+and the layer stack drew a ◇ badge beside a capability the software did not have — the fourth
+instance of the pattern D-100 names, and the longest-lived.
+
+*Why an effect and not a property of the object.* `morphTarget` + `morphAmount` on `SceneObject` was
+the obvious design and the worse one. In the effect stack it needs no schema change and no project
+migration, `Amount` becomes a modulation target for free like every other deformer parameter, and —
+the real gain — **stack order decides whether you deform the morphed shape or morph the deformed
+one.** Morph above a Twist twists the result; below it, the twist is what gets blended away. Both
+are legitimate and neither needed a decision from us.
+
+*Why a plain linear vertex lerp is enough.* Because the topology is shared, vertex *i* of a sphere
+and vertex *i* of a torus are the same point on the same base icosphere, displaced differently. The
+correspondence is free, so the in-between shapes are meaningful rather than the self-intersecting
+mush that lerping two arbitrary meshes gives — which is precisely the risk the original research
+flagged, and the reason the 642-vertex invariant exists at all.
+
+*Two details that would have read as bugs:*
+- **The target is built with the morphing object's own parameters**, not the target brick's
+  defaults. A sphere of radius 8 becoming a torus should stay radius 8; against defaults it jumps in
+  size mid-transition.
+- **A missing or mismatched target does nothing**, rather than blending against whatever buffer
+  happened to be there. A cloud, a stroke and a primitive all have their own vertex counts and no
+  correspondence, so refusing is the honest answer.
+
+*The contract change.* `DeformContext` gained `targetPositions` and `DeformerBrick` gained an
+optional `morphTargetKey`. The runtime resolves the target and hands it in — `effects/` has no
+business reaching into the geometry registry, and the registry caches by parameter signature, so a
+held morph costs one lookup rather than a rebuild per frame.
+
+*Verified in the browser:* a Sphere with Morph → Cube at Amount 1 renders a cube while remaining a
+`proc-sphere` object, and at rest changes nothing.
+
+**D-125 · Every drop makes an ordinary connection. Onset is not special-cased into a trigger.**
+Reverses half of [D-30](07-DECISIONS.md), and it was a real defect rather than a preference — reported
+as *"onset was just a name for figured-out automation, why is it not behaving like normal
+automation… not routing the way it is supposed to modulate and change param."* That reading was
+correct.
+
+Dropping an onset source used to call `addTrigger` instead of `connect`. Two consequences, and they
+compounded:
+
+- **A trigger has no signal chain.** No gain, no curve, no rise/fall, no range, no processors. So
+  the source most people wire first was the only one in the product that could not be shaped — and
+  it did not appear in `connections()` either, which is its own kind of confusing.
+- **Its impulse was a flat `1` in the parameter's own units.** Every connection seeds its range from
+  the target descriptor (that is what `seedRange` is for, and why a flat 0→1 default was abandoned).
+  Triggers never did. An onset onto `Explode · Strength` (±20) moved it by five percent; onto
+  `position.z` (±500) it did nothing visible at all.
+
+**Nothing is lost by removing the special case.** The analysed `onset` timeline is *already* an
+exponentially decaying impulse per detected hit — the worker builds it that way — so a continuous
+wire fires on the hit exactly as before. What changes is that the decay is now Rise/Fall, the shape
+is a response curve, the depth is a range, and the whole thing is visible in the wire inspector like
+every other source.
+
+D-30's underlying claim still stands: a discrete impulse into any address is simpler and more capable
+than four hard-coded actions. The mistake was making it the *automatic* answer to a gesture the user
+did not know they were making. The trigger engine stays for projects that already contain one.
+
+*Also removed:* `isOnsetSource`, which had to look through a lane to find a metric and had already
+been quietly broken once when stems started exposing lanes (D-88).
+
+**D-126 · The section-aware intensity engine — a `drop` marker becomes a force.**
+Phase 6C, and the oldest unanswered question in the brief: *"musicians show story, tensions, calls
+and responses, ups and downs thru music… they should also be able to simulate them in the visuals."*
+It stayed philosophy through every document because nothing in the system could express it, and
+[D-29](07-DECISIONS.md) named the reason exactly: **frame-local metrics structurally cannot say
+"tension building over eight bars."** RMS knows how loud this instant is. It cannot know it is the
+third bar of a build.
+
+`FieldKind` has carried `'narrative'` — *"section intensity, buildup, drop decay — carries memory
+over bars"* — since the type was written, and `evaluateField` returned 0 for it. Markers carried the
+structure and did nothing with it. `sectionAt(markers, time, duration)` turns that layout into three
+sources any parameter can be wired to:
+
+| | |
+|---|---|
+| **Section Intensity** | Where this moment sits in the arc, from the section's type and the position within it |
+| **Section Progress** | 0 → 1 through the current section, whatever it is |
+| **Approaching Next** | Rises into the next boundary |
+
+*The curves are the musical claim*, so they are written out per type rather than derived from a
+rule. A **build-up** is the only one that rises the whole way, and it accelerates — tension is not
+felt evenly, it gathers. A **fakeout** rises exactly like a build and then falls off a cliff in its
+last fifth, which is what the word means and the one shape its name does not give away. A **drop**
+starts at full and decays slightly, because sustained maximum reads as flat.
+
+**Approaching Next is the one no live tool can have**, for the same reason a negative wire offset is
+not available to one (D-122): it requires knowing when the next section begins, which is a fact about
+a file that has not finished playing.
+
+*Three details that would otherwise read as bugs:* before the first marker there is **no** section,
+rather than the first one's arc starting early; the final section closes against the project duration,
+or its progress would sit at zero forever and an outro would never fall; and an unmarked project
+reports nothing rather than inventing an arc the user never described.
+
+**D-127 · The order of work, set by the product owner: visual range first, interface last.**
+Pinned so it stops being re-litigated every session. Four stages, in this order, and each one is
+worth more than the one after it:
+
+1. **A great visual.** Raw vocabulary — more under post, deformers, materials, effectors. More ways
+   to manipulate and transform. Expand what can be *made* before improving how it is made.
+2. **Great visual filmmaking through the camera.** Once there is something worth photographing.
+3. **Multiple great visuals through the timeline and states** — transitions between them, not just
+   cuts.
+4. **Then the interface** — usability, UX, design, craft.
+
+**The craft pass is therefore explicitly parked, for the fifth time and now on purpose.** What is
+being parked is real and diagnosed: every control is a slider, a number field or a list row, so you
+manipulate *descriptions* of things rather than the things; there are no viewport gizmos; icon
+buttons have no hit area; density is uniform, so a colour picker, a slider and an enum all read as
+the same weight; and there is no first-run path that is not prose.
+[05-DESIGN-SYSTEM §"Where this system is still not honest"](05-DESIGN-SYSTEM.md) is the standing
+record and does not need re-diagnosing — it needs scheduling, at stage 4.
+
+*Why this order is right rather than merely chosen:* a beautifully operable tool that makes one kind
+of image is still a tool that makes one kind of image, and interface work done while the feature set
+is moving gets done twice. The opposite risk — polish deferred forever — is real, which is why the
+stages are written down with the interface as a named stage rather than as "later".
+
+**D-128 · Widening batch one — five new operators, and one written then deleted.**
+First delivery under [D-127](07-DECISIONS.md)'s ordering: visual range before interface.
+
+**Deformers, 17 → 20.** Each admitted only against the file's own rule, that an entry is a distinct
+*class* of vertex operation rather than a variation:
+
+- **Dissolve** — the only operation here that **removes** rather than moves. A vertex cannot be
+  deleted (the index is shared and fixed, and rebuilding it per frame is what D-31 forbids), so it
+  collapses to the centre, making every triangle touching it degenerate and therefore invisible.
+  `Scatter` sweeps between a clean wipe along an axis and a scattered erosion.
+- **Taper** — the only one that changes a shape's **proportions**. Squash conserves volume, Bulge is
+  radial, Bend is angular. The cross-section clamps above zero, or a full taper turns the form
+  inside out through its own axis.
+- **Mirror** — **space folding**. It asks which side of a plane a vertex is on and reflects it,
+  rather than asking where it should move; half the surface is replaced by a mirror of the other
+  half, so the silhouette changes shape. Offsetting the plane is what stops it being a symmetry
+  toggle: the fold cuts the form where the source geometry does not.
+- **Ocean** — **trochoidal** waves. `Wave` displaces vertically by a sine and gives round symmetric
+  humps; real water moves in circles, so material slides toward the crest and piles into sharp peaks
+  with flat troughs between. That horizontal term is the entire effect and no setting of `Wave`
+  produces it. Steepness is divided by the wave number, or shortening the wavelength quietly turns
+  the surface inside out.
+- **Shatter** — **irregular cells**, where `Fracture` uses an axis-aligned grid. Same gesture,
+  different material: a grid gives blocks and reads digital, scattered seeds give shards and read as
+  glass. Seeds live on the unit sphere of directions, so a shard owns a patch of *surface* whatever
+  the object's size.
+
+**Post, 17 → 19.**
+
+- **Edge / Contour** — a **spatial derivative**, which is information no per-pixel operation has:
+  it responds to how fast colour is changing. Full 3×3 Sobel rather than a four-tap difference,
+  because the diagonal taps are what keep a 45° edge as bright as a vertical one — without them a
+  rotating object's outline visibly pulses as it turns. The line takes the picture's own colour, so
+  the palette survives the effect and the brick needs no colour uniform (nothing else in that file
+  has one).
+- **CRT** — curvature, scanlines, phosphor triads and vignette *together*, because a scanline over a
+  flat frame reads as a stripe overlay rather than a screen; curvature is the cue that sells the
+  rest. Scanlines follow the **warped** coordinate so they bend with the glass. The roll is a
+  parameter, not an animation — a wall clock cannot be exported (HC-2).
+
+**And one deleted rather than shipped: Relax.** Without neighbour adjacency the only thing it could
+do was pull vertices toward a mean radius, which is Spherify with the radius computed instead of
+typed. A catalogue whose whole premise is that every entry is a distinct class is worth *less* for
+holding a near-duplicate. A real Laplacian relax needs adjacency the shared topology could expose and
+does not — real work, worth doing properly or not at all.
+
+*Also considered and refused:* a **Glass** material. `Physical` already carries transmission,
+thickness, IOR and iridescence, so a Glass brick would be a preset of it under a new name — the same
+objection as Relax, in the material registry.
+
+*Verified in the browser:* all seven compile and render, context alive, zero console errors. Shatter
+throws irregular shards; Edge in Ink Only mode renders a torus knot as coloured line art; CRT bows
+the grid and lays scanlines and phosphor over the picture.
+
+**D-129 · Widening batch two — Aim effector and RGB Delay.**
+
+**Aim Effector.** The second effector that writes an **absolute** value rather than adding a weighted
+delta — the palette ramp was the first, and for the same reason: "rotate every clone by 30°" composes
+with what came before, "point every clone at this spot" replaces it, because a partially-aimed object
+is not aimed. It is also the first effector whose result depends on **where a clone ended up** rather
+than on its index, which makes it compose in a way none of the others do — a Flow effector ahead of
+it in the stack changes the aim as the array drifts, because Flow has already moved the positions
+this reads.
+
+*Two failures worth recording, because both were mine and both were about verification rather than
+code.* The effector was checked by eye first on **spheres** — identical from every angle, so rotation
+is invisible — and then on **cones**, which are rotationally symmetric about their own axis and so
+show nothing under yaw either. Neither screenshot could distinguish "working" from "doing nothing".
+Six unit tests settled it in a minute: a clone at +Z aiming at the origin yaws 180°, one at −Z yaws 0,
+blend part-way lands between, and a clone sitting exactly on the target is left alone rather than
+snapping to an arbitrary axis as a wired target passes through it.
+
+The lesson is in the hint text now: it names the axis that aims and warns that a symmetric shape
+shows nothing. A user pointing this at a sphere would otherwise reasonably conclude it is broken.
+
+**RGB Delay.** Temporal chromatic aberration, and the distinction from the spatial version already in
+the catalogue is the whole reason it exists. `Chromatic Aberration` offsets the channels in *space*,
+so a still frame shows fringing. This offsets them in *time*: red shows where the object was a moment
+ago and blue shows where it is now, so **a still frame is untouched and a moving one tears into
+colour**. One is a lens defect; the other is a display that cannot keep up.
+
+*One buffer, three decay rates.* The obvious implementation keeps N frames of history and samples
+three — N full-resolution targets, and a delay quantised to whole frames, so it would change
+character between a 30 fps preview and a 60 fps export. Instead one history buffer decays **per
+channel**: a high lag takes many frames to catch up and therefore trails. Same look, one buffer, and
+the lag is continuous rather than a frame count.
+
+Like Feedback Trails it is stateful, so it obeys the same discipline: history clears on any clock
+jump, or scrubbing backwards would leave colour trails drawn from a future that has not happened in
+the new timeline (HC-3).
+
+*Verified:* both compile and render, context alive. RGB Delay correctly does **nothing** on a static
+frame, which is the design. Its behaviour on motion is **not** visually verified — playback with
+three passes under headless software rendering stalls the screenshot, so that check belongs on real
+hardware.
